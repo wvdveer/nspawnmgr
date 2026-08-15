@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — Admin: Pending user requests</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<h1>Pending user requests</h1>
+<p><a th:href="@{/}">&laquo; Back to containers</a></p>
+<p>Requests to add a container user, change a password, or switch which account SSH/RDP/VNC
+    connect as, that couldn't run immediately — either no stored sudo secret is configured, or
+    the container wasn't running at request time. Approving still needs the container running
+    right now, regardless of why it originally needed approval.</p>
+<table>
+    <thead>
+    <tr>
+        <th>Container</th>
+        <th>Container state</th>
+        <th>Action</th>
+        <th>Username</th>
+        <th>Requested by</th>
+        <th>Requested at</th>
+        <th th:if="${sshApprovalRequired}">Sudo password</th>
+        <th>Actions</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="r : ${pending}" th:attr="data-request-id=${r.id}">
+        <td><a th:href="@{/containers/{id}(id=${r.container.id})}" th:text="${r.container.name}">container</a></td>
+        <td th:text="${r.container.state}">state</td>
+        <td th:text="${r.actionType}">action</td>
+        <td th:text="${r.username}">username</td>
+        <td th:text="${r.requestedBy.username}">requested-by</td>
+        <td th:text="${r.createdAt}">requested-at</td>
+        <td th:if="${sshApprovalRequired}"><input type="password" class="approval-password" th:attr="data-request-id=${r.id}"/></td>
+        <td>
+            <button class="btn-approve btn-primary" th:attr="data-request-id=${r.id}" th:disabled="${r.container.state.name() != 'RUNNING'}">Approve</button>
+            <button class="btn-deny btn-primary" th:attr="data-request-id=${r.id}">Deny</button>
+        </td>
+    </tr>
+    </tbody>
+</table>
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/pending-user-requests.js}"></script>
+</body>
+</html>

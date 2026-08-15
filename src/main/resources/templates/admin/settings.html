@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — Admin: Settings</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/},data-auth-cookie-name=${settings.authCookieName()}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<h1>Settings</h1>
+<p><a th:href="@{/}">&laquo; Back to containers</a></p>
+<form id="settings-form" class="card">
+    <h2>Guacamole</h2>
+    <div class="field">
+        <label for="guacamoleBaseUrl">Base URL</label>
+        <input type="text" id="guacamoleBaseUrl" th:value="${settings.guacamoleBaseUrl()}"/>
+        <button type="button" id="guacamoleBaseUrl-refresh" class="btn-primary">Refresh hostname/port/protocol</button>
+    </div>
+    <div class="field">
+        <label for="guacamoleDataSource">Data source</label>
+        <input type="text" id="guacamoleDataSource" th:value="${settings.guacamoleDataSource()}"/>
+        <button type="button" id="guacamoleDataSource-refresh" class="btn-primary">Refresh from Guacamole config</button>
+        <p class="hint">Must match whatever your <code>guacamole-auth-jdbc</code> extension calls
+            itself in <code>guacamole.properties</code> (see the Guacamole section below) — shown
+            in red if it doesn't currently match. "Refresh" copies the detected value across.</p>
+    </div>
+
+    <h2>Host</h2>
+    <div class="field">
+        <label for="hostExternalHostname">External hostname</label>
+        <input type="text" id="hostExternalHostname" th:value="${settings.hostExternalHostname()}"/>
+        <p class="hint">The hostname/DNS name users <strong>outside</strong> this host should use —
+            what goes in a browser's address bar, and what the "Refresh" buttons below fill into
+            every Guacamole/Auth URL (alongside the protocol/port they already pull from Tomcat).
+            Seeded to this machine's actual hostname on <code>.deb</code> installs; defaults to
+            <code>localhost</code> otherwise.</p>
+    </div>
+    <div class="field">
+        <label for="hostPublicAddress">Public address</label>
+        <input type="text" id="hostPublicAddress" th:value="${settings.hostPublicAddress()}"/>
+        <p class="hint">Not the same as External hostname above — this is what Guacamole's
+            <code>guacd</code> uses to reach a custom port mapping's host-forwarded port (ordinary
+            SSH/RDP/VNC always dial a container's own internal address directly, bypassing this).
+            <code>10.100.0.1</code> (<code>nspawnbr0</code>'s own address) on a packaged install,
+            since <code>guacd</code> runs inside nspawnmgr's own self-hosted machine and those
+            forwards are bound on the bare host's network stack, not any particular container's.</p>
+    </div>
+
+    <h2>Auth</h2>
+    <div class="field">
+        <label for="authCookieName">Cookie name</label>
+        <input type="text" id="authCookieName" th:value="${settings.authCookieName()}"/>
+    </div>
+    <div class="field">
+        <label for="authUserIdUrl">User-ID URL</label>
+        <input type="text" id="authUserIdUrl" th:value="${settings.authUserIdUrl()}"/>
+        <button type="button" id="authUserIdUrl-refresh" class="btn-primary">Refresh hostname/port/protocol</button>
+    </div>
+    <div class="field">
+        <label for="authLoginUrl">Login URL</label>
+        <input type="text" id="authLoginUrl" th:value="${settings.authLoginUrl()}"/>
+        <button type="button" id="authLoginUrl-refresh" class="btn-primary">Refresh hostname/port/protocol</button>
+    </div>
+    <div class="field">
+        <label for="authUserIdJson">User-ID JsonPath</label>
+        <input type="text" id="authUserIdJson" th:value="${settings.authUserIdJson()}"/>
+    </div>
+    <div class="field">
+        <label for="authUserUsernameJson">Username JsonPath</label>
+        <input type="text" id="authUserUsernameJson" th:value="${settings.authUserUsernameJson()}"/>
+    </div>
+    <div class="field">
+        <label for="authUserEmailJson">Email JsonPath</label>
+        <input type="text" id="authUserEmailJson" th:value="${settings.authUserEmailJson()}"/>
+    </div>
+    <div class="field">
+        <label for="authUserFullnameJson">Full-name JsonPath</label>
+        <input type="text" id="authUserFullnameJson" th:value="${settings.authUserFullnameJson()}"/>
+    </div>
+    <div class="field">
+        <label for="authUserIsAdminJson">Admin-flag JsonPath (blank = app-managed roles)</label>
+        <input type="text" id="authUserIsAdminJson" th:value="${settings.authUserIsAdminJson()}"/>
+    </div>
+    <div class="field">
+        <label for="authCacheTtlSeconds">Identity cache TTL (seconds)</label>
+        <input type="number" id="authCacheTtlSeconds" th:value="${settings.authCacheTtlSeconds()}"/>
+    </div>
+    <div class="field">
+        <label for="authHttpTimeoutMs">Identity HTTP timeout (ms)</label>
+        <input type="number" id="authHttpTimeoutMs" th:value="${settings.authHttpTimeoutMs()}"/>
+    </div>
+
+    <h2>Provisioning</h2>
+    <div class="field">
+        <label for="provisioningAdminAccountName">In-container admin account name</label>
+        <input type="text" id="provisioningAdminAccountName" th:value="${settings.provisioningAdminAccountName()}"/>
+    </div>
+    <div class="field">
+        <label for="provisioningRdpPasswordLength">Generated RDP password length</label>
+        <input type="number" id="provisioningRdpPasswordLength" th:value="${settings.provisioningRdpPasswordLength()}"/>
+    </div>
+
+    <h2>SSH (sudo-capable local account)</h2>
+    <p>Changing these is tested with a real SSH connection before being accepted — see
+        <code>docs/administrator-guide.md</code> &sect;3 "The sudo-capable SSH account".</p>
+    <div class="field">
+        <label for="sshHost">Host</label>
+        <input type="text" id="sshHost" th:value="${settings.sshHost()}"/>
+    </div>
+    <div class="field">
+        <label for="sshPort">Port</label>
+        <input type="number" id="sshPort" th:value="${settings.sshPort()}"/>
+    </div>
+    <div class="field">
+        <label for="sshUsername">Username</label>
+        <input type="text" id="sshUsername" th:value="${settings.sshUsername()}"/>
+    </div>
+    <div class="field">
+        <label for="sshPassword">Password</label>
+        <input type="password" id="sshPassword" th:value="${settings.sshPassword()}"/>
+    </div>
+    <div class="field">
+        <label for="sshPrivateKeyPath">Private key path (used instead of password if set)</label>
+        <input type="text" id="sshPrivateKeyPath" th:value="${settings.sshPrivateKeyPath()}"/>
+    </div>
+    <div class="field">
+        <label for="sshConnectTimeoutMs">Connect timeout (ms)</label>
+        <input type="number" id="sshConnectTimeoutMs" th:value="${settings.sshConnectTimeoutMs()}"/>
+    </div>
+    <div class="field field-inline">
+        <input type="checkbox" id="sshStrictHostKeyChecking" th:checked="${settings.sshStrictHostKeyChecking()}"/>
+        <label for="sshStrictHostKeyChecking">Strict host key checking</label>
+    </div>
+
+    <h2>Filesystem paths (nspawn)</h2>
+    <div class="field">
+        <label for="nspawnTemplatesDir">Templates directory</label>
+        <input type="text" id="nspawnTemplatesDir" th:value="${settings.nspawnTemplatesDir()}"/>
+    </div>
+    <div class="field">
+        <label for="nspawnMachinesDir">Machines directory</label>
+        <input type="text" id="nspawnMachinesDir" th:value="${settings.nspawnMachinesDir()}"/>
+    </div>
+    <div class="field">
+        <label for="nspawnSettingsDir">.nspawn settings directory</label>
+        <input type="text" id="nspawnSettingsDir" th:value="${settings.nspawnSettingsDir()}"/>
+    </div>
+    <div class="field">
+        <label for="nspawnPrivilegedScriptsDir">Privileged wrapper scripts directory</label>
+        <input type="text" id="nspawnPrivilegedScriptsDir" th:value="${settings.nspawnPrivilegedScriptsDir()}"/>
+        <p class="hint"><strong>Must match <code>/etc/sudoers.d/nspawnmgr_exec</code>'s hardcoded
+            paths</strong>, or every privileged operation (container start/stop, outbound access,
+            Restart Tomcat below) will start failing — sudo fails safe by simply refusing the new
+            path, it does not follow this setting.</p>
+    </div>
+
+    <h2>DNS</h2>
+    <div class="field">
+        <label for="dnsUpstreamServers">Upstream DNS servers</label>
+        <input type="text" id="dnsUpstreamServers" th:value="${settings.dnsUpstreamServers()}"/>
+        <p class="hint">Comma-separated IP addresses (e.g. a corporate DNS server) that managed
+            containers' non-<code>.internal</code> lookups (apt/dnf/pacman mirrors, etc.) are
+            forwarded to. Defaults to <code>1.1.1.1,9.9.9.9</code>.</p>
+    </div>
+
+    <div th:if="${settings.isAuthDetected()}">
+        <h2>Auth (auth.war)</h2>
+        <p>auth.war was detected at the configured login URL. These settings are mirrored to a
+            shared file auth.war reads on every request — changes take effect immediately, no
+            restart needed.</p>
+        <div class="field">
+            <label for="authBackend">Backend</label>
+            <select id="authBackend">
+                <option value="" th:selected="${settings.authBackend() == null}">(inherit auth.war's own default)</option>
+                <option value="pam" th:selected="${settings.authBackend() == 'pam'}">pam (local Linux accounts)</option>
+                <option value="smb" th:selected="${settings.authBackend() == 'smb'}">smb (remote Windows machine/domain)</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="authSmbServer">SMB server (smb backend only)</label>
+            <input type="text" id="authSmbServer" th:value="${settings.authSmbServer()}"/>
+        </div>
+        <div class="field">
+            <label for="authSmbDomain">SMB domain (smb backend only, optional)</label>
+            <input type="text" id="authSmbDomain" th:value="${settings.authSmbDomain()}"/>
+        </div>
+        <div class="field">
+            <label for="authRequiredGroup">Required Unix group (pam backend only, optional)</label>
+            <input type="text" id="authRequiredGroup" th:value="${settings.authRequiredGroup()}"/>
+        </div>
+        <div class="field">
+            <label for="authSmbRequiredShare">Required SMB share (smb backend only, optional)</label>
+            <input type="text" id="authSmbRequiredShare" th:value="${settings.authSmbRequiredShare()}"/>
+        </div>
+    </div>
+
+    <button type="submit" class="btn-primary">Save</button>
+</form>
+<p id="status" class="status-message"></p>
+
+<div th:if="${settings.isGuacamoleDetected()}" class="card">
+    <h2>Guacamole (guacamole.properties)</h2>
+    <p><strong>Saving does not restart Tomcat.</strong> Guacamole will not see these changes until
+        you run <code>sudo systemctl restart tomcat9</code>. Existing values are pulled from the
+        file on this page load and shown below, including any already-configured password (shown
+        masked, as usual for a password field) — field labels and descriptions are sourced from the
+        <a href="https://guacamole.apache.org/doc/gug/configuring-guacamole.html" target="_blank" rel="noopener">Apache Guacamole manual</a>.</p>
+    <p id="guacamole-status">Loading current configuration&hellip;</p>
+
+    <div id="guacamole-guacd-fields"></div>
+
+    <div class="field">
+        <label for="guacamoleDatabaseType">Database</label>
+        <select id="guacamoleDatabaseType">
+            <option value="mysql">MySQL / MariaDB</option>
+            <option value="postgresql">PostgreSQL</option>
+        </select>
+    </div>
+    <div id="guacamole-db-fields"></div>
+
+    <div class="field">
+        <label for="guacamoleSchemaScriptsDirectory">Schema scripts directory (for Test, below — not saved)</label>
+        <input type="text" id="guacamoleSchemaScriptsDirectory"/>
+        <p class="hint">Only needed if Test reports the schema isn't set up yet — point this at the
+            <code>schema/</code> folder from the <code>guacamole-auth-jdbc</code> extension
+            (matching your database type above), and Test will offer to run every
+            <code>.sql</code> file there, in order. Unlike <code>guacd</code>/<code>guacamole-tomcat</code>
+            below, <code>guacamole-auth-jdbc</code> isn't an apt package on any Debian/Ubuntu release —
+            it's always a downloaded tarball. Prefilled above with nspawnmgr's own opinionated install
+            location, <code>/etc/guacamole/guacamole-auth-jdbc/</code> — this is where
+            <code>install-guacamole-auth-jdbc.sh</code> puts it (run automatically by the <code>.deb</code>'s
+            postinst, or runnable by hand — see <code>docs/administrator-guide.md</code> &sect;7); edit the
+            field if you extracted it somewhere else.</p>
+    </div>
+    <p id="guacamole-test-status"></p>
+    <button type="button" id="guacamole-test" class="btn-primary">Test database connection</button>
+    <button type="button" id="guacamole-save" class="btn-primary">Save</button>
+</div>
+
+<div class="card">
+    <h2>Tomcat</h2>
+    <p><strong>Takes effect only after a restart</strong> — use the Restart Tomcat button below.
+        If you change the port or enable/disable HTTPS, use the "Refresh hostname/port/protocol"
+        buttons above (Guacamole base URL, auth URLs) to update them to match — they pull the
+        protocol/port from here and the hostname from External hostname above. See
+        <code>docs/administrator-guide.md</code> &sect;6.</p>
+    <p id="tomcat-status">Loading current configuration&hellip;</p>
+    <div class="field">
+        <label for="tomcatHttpPort">HTTP port</label>
+        <input type="number" id="tomcatHttpPort"/>
+    </div>
+    <div class="field">
+        <label for="tomcatHttpsEnabled">HTTPS</label>
+        <select id="tomcatHttpsEnabled">
+            <option value="false">Disabled</option>
+            <option value="true">Enabled</option>
+        </select>
+    </div>
+    <div class="field">
+        <label for="tomcatHttpsPort">HTTPS port</label>
+        <input type="number" id="tomcatHttpsPort"/>
+    </div>
+    <div class="field">
+        <label for="tomcatCertificateFile">Certificate file (PEM)</label>
+        <input type="text" id="tomcatCertificateFile"/>
+    </div>
+    <div class="field">
+        <label for="tomcatCertificateKeyFile">Certificate key file (PEM)</label>
+        <input type="text" id="tomcatCertificateKeyFile"/>
+        <p class="hint">The <code>tomcat</code> system user needs read access to both files — see
+            &sect;6 "Enabling HTTPS" if you're using Let's Encrypt/Certbot.</p>
+    </div>
+    <button type="button" id="tomcat-save" class="btn-primary">Save</button>
+</div>
+
+<p><button type="button" id="download-report" class="btn-primary">Download settings report</button></p>
+<p><button type="button" id="restart-tomcat" class="btn-primary">Restart Tomcat</button></p>
+<p id="restart-status" class="status-message"></p>
+
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/admin-settings.js}"></script>
+</body>
+</html>

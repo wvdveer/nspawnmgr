@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — Admin: Templates</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/},data-sudo-approval-required=${sudoApprovalRequired}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<h1>Templates</h1>
+<p><a th:href="@{/}">&laquo; Back to containers</a> | <a th:href="@{/admin/templates/new}">+ New template</a></p>
+<div th:if="${#lists.isEmpty(templates)}" class="card" id="no-templates-card">
+    <p>No templates are configured yet — nothing can be created until at least one exists.</p>
+</div>
+<div th:if="${!existingTemplateNames.containsAll({'debian-minimal','fedora-minimal','arch-minimal'})}"
+     class="card" id="quick-setup-card">
+    <p>Get started quickly with a real, working minimal template: each button below downloads a real
+        minirootfs and installs openssh-server into it, then registers it here. Requires internet
+        access from the container host, and anywhere from a few dozen MB (Debian) to several hundred
+        MB (Arch) of download. Setting one up doesn't hide the others — pick as many as you like.</p>
+    <div th:if="${sudoApprovalRequired}" class="field">
+        <label for="minimalSudoPassword">Sudo password (no stored sudo secret is configured)</label>
+        <input type="password" id="minimalSudoPassword"/>
+    </div>
+    <div class="inline-controls">
+        <button type="button" th:each="flavor : ${minimalFlavors}"
+                th:unless="${existingTemplateNames.contains(flavor.templateName())}"
+                th:id="'btn-create-' + ${flavor.templateName()}"
+                th:text="'Set up ' + ${flavor.templateName()}"
+                th:attr="data-flavor=${flavor.templateName()}"
+                class="btn-primary btn-create-minimal">Set up X-minimal</button>
+    </div>
+    <p id="create-minimal-status"></p>
+</div>
+<table>
+    <thead>
+    <tr>
+        <th>Name</th>
+        <th>Description</th>
+        <th>Backend</th>
+        <th>Package manager</th>
+        <th>SSH preinstalled</th>
+        <th>RDP capable</th>
+        <th>VNC capable</th>
+        <th>Active</th>
+        <th>Actions</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="t : ${templates}" th:attr="data-template-id=${t.id}">
+        <td th:text="${t.name}">name</td>
+        <td th:text="${t.description}">description</td>
+        <td th:text="${t.backend}">backend</td>
+        <td th:text="${t.packageManager}">package manager</td>
+        <td th:text="${t.sshPreinstalled} ? 'yes' : 'no'">ssh preinstalled</td>
+        <td th:text="${t.rdpCapable} ? 'yes' : 'no'">rdp capable</td>
+        <td th:text="${t.vncCapable} ? 'yes' : 'no'">vnc capable</td>
+        <td th:text="${t.active} ? 'yes' : 'no'">active</td>
+        <td>
+            <a th:href="@{/admin/templates/{id}/edit(id=${t.id})}" class="btn-primary">Edit</a>
+            <button th:if="${t.active}" class="btn-primary btn-deactivate" th:attr="data-template-id=${t.id}">Deactivate</button>
+            <button th:unless="${t.active}" class="btn-primary btn-reactivate" th:attr="data-template-id=${t.id}">Reactivate</button>
+            <button class="btn-primary btn-delete" th:attr="data-template-id=${t.id}">Delete</button>
+        </td>
+    </tr>
+    </tbody>
+</table>
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/admin-templates.js}"></script>
+</body>
+</html>

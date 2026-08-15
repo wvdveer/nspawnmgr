@@ -1,0 +1,9 @@
+nspawnmgr (0.1.0) stable; urgency=medium
+
+  * Initial .deb packaging: nspawnmgr.war + auth.war deployed into an
+    existing Tomcat 9, sudo-capable nspawnmgr_exec service account with
+    NOPASSWD-scoped sudoers for routine container lifecycle operations,
+    admin/user roles, and the two-mode (stored-secret / admin-approval)
+    container-creation gate.
+
+ -- nspawnmgr packaging <packaging@nspawnmgr.invalid>  Tue, 28 Jul 2026 00:00:00 +1000

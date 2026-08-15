@@ -1,0 +1,10 @@
+# Everything in dev_env/ is developer/environment-specific (real DB credentials, TLS
+# certs, hostnames) and must never be committed. Only these files are tracked:
+*
+!.gitignore
+!README.md
+!application-dev_env.example.yml
+!ci-test-user.env.example
+!ssh-account.env.example
+!certs/
+!certs/.gitkeep

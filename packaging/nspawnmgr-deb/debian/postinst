@@ -1,0 +1,81 @@
+#!/bin/sh
+# See docs/administrator-guide.md for the full rationale behind every step below. The
+# account/sudoers/keypair setup lives in the shared setup-sudo-account.sh (shipped at
+# /usr/lib/nspawnmgr/setup-sudo-account.sh), which is also runnable standalone outside a .deb
+# install — see that script's own header comment. Tomcat/guacd/the four bundled WARs are no longer
+# deployed on this host at all — nspawnmgr runs from its own self-hosted machine instead (see
+# nspawnmgr-bootstrap-app-machine.sh); this host only ever runs the sudo-capable SSH account,
+# templates/packages storage, the shared bridge, and dnsmasq.
+set -e
+
+case "$1" in
+    configure) ;;
+    *) exit 0 ;;
+esac
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "nspawnmgr: postinst must be run as root (via dpkg/apt)." >&2
+    exit 1
+fi
+
+# 1-6. Service account, stored password, SSH keypair, sudoers, sshd carve-out. dpkg has already
+#      unpacked the wrapper scripts (/usr/lib/nspawnmgr/privileged/) and the sudoers file
+#      (/etc/sudoers.d/nspawnmgr_exec) by this point, so this runs in "validate what's already
+#      there" mode rather than copying from a repo checkout.
+/usr/lib/nspawnmgr/setup-sudo-account.sh
+
+# 7. Shared bridge (nspawnbr0) every managed container's veth gets enslaved into at start (see
+#    NspawnSettingsRenderer's Bridge= setting) instead of each getting its own isolated
+#    point-to-point veth — including the self-hosted nspawnmgr/database machines themselves, which
+#    is why this must be in place before nspawnmgr-bootstrap-app-machine.sh runs below. Always
+#    overwritten - fixed convention, holds no admin customization, same treatment as the dnsmasq
+#    config below.
+cp /usr/share/nspawnmgr/70-nspawnmgr-bridge.netdev /etc/systemd/network/70-nspawnmgr-bridge.netdev
+cp /usr/share/nspawnmgr/70-nspawnmgr-bridge.network /etc/systemd/network/70-nspawnmgr-bridge.network
+systemctl restart systemd-networkd \
+    || echo "nspawnmgr: systemd-networkd restart failed — check 'systemctl status systemd-networkd'." >&2
+
+# systemctl restart returns once the restart is *issued*, not once systemd-networkd has actually
+# finished bringing nspawnbr0 up with its address - confirmed live, dnsmasq's own restart just
+# below (now a plain interface=nspawnbr0 bind, no more bind-dynamic to tolerate the interface not
+# existing yet - see dnsmasq-nspawnmgr.conf) can lose this race and fail outright if it starts
+# before the bridge is really ready. Poll for up to 10s rather than proceeding immediately.
+bridge_ready=0
+i=1
+while [ "$i" -le 20 ]; do
+    if /usr/sbin/ip -4 -o addr show nspawnbr0 2>/dev/null | grep -q '10\.100\.0\.1/24'; then
+        bridge_ready=1
+        break
+    fi
+    sleep 0.5
+    i=$((i + 1))
+done
+[ "$bridge_ready" -eq 1 ] \
+    || echo "nspawnmgr: nspawnbr0 didn't come up with 10.100.0.1/24 within 10s — the self-hosted machine bootstrap below may fail; check 'systemctl status systemd-networkd'." >&2
+
+# 8. dnsmasq — a real apt dependency (unlike the self-hosted machines' own software below),
+#    configured to let managed containers (the self-hosted nspawnmgr/database machines included)
+#    resolve each other by name. /etc/nspawnmgr/dns-hosts and /etc/dnsmasq.d/nspawnmgr-upstream.conf
+#    are only touched/seeded if missing (like the guacamole.properties seed used to be) -
+#    ContainerDnsSyncService overwrites both on every sync tick regardless once nspawnmgr itself is
+#    up (the latter with whatever's configured on /admin/settings, defaulting to 1.1.1.1/9.9.9.9),
+#    so there's no admin customization here to protect - just "give dnsmasq a sane default before
+#    nspawnmgr's own first sync tick, rather than no upstream resolution at all in that window". The
+#    main config file itself IS always overwritten - it holds no admin customization, only this
+#    package's own fixed addn-hosts/interface scoping.
+cp /usr/share/nspawnmgr/dnsmasq-nspawnmgr.conf /etc/dnsmasq.d/nspawnmgr.conf
+mkdir -p /etc/nspawnmgr
+[ -f /etc/nspawnmgr/dns-hosts ] || touch /etc/nspawnmgr/dns-hosts
+[ -f /etc/dnsmasq.d/nspawnmgr-upstream.conf ] || printf 'server=1.1.1.1\nserver=9.9.9.9\n' > /etc/dnsmasq.d/nspawnmgr-upstream.conf
+systemctl restart dnsmasq \
+    || echo "nspawnmgr: dnsmasq restart failed — check 'systemctl status dnsmasq'." >&2
+
+# 9. nspawnmgr runs from one of its own machines: bakes debian-minimal if it doesn't exist yet,
+#    clones it, and installs a JRE/Tomcat/the four bundled WARs/guacd into it directly (this host
+#    never runs any of that itself) — see that script's own header comment for the full sequence,
+#    including the free-host-port search for the inbound :8080 forward and the SSH-back credential
+#    setup that lets the app reach back out to this host's own nspawnmgr_exec account once it
+#    boots.
+/usr/lib/nspawnmgr/privileged/nspawnmgr-bootstrap-app-machine.sh
+
+exit 0

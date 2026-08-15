@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — Log</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<h1>Log (last 100 lines)</h1>
+<p><a th:href="@{/}">&laquo; Back to containers</a></p>
+<p><button id="btn-show-full" class="btn-primary">Show full log</button></p>
+<pre id="log-content">Loading...</pre>
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/logs.js}"></script>
+</body>
+</html>

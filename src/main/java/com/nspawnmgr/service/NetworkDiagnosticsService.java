@@ -1,0 +1,339 @@
+package com.nspawnmgr.service;
+
+import com.nspawnmgr.cli.CommandResult;
+import com.nspawnmgr.cli.NetworkDiagnosticsExecutor;
+import com.nspawnmgr.domain.AuditAction;
+import com.nspawnmgr.domain.AuditTargetType;
+import com.nspawnmgr.domain.ContainerPortMapping;
+import com.nspawnmgr.domain.PortMappingProtocol;
+import com.nspawnmgr.domain.User;
+import com.nspawnmgr.repository.ContainerPortMappingRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Checks host prerequisites known to silently break container networking - the exact chain
+ * diagnosed live, the hard way, in one very long session: a NAT hairpin exclusion for
+ * 127.0.0.1 in systemd-networkd's own NAT table (only actually fixable by making sure
+ * networkd itself is running - see checkNetworkd), a host firewall with no rule for a
+ * container's forwarded port mappings, and HOST_PUBLIC_ADDRESS still pointing at loopback. See
+ * docs/administrator-guide.md's HOST_PUBLIC_ADDRESS section for the full story.
+ */
+@Service
+public class NetworkDiagnosticsService {
+
+    private static final Logger log = LoggerFactory.getLogger(NetworkDiagnosticsService.class);
+
+    public enum Status { OK, WARN, FAIL }
+
+    public record DiagnosticCheck(String id, String label, Status status, String detail, boolean fixable) {
+    }
+
+    private static final String[] EXCLUDED_INTERFACE_PREFIXES =
+            {"tun", "tap", "wg", "ppp", "docker", "veth", "ve-", "br-"};
+
+    private final NetworkDiagnosticsExecutor executor;
+    private final SettingsService settingsService;
+    private final AuditLogService auditLogService;
+    private final ContainerPortMappingRepository portMappingRepository;
+
+    public NetworkDiagnosticsService(NetworkDiagnosticsExecutor executor, SettingsService settingsService,
+                                      AuditLogService auditLogService, ContainerPortMappingRepository portMappingRepository) {
+        this.executor = executor;
+        this.settingsService = settingsService;
+        this.auditLogService = auditLogService;
+        this.portMappingRepository = portMappingRepository;
+    }
+
+    public List<DiagnosticCheck> runChecks() {
+        List<DiagnosticCheck> checks = new ArrayList<>();
+        checks.add(checkNetworkd());
+        checks.add(checkUfw());
+        checks.add(checkHostAddress());
+        checks.add(checkGuacd());
+        checks.add(checkBridge());
+        checks.add(checkSudoers());
+        checks.forEach(NetworkDiagnosticsService::logIfNotOk);
+        return checks;
+    }
+
+    /**
+     * Logs every problem a check finds, not just the fix actions admins choose to take - the
+     * whole point of this page is to leave a trace instead of a container silently failing with
+     * nothing to go on, same reasoning as the WARN logging added to
+     * RealContainerReadinessChecker/ContainerReadinessPollingService this same session.
+     */
+    private static void logIfNotOk(DiagnosticCheck check) {
+        if (check.status() != Status.OK) {
+            log.warn("Network diagnostics: {} [{}] - {}", check.label(), check.status(), check.detail());
+        }
+    }
+
+    /**
+     * sudoPassword is null unless the UI is in admin-approval mode (see
+     * settingsService.sshApprovalRequired() - the page only renders a password field at all in
+     * that case). Otherwise the executor falls back to the stored sudo secret itself, same as
+     * every other privileged action in this app when not in approval mode.
+     */
+    public DiagnosticCheck fixNetworkd(User actingAdmin, char[] sudoPassword) {
+        try {
+            executor.enableNetworkd(sudoPassword);
+        } finally {
+            zero(sudoPassword);
+        }
+        auditLogService.log(actingAdmin, AuditAction.UPDATED, AuditTargetType.SYSTEM, null, "network-diagnostics",
+                "enabled systemd-networkd");
+        DiagnosticCheck result = checkNetworkd();
+        logIfNotOk(result);
+        return result;
+    }
+
+    /**
+     * detectHostAddresses() itself is a NOPASSWD-tier read-only command, so sudoPassword (if any)
+     * isn't actually threaded through to the executor here - accepted only for API consistency
+     * with the other two fix endpoints.
+     */
+    public DiagnosticCheck fixHostAddress(User actingAdmin, char[] sudoPassword) {
+        zero(sudoPassword);
+        String before = settingsService.hostPublicAddress();
+        String detected = detectHostAddress();
+        if (detected == null) {
+            DiagnosticCheck failure = new DiagnosticCheck("host-address", "HOST_PUBLIC_ADDRESS", Status.FAIL,
+                    "Could not auto-detect a non-loopback address on this host - set it manually in Settings.", false);
+            logIfNotOk(failure);
+            return failure;
+        }
+        settingsService.updateHostPublicAddress(detected, actingAdmin);
+        auditLogService.log(actingAdmin, AuditAction.UPDATED, AuditTargetType.SYSTEM, null, "network-diagnostics",
+                "HOST_PUBLIC_ADDRESS changed from '" + before + "' to '" + detected + "'");
+        DiagnosticCheck result = checkHostAddress();
+        logIfNotOk(result);
+        return result;
+    }
+
+    private static void zero(char[] password) {
+        if (password != null) {
+            Arrays.fill(password, '\0');
+        }
+    }
+
+    private DiagnosticCheck checkNetworkd() {
+        CommandResult result = executor.networkdStatus();
+        boolean active = "active".equals(result.stdout().trim());
+        return new DiagnosticCheck("networkd", "systemd-networkd active",
+                active ? Status.OK : Status.FAIL,
+                active ? "systemd-networkd is active."
+                        : "systemd-networkd is not active - a container's SSH/RDP port forward will never be "
+                        + "populated without it (confirmed live: the NAT map stays permanently empty).",
+                !active);
+    }
+
+    /**
+     * Checks every container's currently-configured custom port mapping (the only host-forwarded
+     * ports left — SSH/RDP dial a container's internal veth address directly, no host forward
+     * involved) against ufw's active rules. No automatic fix: unlike the old fixed SSH/RDP ranges,
+     * this is a variable, per-container list, so — same posture as {@link #checkSudoers} — an
+     * admin resolves it by hand (typically {@code ufw allow <port>/<proto>}).
+     */
+    private DiagnosticCheck checkUfw() {
+        CommandResult result = executor.ufwStatus();
+        String stdout = result.stdout();
+        if (!stdout.contains("Status: active")) {
+            return new DiagnosticCheck("ufw-ports", "ufw forwarded-port coverage", Status.OK,
+                    "ufw is not active on this host - nothing to check.", false);
+        }
+        List<ContainerPortMapping> mappings = portMappingRepository.findAllWithContainer();
+        List<String> uncovered = new ArrayList<>();
+        for (ContainerPortMapping mapping : mappings) {
+            if (!coversPort(stdout, mapping.getHostPort(), mapping.getProtocol())) {
+                String containerName = mapping.getContainer().getName();
+                uncovered.add(containerName + " (host port " + mapping.getHostPort() + "/"
+                        + mapping.getProtocol().name().toLowerCase() + ")");
+                log.warn("Network diagnostics: ufw has no rule covering forwarded port {}/{} for container '{}'",
+                        mapping.getHostPort(), mapping.getProtocol().name().toLowerCase(), containerName);
+            }
+        }
+        boolean covered = uncovered.isEmpty();
+        return new DiagnosticCheck("ufw-ports", "ufw forwarded-port coverage",
+                covered ? Status.OK : Status.FAIL,
+                covered ? "ufw allows all " + mappings.size() + " currently-mapped container port(s)."
+                        : "ufw is active but has no rule covering: " + String.join(", ", uncovered)
+                        + " - a default-reject policy will silently block these forwards.",
+                false);
+    }
+
+    private boolean coversPort(String ufwStatusOutput, int port, PortMappingProtocol protocol) {
+        String token = port + "/" + protocol.name().toLowerCase();
+        for (String line : ufwStatusOutput.split("\n")) {
+            if (line.contains("ALLOW IN") && line.contains(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private DiagnosticCheck checkHostAddress() {
+        String address = settingsService.hostPublicAddress();
+        boolean loopback = "127.0.0.1".equals(address) || "localhost".equalsIgnoreCase(address);
+        return new DiagnosticCheck("host-address", "HOST_PUBLIC_ADDRESS not loopback",
+                loopback ? Status.WARN : Status.OK,
+                loopback ? "HOST_PUBLIC_ADDRESS is '" + address + "' - some hosts (confirmed live: systemd-networkd's "
+                        + "own NAT table) refuse to hairpin loopback-destined traffic back into a container, even "
+                        + "though the port forward itself is configured correctly."
+                        : "HOST_PUBLIC_ADDRESS is '" + address + "', not loopback.",
+                loopback);
+    }
+
+    /**
+     * Containers can only resolve each other by name (see docs/administrator-guide.md's "Resolving
+     * containers by name") once the shared container bridge (nspawnbr0) is actually up with its
+     * expected address - postinst creates it unconditionally, so this check exists to catch the
+     * rare case where that failed (or an admin removed it by hand) rather than to drive an
+     * admin-triggered fix; there's nothing to offer a Fix button for here.
+     */
+    private DiagnosticCheck checkBridge() {
+        CommandResult result = executor.checkBridge();
+        boolean ok = "ok".equals(result.stdout().trim());
+        return new DiagnosticCheck("bridge", "Shared container bridge (nspawnbr0)",
+                ok ? Status.OK : Status.FAIL,
+                ok ? "nspawnbr0 is up with address 10.100.0.1/24 - containers can resolve each other by name."
+                        : "nspawnbr0 doesn't exist yet or doesn't have the expected address - containers can't "
+                        + "resolve each other by name. Check that systemd-networkd is active (see the check above) "
+                        + "and that /etc/systemd/network/70-nspawnmgr-bridge.netdev/.network are present; "
+                        + "reinstalling the .deb re-applies them.",
+                false);
+    }
+
+    private static final String GUACD_TEST_PROTOCOL = "ssh";
+
+    /**
+     * Live check from nspawnmgr's own process against whatever guacd-hostname/guacd-port
+     * guacamole.properties currently has configured. guacamole.war runs in the SAME Tomcat
+     * instance as nspawnmgr (same host, same process's network namespace), so this is exactly what
+     * guacamole.war itself does on every session start.
+     *
+     * <p>A bare TCP connect alone isn't enough - confirmed live twice this session: once with
+     * guacd-hostname resolving differently depending on which machine asked, and again with guacd
+     * itself reachable and accepting connections fine while its "ssh"/"rdp" protocol plugins
+     * (libguac-client-ssh.so/libguac-client-rdp.so, dlopen()'d by filename at runtime, not linked
+     * at build time - a different, less certain resolution path than however guacd itself started)
+     * failed to load, both reporting "Support for protocol ... is not installed". So this sends a
+     * real Guacamole protocol handshake ({@code select,ssh}) and checks for a proper {@code args}
+     * response, not just that something answered on the port. Only checks "ssh" - "rdp" (if used)
+     * loads via the identical mechanism from the same guacd build, so a working "ssh" plugin load
+     * is representative of both. No automatic fix: too many possible root causes (guacd not
+     * running, wrong hostname/port, a bind-address mismatch, a firewall rule, a plugin-loading
+     * failure) for one canned action - same posture as {@link #checkSudoers}.
+     */
+    private DiagnosticCheck checkGuacd() {
+        Map<String, String> props = settingsService.readGuacamoleProperties();
+        String hostname = props.getOrDefault("guacd-hostname", "").trim();
+        String portText = props.getOrDefault("guacd-port", "").trim();
+        if (hostname.isEmpty() || portText.isEmpty()) {
+            return new DiagnosticCheck("guacd-connectivity", "guacd reachable from Guacamole", Status.WARN,
+                    "guacd-hostname/guacd-port aren't configured yet in guacamole.properties.", false);
+        }
+        int port;
+        try {
+            port = Integer.parseInt(portText);
+        } catch (NumberFormatException e) {
+            return new DiagnosticCheck("guacd-connectivity", "guacd reachable from Guacamole", Status.FAIL,
+                    "guacd-port ('" + portText + "') is not a valid number.", false);
+        }
+        String failure = trySelectProtocol(hostname, port, GUACD_TEST_PROTOCOL);
+        return new DiagnosticCheck("guacd-connectivity", "guacd reachable from Guacamole",
+                failure == null ? Status.OK : Status.FAIL,
+                failure == null ? "Connected to guacd at " + hostname + ":" + port
+                        + " and it loaded the \"" + GUACD_TEST_PROTOCOL + "\" protocol plugin successfully."
+                        : "guacd at " + hostname + ":" + port + " - " + failure + ". Since guacamole.war runs in the "
+                        + "same Tomcat instance as nspawnmgr, it would hit this same failure. Check that guacd is "
+                        + "actually running ('systemctl status guacd'), that guacd-hostname/guacd-port here match "
+                        + "what it's actually bound to ('ss -tlnp | grep guacd'), and - if it connected but the "
+                        + "protocol load itself failed - guacd's own log for the dlopen() error "
+                        + "('journalctl -u guacd').",
+                false);
+    }
+
+    /**
+     * Sends a raw {@code select,<protocol>} Guacamole protocol instruction and checks for a
+     * successful {@code args} response - the same handshake guacamole.war's own tunnel opens on
+     * every session start. Returns {@code null} on success, or a human-readable failure reason.
+     */
+    private String trySelectProtocol(String host, int port, String protocol) {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(host, port), 3000);
+            socket.setSoTimeout(3000);
+            String select = "6.select," + protocol.length() + "." + protocol + ";";
+            socket.getOutputStream().write(select.getBytes(StandardCharsets.US_ASCII));
+            socket.getOutputStream().flush();
+            byte[] buffer = new byte[256];
+            int read = socket.getInputStream().read(buffer);
+            if (read <= 0) {
+                return "connected, but the connection closed with no response to selecting \"" + protocol + "\"";
+            }
+            String response = new String(buffer, 0, read, StandardCharsets.US_ASCII);
+            if (response.startsWith("4.args,")) {
+                return null;
+            }
+            return "connected, but selecting \"" + protocol + "\" got an unexpected response instead of the usual "
+                    + "parameter list: " + response;
+        } catch (IOException e) {
+            return "could not connect (" + e.getMessage() + ")";
+        }
+    }
+
+    private DiagnosticCheck checkSudoers() {
+        CommandResult result = executor.visudoCheck();
+        return new DiagnosticCheck("sudoers", "sudoers file validity", result.success() ? Status.OK : Status.FAIL,
+                result.success() ? "/etc/sudoers.d/nspawnmgr_exec parses cleanly."
+                        : "visudo -cf failed: " + result.stderr()
+                        + " - check for a colliding Cmnd_Alias name in another file under /etc/sudoers.d/ "
+                        + "(no safe automatic fix; this needs to be resolved by hand).",
+                false);
+    }
+
+    /** Mirrors setup-sudo-account.sh's own `ip -4 -o addr show scope global | awk ...` detection. */
+    private String detectHostAddress() {
+        CommandResult result = executor.detectHostAddresses();
+        if (!result.success()) {
+            return null;
+        }
+        for (String line : result.stdout().split("\n")) {
+            String[] tokens = line.trim().split("\\s+");
+            if (tokens.length < 2) {
+                continue;
+            }
+            String iface = tokens[1];
+            if (isExcludedInterface(iface)) {
+                continue;
+            }
+            for (int i = 0; i < tokens.length - 1; i++) {
+                if ("inet".equals(tokens[i])) {
+                    String addr = tokens[i + 1];
+                    int slash = addr.indexOf('/');
+                    return slash >= 0 ? addr.substring(0, slash) : addr;
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isExcludedInterface(String iface) {
+        for (String prefix : EXCLUDED_INTERFACE_PREFIXES) {
+            if (iface.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+}

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — Admin: Pending container requests</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<h1>Pending container requests</h1>
+<p><a th:href="@{/}">&laquo; Back to containers</a></p>
+<p>No stored sudo secret is configured, so new containers need an admin to approve them and supply
+    the sudo password for this one creation run.</p>
+<table>
+    <thead>
+    <tr>
+        <th>Name</th>
+        <th>Requested by</th>
+        <th>Template</th>
+        <th>Requested at</th>
+        <th>Sudo password</th>
+        <th>Actions</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="c : ${pending}" th:attr="data-container-id=${c.id}">
+        <td th:text="${c.name}">name</td>
+        <td th:text="${c.owner.username}">owner</td>
+        <td th:text="${c.template.name}">template</td>
+        <td th:text="${c.createdAt}">requested-at</td>
+        <td><input type="password" class="approval-password" th:attr="data-container-id=${c.id}"/></td>
+        <td>
+            <button class="btn-approve" th:attr="data-container-id=${c.id}">Approve</button>
+            <button class="btn-deny" th:attr="data-container-id=${c.id}">Deny</button>
+        </td>
+    </tr>
+    </tbody>
+</table>
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/pending-approvals.js}"></script>
+</body>
+</html>

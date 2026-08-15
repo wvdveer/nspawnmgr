@@ -1,0 +1,132 @@
+spring:
+  application:
+    name: nspawnmgr
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  # Lets a system administrator drop real connection details, TLS cert paths, etc. into
+  # dev_env/application-dev_env.yml (gitignored, not tracked) without editing tracked config.
+  # Silently skipped if the file doesn't exist. The second entry is where
+  # DatabaseSetupWizardServlet persists DB_URL/DB_USERNAME/DB_PASSWORD/DB_VENDOR after a
+  # successful first-boot setup — see com.nspawnmgr.bootstrap.DbConnectionSettings.
+  config:
+    import: "optional:file:./dev_env/application-dev_env.yml,optional:file:/etc/nspawnmgr/db-config/db.properties"
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/nspawnmgr}
+    username: ${DB_USERNAME:nspawnmgr}
+    password: ${DB_PASSWORD:nspawnmgr}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    # DB vendor is a deployment choice (MySQL or PostgreSQL per DB_VENDOR); each has its own
+    # schema under db/migration/{vendor} since AUTO_INCREMENT/SERIAL/IDENTITY aren't portable.
+    # (db/migration/h2 also exists, but only for the dev-stack/CI test harness's own in-memory
+    # database - not a supported deployment target, see docs/administrator-guide.md §4.)
+    locations: classpath:db/migration/${DB_VENDOR:mysql}
+  servlet:
+    multipart:
+      # Spring Boot's own default (1MB/10MB) is too small for real .deb/.rpm uploads (the admin
+      # package-cache upload page) - a real package easily exceeds that.
+      max-file-size: 200MB
+      max-request-size: 200MB
+
+# Inert: every mode now deploys nspawnmgr.war into an external Tomcat (see
+# tools/scripts/start-dev-stack.sh / start-real-stack.sh), which ignores this and uses its own
+# conf/server.xml connector port instead. Left in case an embedded-server mode returns.
+server:
+  port: ${SERVER_PORT:8443}
+
+nspawnmgr:
+  auth:
+    cookie-name: ${COOKIE_NAME:nspawnmgr_session}
+    user-id-url: ${USER_ID_URL:}
+    user-id-json: ${USER_ID_JSON:$.id}
+    user-username-json: ${USER_USERNAME_JSON:$.username}
+    user-email-json: ${USER_EMAIL_JSON:$.email}
+    user-fullname-json: ${USER_FULLNAME_JSON:$.fullName}
+    # Optional JsonPath into the same identity JSON for an admin flag. When set, User.role is
+    # recomputed from this on every login (external-managed mode) and manual role grant/revoke
+    # through the app is disabled. Blank (default): app-managed mode — the first user ever created
+    # becomes ADMIN automatically, and admins manage roles for everyone else afterward.
+    user-is-admin-json: ${USER_IS_ADMIN_JSON:}
+    cache-ttl-seconds: ${AUTH_CACHE_TTL_SECONDS:60}
+    http-timeout-ms: ${AUTH_HTTP_TIMEOUT_MS:3000}
+    # Where the auth app's login page lives. When set, an unauthenticated request is redirected here
+    # (with a returnTo= query parameter pointing back to itself) instead of to the static
+    # /login-required page. Blank preserves the old behavior.
+    login-url: ${AUTH_LOGIN_URL:}
+    # Must match auth.war's own default/AUTH_SETTINGS_FILE (see AuthConfig.DEFAULT_SETTINGS_FILE) —
+    # SettingsService writes here on every /admin/settings save, AuthConfig reads it on every request.
+    settings-file: ${AUTH_SETTINGS_FILE:/etc/nspawnmgr/auth-live/auth-settings.properties}
+  nspawn:
+    templates-dir: ${TEMPLATES_DIR:/var/lib/nspawnmgr/templates}
+    machines-dir: ${NSPAWN_MACHINES_DIR:/var/lib/machines}
+    settings-dir: ${NSPAWN_SETTINGS_DIR:/etc/systemd/nspawn}
+    # Fixed wrapper scripts (shipped by the .deb, see packaging/nspawnmgr-deb/privileged-scripts/)
+    # that the NOPASSWD sudoers grant matches on exact path — routine, always-safe operations
+    # (writing .nspawn settings, deleting machine files, outbound-access firewall rules) shell out
+    # to these instead of inlining scripts, so the sudoers grant never has to wildcard-match
+    # arbitrary script text.
+    privileged-scripts-dir: ${NSPAWN_PRIVILEGED_SCRIPTS_DIR:/usr/lib/nspawnmgr/privileged}
+  tomcat:
+    # Where catalina.out.<date>.log actually lands — coupled 1:1 to tomcat9.service's own
+    # rotatelogs invocation (packaging/nspawnmgr-deb/tomcat9.service), so this isn't live-editable
+    # via /admin/settings, same reasoning as nspawn.privileged-scripts-dir.
+    log-dir: ${TOMCAT_LOG_DIR:/opt/tomcat9/logs}
+  dns:
+    # Coupled 1:1 to dnsmasq's own addn-hosts= directive (packaging/nspawnmgr-deb/dnsmasq-nspawnmgr.conf)
+    # — not live-editable via /admin/settings, same reasoning as nspawn.privileged-scripts-dir.
+    hosts-file: ${DNS_HOSTS_FILE:/etc/nspawnmgr/dns-hosts}
+    # Auto-included by dnsmasq's own conf-dir= (Debian's default /etc/dnsmasq.conf reads every
+    # *.conf under /etc/dnsmasq.d/) — not itself live-editable, but its *content* is: see
+    # SettingsService.dnsUpstreamServers()/ContainerDnsSyncService.
+    upstream-servers-file: ${DNS_UPSTREAM_SERVERS_FILE:/etc/dnsmasq.d/nspawnmgr-upstream.conf}
+    # Default upstream DNS resolvers, live-editable via /admin/settings — see app_settings.dns_upstream_servers.
+    upstream-servers: ${DNS_UPSTREAM_SERVERS:1.1.1.1,9.9.9.9}
+  host:
+    public-address: ${HOST_PUBLIC_ADDRESS:127.0.0.1}
+    # The hostname/DNS-name reachable from OUTSIDE this host, e.g. a browser's address bar or the
+    # login link admins send users. Not the same thing as public-address above. Seeded to the
+    # machine's actual hostname on .deb installs (see setup-sudo-account.sh); "localhost" here is
+    # only ever a fallback for manual/dev installs.
+    external-hostname: ${HOST_EXTERNAL_HOSTNAME:localhost}
+  # Tomcat runs as a non-privileged, non-sudo Linux user, so RealContainerCliExecutor and
+  # RealContainerFilesystemProvisioner SSH into this separate sudo-capable local account to run
+  # machinectl/systemd-run and touch root-owned paths. Authenticated by password; the same
+  # password is piped to `sudo -S` once connected. 127.0.0.1 (this default) is correct for
+  # dev-stack and manual installs where nspawnmgr and nspawnmgr_exec are on the same host; a
+  # packaged install now runs nspawnmgr *inside* its own self-hosted machine
+  # (nspawnmgr-bootstrap-app-machine.sh), so that machine's own copy of nspawnmgr.env overrides
+  # this to nspawnbr0's own fixed address (10.100.0.1) instead - see that script's own comment.
+  ssh:
+    host: ${SSH_HOST:127.0.0.1}
+    port: ${SSH_PORT:22}
+    username: ${SSH_USERNAME:}
+    password: ${SSH_PASSWORD:}
+    # Blank password selects container-creation approval mode; SSH transport login then needs a
+    # key instead (the .deb's postinst always generates one, regardless of mode).
+    private-key-path: ${SSH_PRIVATE_KEY_PATH:}
+    connect-timeout-ms: ${SSH_CONNECT_TIMEOUT_MS:5000}
+    strict-host-key-checking: ${SSH_STRICT_HOST_KEY_CHECKING:false}
+  guacamole:
+    base-url: ${GUACAMOLE_BASE_URL:http://localhost:8080/guacamole}
+    admin-username: ${GUACAMOLE_ADMIN_USERNAME:guacadmin}
+    admin-password: ${GUACAMOLE_ADMIN_PASSWORD:guacadmin}
+    data-source: ${GUACAMOLE_DATA_SOURCE:mysql}
+    home: ${GUACAMOLE_HOME:/etc/guacamole}
+  crypto:
+    secret-key: ${APP_SECRET_KEY:}
+  provisioning:
+    admin-account-name: ${PROVISION_ADMIN_ACCOUNT:admin}
+    rdp-password-length: ${PROVISION_RDP_PASSWORD_LENGTH:20}
+  cli:
+    executor: ${CONTAINER_CLI_EXECUTOR:real}
+  pam-auth:
+    # Where a container's pam_nspawnmgr verify script POSTs a submitted password back to for
+    # checking - 10.100.0.1 is nspawnbr0's own fixed gateway address (see
+    # ContainerDnsSyncService's BRIDGE_ADDRESS), the only route a container has back to whatever
+    # forwards this webapp's own port in, self-hosted or not. Override if this deployment's real
+    # port/context-path differs from the documented default.
+    callback-base-url: ${PAM_AUTH_CALLBACK_BASE_URL:http://10.100.0.1:8080/nspawnmgr}

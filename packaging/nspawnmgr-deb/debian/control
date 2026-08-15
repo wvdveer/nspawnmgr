@@ -1,0 +1,72 @@
+Package: nspawnmgr
+Version: 0.1.0
+Section: web
+Priority: optional
+Architecture: all
+Depends: default-jre-headless | openjdk-17-jre-headless, openssh-server, openssl, apache2-utils, dnsmasq
+Maintainer: nspawnmgr packaging <packaging@nspawnmgr.invalid>
+Description: Web manager for systemd-nspawn containers with Apache Guacamole access
+ nspawnmgr provides a web UI for creating, starting, stopping, and accessing
+ systemd-nspawn containers via Guacamole (SSH/RDP). Deploys as nspawnmgr.war
+ and auth.war into its own bundled Tomcat 9 instance, alongside guacamole.war.
+ .
+ IMPORTANT: tomcat9 is NOT an apt dependency of this package either -
+ previously it was, but the apt tomcat9 package's own availability varies
+ enough by Debian/Ubuntu/Mint release that this package now bundles the same
+ vanilla upstream Apache Tomcat binary distribution instead (a current
+ patch release, not whatever an apt archive happens to carry) and owns the
+ whole instance itself: /opt/tomcat9, its own tomcat system user, and its
+ own tomcat9.service systemd unit. If a previous version of this package
+ (which did depend on apt tomcat9) is already installed, remove that
+ package's tomcat9 first to avoid two instances both trying to bind the
+ same port.
+ .
+ IMPORTANT: guacd and guacamole-tomcat are NOT apt dependencies of this
+ package, deliberately - as of this package's build, neither is packaged for
+ any current Debian/Ubuntu/Mint release at all (confirmed by searching the
+ actual archives, not just "varies by release"). guacd is bundled instead: a
+ self-contained build (own OpenSSL 3.x, minimal FFmpeg, FreeRDP2, libssh2 -
+ see /usr/share/doc/nspawnmgr/guacd-bundle-README.md) that postinst extracts
+ to /opt/guacd-bundle and runs as its own systemd service (guacd.service),
+ no system guacd package needed. guacamole.war itself is also bundled
+ directly (the official Apache release, not built by this project) and
+ deployed into the same Tomcat instance as nspawnmgr.war/auth.war - unlike
+ guacd, there was never a licensing/rebuild concern here, just no apt
+ package to depend on. GUACAMOLE_HOME (/etc/guacamole) is created too, with
+ a minimal guacamole.properties pointed at the bundled guacd instance - see
+ /usr/share/doc/nspawnmgr/administrator-guide.md section 7 for what's still
+ manual (the database-backed auth extension, since that needs real
+ credentials this package can't know).
+ .
+ IMPORTANT: this package's Guacamole integration also requires the
+ guacamole-auth-jdbc extension, which is never an apt package on any release
+ and is not pulled in by this Depends: line. It is not optional: nspawnmgr
+ manages Guacamole connections/users through Guacamole's REST API, which only
+ exists when Guacamole is running a database-backed auth extension - the
+ stock user-mapping.xml auth Guacamole ships with has no such API. Like guacd,
+ it's bundled directly rather than downloaded at install time - postinst
+ extracts this package's own vendored copy (no network needed) and also
+ copies both MySQL/PostgreSQL JDBC driver jars into GUACAMOLE_HOME/lib (this
+ package already bundles both, for nspawnmgr's own unrelated database use).
+ Copying the extension JAR itself into GUACAMOLE_HOME/extensions, running its
+ schema, and creating the Guacamole admin account are still manual steps -
+ see /usr/share/doc/nspawnmgr/administrator-guide.md section 7.
+ .
+ This package assumes nspawnmgr manages containers on the same host it runs
+ on. Managing a remote nspawn host is a manually-configured, documented-only
+ scenario — see /usr/share/doc/nspawnmgr/administrator-guide.md.
+ .
+ apache2-utils is a real apt dependency (unlike everything bundled above) -
+ it provides /usr/bin/rotatelogs, which tomcat9.service pipes Tomcat's own
+ stdout/stderr through to produce daily-rotated catalina.out.<date> files in
+ /opt/tomcat9/logs, viewable from nspawnmgr's own "View log" page.
+ .
+ dnsmasq is also a real apt dependency, unlike guacd/Tomcat above - it lets
+ managed containers resolve each other by their nspawnmgr name. postinst
+ drops a config scoping it to container veths only (never reachable from the
+ host's own LAN/uplink interface) and pointing it at a hosts file nspawnmgr
+ keeps in sync with each running container's current internal address. See
+ /usr/share/doc/nspawnmgr/administrator-guide.md's Container networking
+ section for the one remaining manual step (a systemd-networkd drop-in that
+ hands out this resolver's address via DHCP - not something this package can
+ safely edit, since it doesn't own that file either).

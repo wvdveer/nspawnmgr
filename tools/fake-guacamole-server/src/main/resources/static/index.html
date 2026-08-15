@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"/><title>fake-guacamole-server</title></head>
+<body>
+<h1>fake-guacamole-server</h1>
+<p>This stands in for the real Guacamole client so the dev-profile session iframe has something to load.</p>
+<pre id="decoded"></pre>
+<script>
+    const hash = window.location.hash; // "#/client/<base64url>?token=<token>"
+    const match = hash.match(/^#\/client\/([^?]+)\?token=(.+)$/);
+    const out = document.getElementById('decoded');
+    if (match) {
+        const identifier = atob(match[1].replace(/-/g, '+').replace(/_/g, '/'));
+        out.textContent = 'connection identifier (decoded): ' + identifier + '\ntoken: ' + match[2];
+    } else {
+        out.textContent = 'No client identifier in URL fragment: ' + hash;
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+# Dev profile: points at the fakes under tools/, and at auth/ (auth.war) running locally, instead
+# of a real Linux host and a real Guacamole install. Started via tools/scripts/start-dev-stack.sh
+# (deploys nspawnmgr.war + guacamole.war + auth.war, at /nspawnmgr, /guacamole, /auth
+# respectively, into one Tomcat — see that script's own comments). user-id-url below assumes the
+# default port 8080; overridden via USER_ID_URL if TOMCAT_HTTP_PORT is set to something else.
+spring:
+  datasource:
+    url: jdbc:h2:mem:nspawnmgr;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    locations: classpath:db/migration/h2
+
+nspawnmgr:
+  ssh:
+    # Never actually used — FakeContainerCliExecutor/FakeContainerFilesystemProvisioner ignore SSH
+    # and sudo entirely — but a non-blank value keeps container creation in self-service mode here
+    # rather than the real profile's admin-approval gate, which only makes sense for a real sudo
+    # credential (see ProvisioningService.requiresApproval()).
+    password: dev-fake-unused
+  auth:
+    cookie-name: nspawnmgr_session
+    user-id-url: http://localhost:8080/auth/userinfo
+    user-id-json: $.id
+    user-username-json: $.username
+    user-email-json: $.email
+    user-fullname-json: $.fullName
+    # Must resolve to the SAME path as auth.war's own AUTH_SETTINGS_FILE (set in
+    # tools/scripts/start-dev-stack.sh's CATALINA_OPTS) — not ${java.io.tmpdir}, which is
+    # Tomcat-process-local (CATALINA_BASE/temp) and would silently diverge from what auth.war reads.
+    settings-file: ${AUTH_SETTINGS_FILE:${java.io.tmpdir}/nspawnmgr-dev/auth-settings.properties}
+  nspawn:
+    templates-dir: ${user.dir}/site/templates
+    machines-dir: ${java.io.tmpdir}/nspawnmgr-dev/machines
+    settings-dir: ${java.io.tmpdir}/nspawnmgr-dev/nspawn-settings
+  tomcat:
+    # catalina.base is a JVM system property Tomcat itself sets at startup — resolves to this dev
+    # instance's own site/tomcat regardless of exact path, same idea as ${user.dir}/${java.io.tmpdir}
+    # above. Unlike the packaged .deb, start-dev-stack.sh uses catalina.sh start (not "run"), so a
+    # real catalina.out already exists here without any rotatelogs wiring.
+    log-dir: ${catalina.base}/logs
+  dns:
+    hosts-file: ${java.io.tmpdir}/nspawnmgr-dev/dns-hosts
+    upstream-servers-file: ${java.io.tmpdir}/nspawnmgr-dev/dns-upstream.conf
+    upstream-servers: 1.1.1.1,9.9.9.9
+  host:
+    public-address: 127.0.0.1
+  guacamole:
+    base-url: http://localhost:8080/guacamole
+    admin-username: guacadmin
+    admin-password: guacadmin
+    data-source: fake
+    home: ${java.io.tmpdir}/nspawnmgr-dev/guacamole
+  crypto:
+    # INSECURE, dev-only fixed key (32 bytes, base64) so the fake flow works without extra setup.
+    secret-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+  cli:
+    executor: fake
+
+logging:
+  level:
+    com.nspawnmgr: DEBUG

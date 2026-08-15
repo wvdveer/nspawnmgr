@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — Admin: Network diagnostics</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/},data-ssh-approval-required=${sshApprovalRequired}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<h1>Network diagnostics</h1>
+<p><a th:href="@{/}">&laquo; Back to containers</a></p>
+<p class="hint">Checks the host prerequisites most likely to silently break container
+    networking (SSH/RDP never becoming reachable, containers stuck in BOOTING). Some checks have
+    a "Fix" button — applying a fix asks for your sudo password fresh each time.</p>
+<div class="card-wide">
+    <button type="button" id="run-diagnostics" class="btn-primary">Run diagnostics</button>
+    <p id="run-status"></p>
+    <div id="check-list"></div>
+</div>
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/admin-network-diagnostics.js}"></script>
+</body>
+</html>

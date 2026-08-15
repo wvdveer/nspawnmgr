@@ -1,0 +1,27 @@
+[Unit]
+Description=Guacamole proxy daemon (guacd) - bundled by nspawnmgr
+# See docs/administrator-guide.md §7 for why this is bundled rather than an apt dependency: guacd
+# (and guacamole-tomcat) are no longer packaged for any current Debian/Ubuntu/Mint release. This
+# unit runs the self-contained build at /opt/guacd-bundle (its own OpenSSL 3.x, a minimal
+# decode-only FFmpeg, FreeRDP2, and libssh2 - see packaging/nspawnmgr-deb/vendor/README.md for how
+# it was built) instead of relying on any system package for guacd itself.
+After=network.target
+
+[Service]
+Type=simple
+# Belt and braces: guacd/libguac*.so already carry a correct RUNPATH pointing here (verified live -
+# a raw protocol handshake against the bundled binary loads the ssh/rdp plugins fine when this path
+# is resolvable), so this shouldn't be strictly necessary. Set explicitly anyway rather than relying
+# solely on RUNPATH for dlopen()'d protocol plugins (libguac-client-ssh.so/libguac-client-rdp.so/
+# etc., loaded by filename at runtime, not linked at build time) - a real install stayed broken with
+# "Support for protocol ... is not installed" despite guacd itself starting and accepting
+# connections fine, and this removes the whole class of doubt regardless of the exact root cause.
+Environment=LD_LIBRARY_PATH=/opt/guacd-bundle/lib:/opt/guacd-bundle/lib64:/opt/guacd-bundle/lib/freerdp2
+ExecStart=/opt/guacd-bundle/sbin/guacd -b 127.0.0.1 -l 4822 -f
+User=guacd
+Group=guacd
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

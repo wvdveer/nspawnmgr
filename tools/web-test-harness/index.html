@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>nspawnmgr web test harness</title>
+<style>
+    body { font-family: sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.4rem; }
+    p.note { color: #555; font-size: 0.9rem; }
+    fieldset { margin-bottom: 1rem; }
+    label { display: inline-block; margin-right: 1rem; }
+    input[type=text], input[type=password] { padding: 0.3rem; }
+    button { padding: 0.5rem 1rem; margin: 0.25rem 0.5rem 0.25rem 0; cursor: pointer; }
+    pre#log {
+        background: #111;
+        color: #ddd;
+        padding: 1rem;
+        height: 420px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        font-size: 0.85rem;
+    }
+</style>
+</head>
+<body>
+
+<h1>nspawnmgr web test harness</h1>
+<p class="note">
+    Drives the real nspawnmgr/auth pages in separate tabs and asserts on their actual DOM - works
+    because this page and the apps are served from the same origin (deployed alongside them into
+    the dev-stack Tomcat by tools/scripts/start-dev-stack.sh). Requires popups to be allowed for
+    this page. Modeled on <code>C:\projects\rust\usermgr\tools\web-test-harness</code>. See
+    <code>tools/web-test-harness/</code> for the source.
+</p>
+<p class="note">
+    Run this right after a fresh <code>start-dev-stack.sh</code> (H2 is in-memory and wiped on
+    restart) so the account below is the first to log in and gets auto-promoted to ADMIN - the
+    admin suite and the containers suite's fixture-template setup both need that role.
+</p>
+
+<fieldset>
+    <legend>OS account to sign in as (real PAM/SMB account on this box - never hardcoded here, see tests-auth.js)</legend>
+    <label>Username <input type="text" id="osUsername"></label>
+    <label>Password <input type="password" id="osPassword"></label>
+</fieldset>
+
+<fieldset>
+    <legend>Optional: a second username already known to nspawnmgr (has logged in at least once), to exercise the share round-trip</legend>
+    <label>Username <input type="text" id="shareTargetUsername"></label>
+</fieldset>
+
+<div>
+    <button id="runAuth">Run login suite</button>
+    <button id="runContainers">Run containers suite</button>
+    <button id="runAdmin">Run admin suite</button>
+    <button id="runHosts">Run hosts suite</button>
+    <button id="runScripts">Run scripts suite</button>
+    <button id="runAll">Run all</button>
+</div>
+
+<pre id="log"></pre>
+
+<script src="harness.js"></script>
+<script src="tests-auth.js"></script>
+<script src="tests-containers.js"></script>
+<script src="tests-admin.js"></script>
+<script src="tests-hosts.js"></script>
+<script src="tests-scripts.js"></script>
+<script>
+    window.harness.attachLog(document.getElementById('log'));
+
+    function guarded(fn) {
+        return async () => {
+            window.harness.resetResults();
+            try {
+                await fn();
+            } catch (e) {
+                console.error(e);
+            } finally {
+                window.harness.summary();
+            }
+        };
+    }
+
+    function osUsername() { return document.getElementById('osUsername').value; }
+    function osPassword() { return document.getElementById('osPassword').value; }
+    function shareTargetUsername() { return document.getElementById('shareTargetUsername').value; }
+
+    document.getElementById('runAuth').addEventListener('click', guarded(() => runAuthTests(osUsername(), osPassword())));
+    document.getElementById('runContainers').addEventListener('click', guarded(() => runContainerTests(shareTargetUsername())));
+    document.getElementById('runAdmin').addEventListener('click', guarded(runAdminTests));
+    document.getElementById('runHosts').addEventListener('click', guarded(() => runHostTests(osUsername())));
+    document.getElementById('runScripts').addEventListener('click', guarded(runScriptTests));
+    document.getElementById('runAll').addEventListener('click', guarded(async () => {
+        await runAuthTests(osUsername(), osPassword());
+        await runContainerTests(shareTargetUsername());
+        await runAdminTests();
+        await runHostTests(osUsername());
+        await runScriptTests();
+    }));
+</script>
+
+</body>
+</html>

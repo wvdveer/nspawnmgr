@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — Containers</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<h1>Containers</h1>
+<div class="inline-controls">
+    <a th:if="${hasActiveTemplates}" th:href="@{/containers/new}" class="btn-primary">+ New container</a>
+    <button th:unless="${hasActiveTemplates}" class="btn-primary" disabled
+            title="No templates are configured yet - ask an admin to add one.">+ New container</button>
+    <a th:href="@{/hosts}" class="btn-primary">Hosts</a>
+    <a th:href="@{/account}" class="btn-primary">My account</a>
+    <a th:href="@{/logs}" class="btn-primary">View log</a>
+    <a th:if="${currentUser.role.name() == 'ADMIN'}" th:href="@{/admin/users}" class="btn-primary">Manage users</a>
+    <a th:if="${currentUser.role.name() == 'ADMIN'}" th:href="@{/admin/containers/pending}" class="btn-primary">Pending container requests</a>
+    <a th:if="${currentUser.role.name() == 'ADMIN'}" th:href="@{/admin/container-user-requests/pending}" class="btn-primary">Pending user requests</a>
+    <a th:if="${currentUser.role.name() == 'ADMIN'}" th:href="@{/admin/templates}" class="btn-primary">Templates</a>
+    <a th:if="${currentUser.role.name() == 'ADMIN'}" th:href="@{/admin/hosts}" class="btn-primary">Manage hosts</a>
+    <a th:if="${currentUser.role.name() == 'ADMIN'}" th:href="@{/admin/packages}" class="btn-primary">Packages</a>
+    <a th:if="${currentUser.role.name() == 'ADMIN'}" th:href="@{/admin/settings}" class="btn-primary">Settings</a>
+    <a th:if="${currentUser.role.name() == 'ADMIN'}" th:href="@{/admin/network-diagnostics}" class="btn-primary">Network diagnostics</a>
+    <button th:if="${currentUser.role.name() == 'ADMIN'}" id="discover-btn" class="btn-primary" type="button">Discover machines</button>
+</div>
+<table>
+    <thead>
+    <tr>
+        <th>Name</th>
+        <th>Description</th>
+        <th>State</th>
+        <th>Owner</th>
+        <th>RDP</th>
+        <th>VNC</th>
+        <th>Actions</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="c : ${containers}">
+        <td><a th:href="@{/containers/{id}(id=${c.id})}" th:text="${c.name}">name</a></td>
+        <td th:text="${c.description}">description</td>
+        <td th:text="${c.state}">state</td>
+        <td th:text="${c.owner.username}">owner</td>
+        <td th:text="${c.rdpEnabled} ? 'yes' : 'no'">rdp</td>
+        <td th:text="${c.vncEnabled} ? 'yes' : 'no'">vnc</td>
+        <td>
+            <button class="btn-primary btn-session-ssh" th:data-container-id="${c.id}"
+                    th:disabled="${c.state.name() != 'RUNNING' or c.guacSshConnectionId == null}">SSH</button>
+            <button class="btn-primary btn-session-rdp" th:data-container-id="${c.id}"
+                    th:disabled="${c.state.name() != 'RUNNING' or !c.rdpEnabled or c.guacRdpConnectionId == null}">RDP</button>
+            <button class="btn-primary btn-session-vnc" th:data-container-id="${c.id}"
+                    th:disabled="${c.state.name() != 'RUNNING' or !c.vncEnabled or c.guacVncConnectionId == null}">VNC</button>
+            <a class="btn-primary" th:href="@{/containers/{id}/files(id=${c.id})}">Files</a>
+        </td>
+    </tr>
+    </tbody>
+</table>
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/list.js}"></script>
+<script th:src="@{/js/discover-containers.js}"></script>
+</body>
+</html>

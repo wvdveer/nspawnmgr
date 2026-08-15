@@ -1,0 +1,17 @@
+# Force LF regardless of platform checkout settings — CRLF in a shebang line breaks bash
+# scripts on Linux ("bad interpreter" errors), which matters here since CI/CD is Linux.
+*.sh text eol=lf
+
+# Debian maintainer scripts have a #!/bin/sh shebang but no .sh extension, and dpkg is just as
+# unforgiving of CRLF as bash is — same reasoning as above.
+packaging/nspawnmgr-deb/debian/postinst text eol=lf
+packaging/nspawnmgr-deb/debian/postrm text eol=lf
+packaging/nspawnmgr-deb/debian/preinst text eol=lf
+packaging/nspawnmgr-deb/debian/prerm text eol=lf
+# Debian control files: no shebang, but dpkg's parser is picky about line endings too.
+packaging/nspawnmgr-deb/debian/control text eol=lf
+packaging/nspawnmgr-deb/debian/changelog text eol=lf
+packaging/nspawnmgr-deb/debian/nspawnmgr.sudoers text eol=lf
+
+# CI workflow's run: | blocks are bash scripts under the hood - same CRLF hazard as above.
+.gitea/workflows/build.yml text eol=lf

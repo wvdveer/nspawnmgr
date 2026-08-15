@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="'nspawnmgr — ' + ${container.name}">container</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:data-container-id="${container.id}" th:data-is-owner="${container.owner.id == currentUser.id}"
+      th:data-container-state="${container.state}" th:attr="data-base-path=@{/}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<p><a th:href="@{/}">&larr; Containers</a> | <a th:href="@{/account}">My account</a>
+    | <a th:href="@{/logs}">View log</a></p>
+<h1 th:text="${container.name}">name</h1>
+<p th:if="${container.kind.name() == 'EXTERNAL'}">Admin-configured external host — nspawnmgr does not control its lifecycle.</p>
+<p>State: <span th:text="${container.state}">state</span></p>
+<p th:if="${container.errorMessage}" th:text="${container.errorMessage}">error</p>
+<p>Owner: <span th:text="${container.owner.username}">owner</span></p>
+<p th:if="${container.description}" th:text="${container.description}">description</p>
+<p th:if="${currentUser.role.name() == 'ADMIN' and container.owner.id != currentUser.id and container.kind.name() != 'EXTERNAL'}">
+    <button id="btn-take-ownership" class="btn-primary">Take ownership</button>
+</p>
+
+<div th:if="${container.owner.id == currentUser.id}" class="panel">
+    <h2 th:if="${container.kind.name() != 'EXTERNAL'}">Manage</h2>
+    <div th:if="${container.kind.name() != 'EXTERNAL'}" class="panel-section">
+        <button id="btn-start" class="btn-primary" th:disabled="${container.state.name() != 'STOPPED'}">Start</button>
+        <button id="btn-stop" class="btn-primary"
+                th:disabled="${container.state.name() != 'BOOTING' and container.state.name() != 'RUNNING'}">Stop</button>
+        <button id="btn-restart" class="btn-primary" th:disabled="${container.state.name() != 'RUNNING'}">Restart</button>
+        <button id="btn-pause" class="btn-primary" th:disabled="${container.state.name() != 'RUNNING'}">Pause</button>
+        <button id="btn-resume" class="btn-primary" th:disabled="${container.state.name() != 'PAUSED'}">Resume</button>
+        <button id="btn-force-stop" class="btn-primary" th:disabled="${container.state.name() == 'STOPPED'}">Force stop</button>
+        <button id="btn-delete" class="btn-primary">Delete</button>
+    </div>
+
+    <div th:if="${container.kind.name() != 'EXTERNAL'}" class="panel-section">
+        <h3>Create template from this machine</h3>
+        <p class="hint">Packs this machine's current rootfs into a brand-new, independent template
+            (visible on /admin/templates afterwards) - only while this machine is STOPPED, since
+            packing a live rootfs risks an inconsistent archive as files change mid-tar.</p>
+        <div class="inline-controls">
+            <input type="text" id="create-template-name" placeholder="new template name"/>
+            <input type="text" id="create-template-description" placeholder="description (optional)"/>
+            <button id="btn-create-template" class="btn-primary" th:disabled="${container.state.name() != 'STOPPED'}">Create template</button>
+        </div>
+        <p id="create-template-status" class="status-message"></p>
+    </div>
+
+    <div class="panel-section">
+        <h3>Description</h3>
+        <div class="inline-controls">
+            <input type="text" id="description" placeholder="What is this machine for?" th:value="${container.description}"/>
+            <button id="btn-save-description" class="btn-primary">Save</button>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h3>Shared with</h3>
+        <ul id="share-list" class="list-plain">
+            <li th:each="s : ${shares}" th:if="${s.user.id != container.owner.id}">
+                <span th:text="${s.user.username}">user</span>
+                <button class="btn-remove-share btn-danger" th:attr="data-user-id=${s.user.id}">Remove</button>
+            </li>
+        </ul>
+        <div class="inline-controls">
+            <input type="text" id="share-username" placeholder="username"/>
+            <button id="btn-add-share" class="btn-primary">Add</button>
+        </div>
+    </div>
+
+    <div th:if="${container.kind.name() != 'EXTERNAL'}" class="panel-section">
+        <h3>Port mappings</h3>
+        <p class="hint">Changes here require a restart to take effect.</p>
+        <ul id="port-mapping-list" class="list-plain">
+            <li th:each="m : ${portMappings}">
+                <span th:text="${m.hostPort} + ' -> ' + ${m.containerPort} + ' (' + ${m.protocol} + ')'">mapping</span>
+                <button class="btn-remove-port-mapping btn-danger" th:attr="data-mapping-id=${m.id}">Remove</button>
+            </li>
+        </ul>
+        <div class="inline-controls">
+            <input type="number" id="port-mapping-host-port" placeholder="host port" min="1" max="65535"/>
+            <input type="number" id="port-mapping-container-port" placeholder="container port" min="1" max="65535"/>
+            <select id="port-mapping-protocol">
+                <option value="TCP">TCP</option>
+                <option value="UDP">UDP</option>
+            </select>
+            <button id="btn-add-port-mapping" class="btn-primary">Add</button>
+        </div>
+    </div>
+
+    <div th:if="${container.kind.name() != 'EXTERNAL'}" class="panel-section">
+        <h3>Outbound internet access</h3>
+        <div class="inline-controls">
+            <label>
+                <input type="checkbox" id="outbound-enabled" th:checked="${container.outboundEnabled}"/>
+                Allow this container to reach the internet
+            </label>
+            <button id="btn-save-outbound" class="btn-primary">Save</button>
+        </div>
+
+        <p class="hint">Specific destinations to still allow when the above is off, without granting full internet access. Other managed containers are already reachable by name (see the administrator guide) as long as *this* container's own outbound access isn't disabled - this is for one specific external destination when it is:</p>
+        <ul id="outbound-allowlist-list" class="list-plain">
+            <li th:each="e : ${outboundAllowlist}">
+                <span th:text="${e.destinationHost} + ':' + ${e.destinationPort} + ' (' + ${e.protocol} + ')'">entry</span>
+                <button class="btn-remove-outbound-allowlist btn-danger" th:attr="data-entry-id=${e.id}">Remove</button>
+            </li>
+        </ul>
+        <div class="inline-controls">
+            <input type="text" id="outbound-allowlist-host" placeholder="destination IP, e.g. 127.0.0.1"/>
+            <input type="number" id="outbound-allowlist-port" placeholder="port" min="1" max="65535"/>
+            <select id="outbound-allowlist-protocol">
+                <option value="TCP">TCP</option>
+                <option value="UDP">UDP</option>
+            </select>
+            <button id="btn-add-outbound-allowlist" class="btn-primary">Add</button>
+        </div>
+    </div>
+
+    <div th:if="${container.kind.name() != 'EXTERNAL'}" class="panel-section">
+        <h3>Container users</h3>
+        <p class="hint">Listed live while the container is running; shows the last-known list
+            otherwise. Adding a user or changing a password needs the container running — if it
+            isn't (or no stored sudo secret is configured), the request waits for an admin to
+            approve it.</p>
+        <p class="hint">SSH/RDP/VNC currently connect as <strong th:text="${effectivePrimaryAccountName}">admin</strong>.
+            Use "Make primary" below to switch to any other account in this list — same
+            approval rules as adding a user or changing a password.</p>
+        <p id="container-users-status"></p>
+        <ul id="container-user-list" class="list-plain" th:attr="data-primary-account=${effectivePrimaryAccountName}"></ul>
+        <div class="inline-controls">
+            <input type="text" id="new-container-username" placeholder="username"/>
+            <input type="password" id="new-container-user-password" placeholder="password"/>
+            <button id="btn-add-container-user" class="btn-primary">Add user</button>
+        </div>
+    </div>
+
+    <div th:if="${container.kind.name() != 'EXTERNAL' and !hasSshCredential}" class="panel-section">
+        <h3>SSH credentials</h3>
+        <p class="hint">nspawnmgr has no stored SSH credential for this machine. If it's stuck in
+            BOOTING, this is usually why — without one, nspawnmgr can't confirm SSH is reachable and
+            it never flips to RUNNING. If this machine already has SSH access set up some other way,
+            record its account name and private key here so nspawnmgr can use them.</p>
+        <div class="inline-controls">
+            <input type="text" id="ssh-credential-account" placeholder="account name"/>
+            <textarea id="ssh-credential-key" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----" rows="6" style="width: 100%;"></textarea>
+            <button id="btn-add-ssh-credential" class="btn-primary">Save SSH credential</button>
+        </div>
+    </div>
+
+    <div th:if="${container.kind.name() != 'EXTERNAL'}" class="panel-section">
+        <h3>Remote access</h3>
+        <p class="hint">For a protocol nspawnmgr didn't set up itself (a discovered machine, or RDP
+            declined when this container was created) — checks the port is actually listening
+            before connecting it to Guacamole. You'll be prompted for credentials each time you
+            connect, since nspawnmgr doesn't generate or store an account for it.</p>
+        <div th:unless="${hasSshCredential}" class="inline-controls">
+            <span th:if="${container.guacSshConnectionId == null}">SSH: not connected via nspawnmgr.</span>
+            <button id="btn-enable-ssh" class="btn-primary" th:if="${container.guacSshConnectionId == null}">Enable SSH access</button>
+            <span th:if="${container.guacSshConnectionId != null}">SSH: connected (prompts for credentials).</span>
+            <button id="btn-disable-ssh" class="btn-danger" th:if="${container.guacSshConnectionId != null}">Disable</button>
+        </div>
+        <div th:unless="${hasRdpCredential}" class="inline-controls">
+            <span th:if="${container.guacRdpConnectionId == null}">RDP: not connected via nspawnmgr.</span>
+            <button id="btn-enable-rdp" class="btn-primary" th:if="${container.guacRdpConnectionId == null}">Enable RDP access</button>
+            <span th:if="${container.guacRdpConnectionId != null}">RDP: connected (prompts for credentials).</span>
+            <button id="btn-disable-rdp" class="btn-danger" th:if="${container.guacRdpConnectionId != null}">Disable</button>
+        </div>
+        <div th:unless="${hasVncCredential}" class="inline-controls">
+            <span th:if="${container.guacVncConnectionId == null}">VNC: not connected via nspawnmgr.</span>
+            <button id="btn-enable-vnc" class="btn-primary" th:if="${container.guacVncConnectionId == null}">Enable VNC access</button>
+            <span th:if="${container.guacVncConnectionId != null}">VNC: connected (prompts for credentials).</span>
+            <button id="btn-disable-vnc" class="btn-danger" th:if="${container.guacVncConnectionId != null}">Disable</button>
+        </div>
+        <div class="inline-controls">
+            <label for="rdp-security-select">RDP security</label>
+            <select id="rdp-security-select">
+                <option th:each="mode : ${T(com.nspawnmgr.domain.RdpSecurityMode).values()}" th:value="${mode}" th:text="${mode}"
+                        th:selected="${mode == container.rdpSecurity}">mode</option>
+            </select>
+            <button id="btn-save-rdp-security" class="btn-primary">Save</button>
+        </div>
+        <p class="hint">Guacamole's RDP negotiation mode. Leave on ANY unless RDP fails to connect —
+            some xrdp versions (e.g. Fedora's) reject ANY for reasons unrelated to credentials; RDP
+            (classic security) is the known workaround. Applies immediately if RDP is already
+            connected, no restart needed.</p>
+
+        <h3>Local login (PAM)</h3>
+        <p class="hint">Replaces this container's own local password check for whichever services
+            are ticked below, checking the source selected instead — useful when a container's
+            local login is broken, or to reuse nspawnmgr's own login backend. Applies immediately
+            if the container is running; otherwise takes effect the next time it starts.
+            <strong>Choosing "nspawnmgr auth backend" lets any user who can authenticate against
+            that backend log in as this container's account — this container's own owner/sharing
+            list isn't consulted by this check.</strong></p>
+        <div class="inline-controls">
+            <label for="pam-auth-source-select">Check password against</label>
+            <select id="pam-auth-source-select">
+                <option th:each="source : ${pamAuthSources}" th:value="${source}" th:text="${source}"
+                        th:selected="${source == container.pamAuthSource}">source</option>
+            </select>
+        </div>
+        <div class="inline-controls">
+            <label th:each="service : ${pamAuthServiceCatalog}">
+                <input type="checkbox" class="pam-auth-service-checkbox" th:value="${service}"
+                       th:checked="${pamAuthEnabledServices.contains(service)}"/>
+                <span th:text="${service}">service</span>
+            </label>
+            <button id="btn-save-pam-auth" class="btn-primary">Save</button>
+        </div>
+    </div>
+
+    <div th:if="${availablePackageManagers != null}" class="panel-section">
+        <h3>Package manager</h3>
+        <p class="hint">This machine has no template, so nspawnmgr doesn't otherwise know which
+            package manager it uses. Set it here to enable package installation below.</p>
+        <div class="inline-controls">
+            <select id="package-manager-select">
+                <option th:each="pm : ${availablePackageManagers}" th:value="${pm}" th:text="${pm}"
+                        th:selected="${pm == container.packageManager}">manager</option>
+            </select>
+            <button id="btn-save-package-manager" class="btn-primary">Save</button>
+        </div>
+    </div>
+
+    <div th:if="${installablePackages != null}" class="panel-section">
+        <h3>Install package</h3>
+        <p class="hint">Packages an admin has uploaded for this container's package manager (see the
+            Packages admin page). For APT, a missing dependency is detected and fetched
+            automatically before installing (it shows up in the Packages admin page afterward, same
+            as any other auto-fetched package). Other package managers install the file directly — a
+            missing dependency there shows up as a visible error below, it's not fixed
+            automatically.</p>
+        <p th:if="${#lists.isEmpty(installablePackages)}">No packages uploaded for this container's package manager yet.</p>
+        <div th:unless="${#lists.isEmpty(installablePackages)}" class="inline-controls">
+            <select id="install-package-select">
+                <option th:each="p : ${installablePackages}" th:value="${p.id}"
+                        th:text="${p.originalFilename} + (${p.description} != null and ${p.description} != '' ? ' — ' + ${p.description} : '')">package</option>
+            </select>
+            <button id="btn-install-package" class="btn-primary">Install</button>
+        </div>
+        <pre id="install-package-output" class="hint" style="white-space: pre-wrap;"></pre>
+    </div>
+
+    <div th:if="${availableIsos != null}" class="panel-section">
+        <h3>Removable media</h3>
+        <p class="hint">Mounted read-only at a fixed /mnt/cdrom, like a real CD drive — at most one
+            ISO at a time. A persistent setting, same as port mappings: changes here take effect
+            the next time the container is (re)started, and stay configured across restarts until
+            explicitly changed or ejected.</p>
+        <div th:if="${container.mountedIso == null}" class="inline-controls">
+            <p th:if="${#lists.isEmpty(availableIsos)}">No ISOs uploaded yet — see the Packages admin page.</p>
+            <select th:unless="${#lists.isEmpty(availableIsos)}" id="mount-iso-select">
+                <option th:each="i : ${availableIsos}" th:value="${i.id}"
+                        th:text="${i.originalFilename} + (${i.description} != null and ${i.description} != '' ? ' — ' + ${i.description} : '')">iso</option>
+            </select>
+            <button th:unless="${#lists.isEmpty(availableIsos)}" id="btn-mount-iso" class="btn-primary">Mount</button>
+        </div>
+        <div th:if="${container.mountedIso != null}" class="inline-controls">
+            <span th:text="'Configured: ' + ${container.mountedIso.originalFilename}">mounted iso</span>
+            <button id="btn-eject-iso" class="btn-danger">Eject</button>
+        </div>
+    </div>
+
+    <div th:if="${container.kind.name() != 'EXTERNAL'}" class="panel-section">
+        <h3>Machine settings</h3>
+        <p class="hint">Read live from the host itself, not stored in nspawnmgr's own database —
+            an admin may change these directly on the host (e.g. via <code>systemctl</code>),
+            so nspawnmgr always shows the host's own current state rather than risking a stale
+            cached value.</p>
+        <p th:if="${bootSettings == null}">Could not determine this machine's boot settings right
+            now — try reloading the page.</p>
+        <div th:if="${bootSettings != null}">
+            <div class="field field-inline">
+                <input type="checkbox" id="boot-auto-start" th:checked="${bootSettings.autoStart()}"/>
+                <label for="boot-auto-start">Start automatically when the host boots</label>
+            </div>
+            <div class="field" id="boot-requires-field">
+                <label for="boot-requires-select">Requires this machine already started</label>
+                <select id="boot-requires-select">
+                    <option value="">(none)</option>
+                    <option th:each="name : ${otherMachineNames}" th:value="${name}" th:text="${name}"
+                            th:selected="${name == bootSettings.requiresMachineName()}">machine</option>
+                </select>
+            </div>
+            <button id="btn-save-boot-settings" class="btn-primary">Save</button>
+        </div>
+    </div>
+</div>
+
+<div th:if="${canManageScripts and container.kind.name() != 'EXTERNAL'}" class="panel">
+    <div class="panel-section">
+        <h3>Scripts</h3>
+        <p class="hint">Named, reusable scripts run inside this container as root. Anyone this
+            container is shared with can create, edit, delete, and run them, same as the owner.</p>
+        <ul id="script-list" class="list-plain">
+            <li th:each="s : ${scripts}">
+                <a th:href="@{/containers/{id}/scripts/{scriptId}(id=${container.id},scriptId=${s.id})}"
+                   th:text="${s.name}">script name</a>
+            </li>
+        </ul>
+        <p><a th:href="@{/containers/{id}/scripts/new(id=${container.id})}" class="btn-primary">+ New script</a></p>
+    </div>
+</div>
+
+<h2>Connect</h2>
+<p th:if="${container.state.name() != 'RUNNING'}">Container must be running to connect.</p>
+<p th:if="${container.guacSshConnectionId == null and container.guacRdpConnectionId == null and container.guacVncConnectionId == null and container.kind.name() != 'EXTERNAL'}">
+    No managed SSH/RDP/VNC access configured yet — see Remote access above.</p>
+<div>
+    <button id="btn-session-ssh" class="btn-primary"
+            th:disabled="${container.state.name() != 'RUNNING' or container.guacSshConnectionId == null}">SSH</button>
+    <button id="btn-session-rdp" class="btn-primary"
+            th:disabled="${container.state.name() != 'RUNNING' or !container.rdpEnabled or container.guacRdpConnectionId == null}">RDP</button>
+    <button id="btn-session-vnc" class="btn-primary"
+            th:disabled="${container.state.name() != 'RUNNING' or !container.vncEnabled or container.guacVncConnectionId == null}">VNC</button>
+    <a th:href="@{/containers/{id}/files(id=${container.id})}" class="btn-primary">Files</a>
+</div>
+
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/password-toggle.js}"></script>
+<script th:src="@{/js/detail.js}"></script>
+</body>
+</html>

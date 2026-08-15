@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- Standalone POM (see tools/fake-machinectl/pom.xml / auth/pom.xml for why there's no
+         <parent> — this project's own convention for every module deployed as a sibling WAR in the
+         same Tomcat instance rather than as part of the main reactor). -->
+    <groupId>com.nspawnmgr</groupId>
+    <artifactId>nspawnmgr-root-wizard</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>war</packaging>
+    <name>nspawnmgr-root-wizard</name>
+    <description>
+        Deployed at Tomcat's ROOT context ("/"). Redirects to /nspawnmgr/ once nspawnmgr's own
+        database is configured and reachable; otherwise serves the first-boot database setup
+        wizard itself. Moved out of nspawnmgr.war (see NspawnmgrApplication's own javadoc) so a
+        fresh install has somewhere real to land at "/" without needing a Tomcat restart once the
+        wizard finishes — see docs/administrator-guide.md &sect;4. Builds to ROOT.war.
+    </description>
+
+    <properties>
+        <!-- Matches auth/pom.xml's own reasoning: targets javax.servlet (Servlet 4.0), not
+             jakarta.servlet, so ROOT.war can deploy into the SAME Tomcat 9 instance as
+             nspawnmgr.war/auth.war/guacamole.war (all javax.servlet themselves). 17, matching the
+             root pom's java.version and debian/control's Depends: (openjdk-17-jre-headless is
+             enough) - no language feature here needs anything newer. -->
+        <maven.compiler.release>17</maven.compiler.release>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>javax.servlet-api</artifactId>
+            <version>4.0.1</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- Same JDBC drivers/Flyway modules the main nspawnmgr module uses for its own database -
+             explicit versions here (not Boot-BOM-managed, since this module has no Spring parent)
+             matching exactly what `mvn dependency:tree` resolves for the main module, so behavior
+             stays identical between the two. -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>8.0.33</version>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.3.8</version>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+            <version>8.5.13</version>
+        </dependency>
+        <!-- flyway-core 8.5.13 bundles PostgreSQL/H2 support directly but not MySQL (split into its
+             own module as of Flyway 8.0) - see the main pom's own identical comment on this pair. -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+            <version>8.5.13</version>
+        </dependency>
+        <!-- PreSpringSshClient's own direct sshj usage (the wizard's localhost path creates the
+             opinionated nspawnmgr/guacamole databases via a NOPASSWD sudo wrapper script over SSH,
+             same as the main module's RealContainerCliExecutor/SshRemoteExecutor do post-Spring). -->
+        <dependency>
+            <groupId>com.hierynomus</groupId>
+            <artifactId>sshj</artifactId>
+            <version>0.40.0</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>ROOT</finalName>
+        <resources>
+            <!-- Flyway's own migration SQL (classpath:db/migration/<vendor>) needs to be on THIS
+                 module's classpath too, for the exact same reason DatabaseSetupWizardServlet
+                 already needed it inside nspawnmgr.war - it runs nspawnmgr's own Flyway migrations
+                 as the last step of setup. Pulled straight from the main module's own resources at
+                 build time (a relative <directory>, not a copied/duplicated source file) so
+                 there's exactly one source of truth and no drift risk between the two modules. -->
+            <resource>
+                <directory>../src/main/resources/db/migration</directory>
+                <targetPath>db/migration</targetPath>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-war-plugin</artifactId>
+                <version>3.4.0</version>
+                <configuration>
+                    <failOnMissingWebXml>true</failOnMissingWebXml>
+                </configuration>
+            </plugin>
+            <!-- 9.4.x (not 10/11+): matches this module's own Servlet 4.0 dependency - see
+                 auth/pom.xml's identical plugin for the full rationale. Local dev iteration only
+                 (mvn jetty:run); a real deployment runs ROOT.war in Tomcat 9 itself. Port 9093 -
+                 auth/pom.xml's own jetty-maven-plugin already uses 9092. -->
+            <plugin>
+                <groupId>org.eclipse.jetty</groupId>
+                <artifactId>jetty-maven-plugin</artifactId>
+                <version>9.4.58.v20250814</version>
+                <configuration>
+                    <httpConnector>
+                        <port>9093</port>
+                    </httpConnector>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

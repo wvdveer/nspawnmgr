@@ -1,0 +1,398 @@
+:root {
+    --background-color: #ffffff;
+    --border-color: #e2e8f0;
+    --button-text-color: #ffffff;
+    --error-color: #b00020;
+    --input-background-color: #ffffff;
+    --muted-color: #64748b;
+    --primary-color: #2563eb;
+    --success-color: #087f23;
+    --surface-color: #f8fafc;
+    --text-color: #1e293b;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --background-color: #0f172a;
+        --border-color: #334155;
+        --button-text-color: #f1f5f9;
+        --error-color: #f87171;
+        --input-background-color: #334155;
+        --muted-color: #94a3b8;
+        --primary-color: #3b82f6;
+        --success-color: #4ade80;
+        --surface-color: #1e293b;
+        --text-color: #f1f5f9;
+    }
+}
+
+/* Explicit picks from the theme-toggle widget override the OS default above either way - an
+   attribute selector on :root outranks the plain :root inside the media query regardless of which
+   one the browser's color scheme currently matches. */
+:root[data-theme="light"] {
+    --background-color: #ffffff;
+    --border-color: #e2e8f0;
+    --button-text-color: #ffffff;
+    --error-color: #b00020;
+    --input-background-color: #ffffff;
+    --muted-color: #64748b;
+    --primary-color: #2563eb;
+    --success-color: #087f23;
+    --surface-color: #f8fafc;
+    --text-color: #1e293b;
+}
+
+:root[data-theme="dark"] {
+    --background-color: #0f172a;
+    --border-color: #334155;
+    --button-text-color: #f1f5f9;
+    --error-color: #f87171;
+    --input-background-color: #334155;
+    --muted-color: #94a3b8;
+    --primary-color: #3b82f6;
+    --success-color: #4ade80;
+    --surface-color: #1e293b;
+    --text-color: #f1f5f9;
+}
+
+body {
+    font-family: sans-serif;
+    margin: 2rem;
+    background: var(--background-color);
+    color: var(--text-color);
+}
+
+a { color: var(--primary-color); }
+
+table { border-collapse: collapse; width: 100%; margin-bottom: 1.5rem; }
+th, td { border: 1px solid var(--border-color); padding: 0.4rem 0.6rem; text-align: left; }
+th { background: var(--surface-color); }
+
+button { margin: 0.2rem; }
+
+.card {
+    max-width: 28rem;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--surface-color);
+}
+
+.card-wide {
+    max-width: 56rem;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--surface-color);
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 1rem;
+}
+
+.field label {
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+    color: var(--text-color);
+}
+
+.field input[type="text"],
+.field input[type="number"],
+.field input[type="password"],
+.field select {
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 1rem;
+    background: var(--input-background-color);
+    color: var(--text-color);
+}
+
+.field-inline {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.field-inline label { margin-bottom: 0; }
+
+.btn-primary {
+    display: inline-block;
+    padding: 0.5rem 1.2rem;
+    border: none;
+    border-radius: 4px;
+    background: var(--primary-color);
+    color: var(--button-text-color);
+    font-size: 1rem;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.btn-primary:hover { filter: brightness(0.9); }
+
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
+
+/* The native file-picker button (e.g. package upload) - same look as .btn-primary. */
+input[type="file"]::file-selector-button,
+input[type="file"]::-webkit-file-upload-button {
+    display: inline-block;
+    padding: 0.5rem 1.2rem;
+    border: none;
+    border-radius: 4px;
+    background: var(--primary-color);
+    color: var(--button-text-color);
+    font-size: 1rem;
+    cursor: pointer;
+    margin-right: 0.5rem;
+}
+
+input[type="file"]::file-selector-button:hover,
+input[type="file"]::-webkit-file-upload-button:hover {
+    filter: brightness(0.9);
+}
+
+.status-message { margin-top: 1rem; color: var(--error-color); }
+
+.panel {
+    max-width: 64rem;
+    padding: 1.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--surface-color);
+    margin-bottom: 1.5rem;
+}
+
+.panel h2 { margin-top: 0; }
+
+.panel-section {
+    padding-top: 1rem;
+    margin-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.panel-section:first-of-type { padding-top: 0; margin-top: 0; border-top: none; }
+
+.panel-section h3 { margin-bottom: 0.5rem; }
+
+.hint { color: var(--muted-color); font-size: 0.9rem; margin-top: 0; }
+
+.list-plain {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 0.75rem 0;
+}
+
+.list-plain li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.list-plain li:last-child { border-bottom: none; }
+
+.inline-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.inline-controls input[type="text"],
+.inline-controls input[type="number"],
+.inline-controls input[type="password"],
+.inline-controls select,
+.list-plain input[type="password"] {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--input-background-color);
+    color: var(--text-color);
+}
+
+/* Wraps a password <input> (see password-toggle.js) so the show/hide button sits inside the
+   input's own box rather than as a separate sibling control - keeps it visually a single field,
+   matching plain text/number inputs alongside it in the same .inline-controls row. */
+.password-field {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.password-field input[type="password"],
+.password-field input[type="text"] {
+    padding-right: 2rem;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 0.4rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    color: var(--muted-color);
+}
+
+.password-toggle:hover { color: var(--text-color); }
+
+.btn-danger {
+    padding: 0.3rem 0.7rem;
+    border: 1px solid var(--error-color);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--error-color);
+    cursor: pointer;
+}
+
+.btn-danger:hover { background: var(--error-color); color: var(--button-text-color); }
+
+.field-error { border-color: var(--error-color) !important; color: var(--error-color) !important; }
+
+.theme-toggle {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    display: inline-flex;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    overflow: hidden;
+    z-index: 1000;
+}
+
+.theme-toggle-btn {
+    padding: 0.3rem 0.55rem;
+    cursor: pointer;
+    border: none;
+    font-size: 1rem;
+    line-height: 1;
+    font-family: inherit;
+    background: var(--surface-color);
+    color: var(--text-color);
+}
+
+.theme-toggle-btn + .theme-toggle-btn {
+    border-left: 1px solid var(--border-color);
+}
+
+.theme-toggle-btn.active {
+    background: var(--primary-color);
+    color: var(--button-text-color);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.35);
+}
+
+.diag-check {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.diag-check:last-child { border-bottom: none; }
+
+.diag-status { font-weight: 600; min-width: 4.5rem; flex: 0 0 auto; }
+
+.diag-body { flex: 1 1 16rem; min-width: 0; }
+
+.diag-check input[type="password"] { flex: 0 1 12rem; min-width: 6rem; }
+
+.diag-status.OK { color: var(--success-color); }
+.diag-status.WARN { color: var(--muted-color); }
+.diag-status.FAIL { color: var(--error-color); }
+
+.diag-detail { color: var(--muted-color); font-size: 0.9rem; }
+
+.script-textarea {
+    width: 100%;
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    font-size: 0.9rem;
+    background: var(--input-background-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 0.5rem;
+    resize: vertical;
+}
+
+.output-lines {
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    font-size: 0.85rem;
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 0.75rem;
+    max-height: 24rem;
+    overflow-y: auto;
+}
+
+.output-timestamp {
+    color: var(--muted-color);
+    font-weight: 600;
+    margin-top: 0.75rem;
+}
+
+.output-timestamp:first-child { margin-top: 0; }
+
+.output-line { display: flex; gap: 0.5rem; white-space: pre-wrap; word-break: break-all; }
+
+.output-tag {
+    flex: 0 0 auto;
+    min-width: 2rem;
+    text-align: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 3px;
+    padding: 0 0.25rem;
+    height: fit-content;
+}
+
+.output-stdout .output-tag { background: var(--success-color); color: var(--button-text-color); }
+.output-stderr .output-tag { background: var(--error-color); color: var(--button-text-color); }
+
+.output-stderr .output-text { color: var(--error-color); }
+
+.app-dialog {
+    max-width: 28rem;
+    padding: 1.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--surface-color);
+    color: var(--text-color);
+}
+
+.app-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.app-dialog-message {
+    margin: 0 0 1.25rem 0;
+    white-space: pre-wrap;
+}
+
+.app-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.app-dialog-cancel {
+    background: var(--muted-color);
+}
+
+/* Container Files page (files.html/files.js) */
+#file-tbody tr { cursor: pointer; }
+#file-tbody tr.file-row-dir { font-weight: 600; }
+#file-tbody tr:hover { background: var(--surface-color); }
+#file-table.drag-over { outline: 2px dashed var(--primary-color); outline-offset: 2px; }

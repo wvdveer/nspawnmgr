@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — Full log</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/}" th:data-is-admin="${currentUser.role.name() == 'ADMIN'}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<h1 id="log-title">Full log</h1>
+<p><a th:href="@{/logs}">&laquo; Back to last 100 lines</a></p>
+<p><a id="btn-download" href="#">Download</a></p>
+<pre id="log-content">Loading...</pre>
+
+<h2>Rotated logs</h2>
+<table>
+    <thead>
+    <tr>
+        <th>Filename</th>
+        <th>Actions</th>
+    </tr>
+    </thead>
+    <tbody id="rotated-log-list"></tbody>
+</table>
+
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/logs-full.js}"></script>
+</body>
+</html>

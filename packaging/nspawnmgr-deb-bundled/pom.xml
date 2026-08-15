@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+        The "bundled" variant of ../nspawnmgr-deb: identical package, two extra files
+        (vendor/debian-minimal.tar.gz and vendor/postgresql-minimal.tar.gz, staying in the SIBLING
+        module's own vendor/ dir rather than duplicated here — same source files, referenced twice)
+        so nspawnmgr-bootstrap-app-machine.sh/nspawnmgr-bootstrap-db-machine.sh can copy a pre-baked
+        image into place at install time instead of baking one fresh (see those scripts' own
+        "BUNDLED_DEBIAN_MINIMAL"/"BUNDLED_POSTGRESQL_MINIMAL" fallbacks) — no network access needed
+        for the app machine or a PostgreSQL-engine DB machine at all, at the cost of a larger .deb
+        (MySQL/MariaDB DB machines still need network access - see vendor/README.md's own
+        "postgresql-minimal.tar.gz" section for why only PostgreSQL gets this treatment). The
+        "online" variant (../nspawnmgr-deb, unchanged default) never stages either file, so its
+        install falls through to baking/network-installing exactly as before this variant existed.
+
+        No <parent>, same reasoning as ../nspawnmgr-deb's own pom: this module just packages
+        already-built WARs (the SAME ones, from the SAME target/ locations) into a second .deb.
+        Build this LAST, same prerequisites as ../nspawnmgr-deb — see tools/scripts/build-all.sh.
+        Everything below mirrors ../nspawnmgr-deb/pom.xml's own dataSet, sourced from that sibling
+        module's directories rather than duplicated on disk (debian/control, privileged-scripts/,
+        scripts/, vendor/, the systemd unit files, the bridge/dnsmasq config) — jdeb has no
+        "extend a dataSet defined elsewhere" mechanism, so the *list* is necessarily repeated here,
+        but every individual file it points at is not; keep the two dataSets in sync by hand when
+        either changes.
+
+        Not registered in any reactor and not built by a plain `mvn package` from the repo root or
+        from ../nspawnmgr-deb — it's entirely standalone, mirroring how ../nspawnmgr-deb itself is
+        already opt-in (BUILD_DEB=1) rather than part of the default build.
+    -->
+    <groupId>com.nspawnmgr</groupId>
+    <artifactId>nspawnmgr-deb-bundled</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>nspawnmgr-deb-bundled</name>
+    <description>Debian package for production nspawnmgr deployment - bundled debian-minimal variant, no network access needed at install time</description>
+
+    <properties>
+        <jdeb.version>1.10</jdeb.version>
+        <online.basedir>${project.basedir}/../nspawnmgr-deb</online.basedir>
+        <!-- See ../nspawnmgr-deb/pom.xml's own comment on deb.output for why this override is
+             required - same reasoning, different filename so both variants can be built (and
+             published) side by side without colliding. -->
+        <deb.output>${project.build.directory}/nspawnmgr-bundled_0.1.0_all.deb</deb.output>
+        <nspawnmgr.war>${project.basedir}/../../target/nspawnmgr.war</nspawnmgr.war>
+        <auth.war>${project.basedir}/../../auth/target/auth.war</auth.war>
+        <root.war>${project.basedir}/../../root-wizard/target/ROOT.war</root.war>
+        <guacamole.jdbc.drivers.dir>${project.basedir}/../../target/guacamole-jdbc-drivers</guacamole.jdbc.drivers.dir>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.vafer</groupId>
+                <artifactId>jdeb</artifactId>
+                <version>${jdeb.version}</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jdeb</goal>
+                        </goals>
+                        <configuration>
+                            <controlDir>${online.basedir}/debian</controlDir>
+                            <deb>${deb.output}</deb>
+                            <verbose>true</verbose>
+                            <skipPOMs>false</skipPOMs>
+                            <dataSet>
+                                <data>
+                                    <src>${nspawnmgr.war}</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${auth.war}</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/vendor/guacamole-1.5.5.war</src>
+                                    <type>file</type>
+                                    <dst>guacamole.war</dst>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/privileged-scripts</src>
+                                    <type>directory</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/lib/nspawnmgr/privileged</prefix>
+                                        <filemode>750</filemode>
+                                        <user>root</user>
+                                        <group>root</group>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/debian/nspawnmgr.sudoers</src>
+                                    <type>file</type>
+                                    <dst>nspawnmgr_exec</dst>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/etc/sudoers.d</prefix>
+                                        <filemode>440</filemode>
+                                        <user>root</user>
+                                        <group>root</group>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/scripts/setup-sudo-account.sh</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/lib/nspawnmgr</prefix>
+                                        <filemode>750</filemode>
+                                        <user>root</user>
+                                        <group>root</group>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/scripts/install-guacamole-auth-jdbc.sh</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/lib/nspawnmgr</prefix>
+                                        <filemode>750</filemode>
+                                        <user>root</user>
+                                        <group>root</group>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/scripts/install-guacamole-jdbc-drivers.sh</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/lib/nspawnmgr</prefix>
+                                        <filemode>750</filemode>
+                                        <user>root</user>
+                                        <group>root</group>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/scripts/uninstall-nspawnmgr.sh</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/lib/nspawnmgr</prefix>
+                                        <filemode>750</filemode>
+                                        <user>root</user>
+                                        <group>root</group>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/scripts/setup-ci-template-account.sh</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/lib/nspawnmgr</prefix>
+                                        <filemode>750</filemode>
+                                        <user>root</user>
+                                        <group>root</group>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/debian/nspawnmgr-ci.sudoers</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                        <user>root</user>
+                                        <group>root</group>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${guacamole.jdbc.drivers.dir}</src>
+                                    <type>directory</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr/guacamole-jdbc-drivers</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/vendor/guacd-bundle.tar.gz</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/vendor/guacamole-auth-jdbc-1.5.5.tar.gz</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/guacd.service</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/vendor/README.md</src>
+                                    <type>file</type>
+                                    <dst>guacd-bundle-README.md</dst>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/doc/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/vendor/apache-tomcat-9.0.120.tar.gz</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <!-- The two files this variant adds over the online one - see this
+                                     module's own top-of-file comment, and vendor/README.md's
+                                     "debian-minimal.tar.gz"/"postgresql-minimal.tar.gz" sections for
+                                     how they're produced. -->
+                                <data>
+                                    <src>${online.basedir}/vendor/debian-minimal.tar.gz</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/vendor/postgresql-minimal.tar.gz</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/tomcat9.service</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/dnsmasq-nspawnmgr.conf</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/70-nspawnmgr-bridge.netdev</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${online.basedir}/70-nspawnmgr-bridge.network</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${root.war}</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                                <data>
+                                    <src>${project.basedir}/../../docs/administrator-guide.md</src>
+                                    <type>file</type>
+                                    <mapper>
+                                        <type>perm</type>
+                                        <prefix>/usr/share/doc/nspawnmgr</prefix>
+                                        <filemode>644</filemode>
+                                    </mapper>
+                                </data>
+                            </dataSet>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

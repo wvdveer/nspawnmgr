@@ -1,0 +1,33 @@
+# Copy to application-local.yml (gitignored) and run with an extra active profile "local" if you
+# want to override anything from application-dev.yml without editing tracked files.
+# Every nspawnmgr.* setting from the plan's settings table, with dev-safe placeholder values:
+
+nspawnmgr:
+  auth:
+    cookie-name: nspawnmgr_session
+    user-id-url: http://localhost:8080/auth/userinfo
+    user-id-json: $.id
+    user-username-json: $.username
+    user-email-json: $.email
+    user-fullname-json: $.fullName
+    cache-ttl-seconds: 60
+    http-timeout-ms: 3000
+  nspawn:
+    templates-dir: ./site/templates
+    machines-dir: ${java.io.tmpdir}/nspawnmgr-dev/machines
+    settings-dir: ${java.io.tmpdir}/nspawnmgr-dev/nspawn-settings
+  host:
+    public-address: 127.0.0.1
+  guacamole:
+    base-url: http://localhost:8080/guacamole
+    admin-username: guacadmin
+    admin-password: guacadmin
+    data-source: fake
+  crypto:
+    # INSECURE placeholder — never use this value outside local dev.
+    secret-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+  cli:
+    executor: fake
+  # Admin-configured pre-existing hosts (see ExternalHostSyncService) — optional, only needed if
+  # you're testing that feature. owner-username must belong to a user who's already logged in once.
+  external-hosts: []

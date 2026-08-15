@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — My account</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<p><a th:href="@{/}">&larr; Containers</a></p>
+<h1>My account</h1>
+<p>Signed in as <span th:text="${currentUser.username}">username</span></p>
+
+<div class="panel">
+    <h2>Guacamole password</h2>
+    <p>Sets the password for your Guacamole account (used to connect to shared containers directly
+        through Guacamole's own login, outside of nspawnmgr's single sign-on). Creates the account
+        first if you don't have one yet.</p>
+    <div class="panel-section">
+        <div class="inline-controls">
+            <input type="password" id="guacamole-password" placeholder="New password" minlength="8"/>
+            <button id="btn-save-guacamole-password" class="btn-primary">Update password</button>
+        </div>
+        <p id="guacamole-password-status" class="status-message"></p>
+    </div>
+</div>
+
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/account.js}"></script>
+</body>
+</html>

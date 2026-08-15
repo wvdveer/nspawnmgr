@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — Admin: Packages</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<h1>Package cache</h1>
+<p><a th:href="@{/}">&laquo; Back to containers</a></p>
+<p class="hint">Packages uploaded here can be installed by any owner onto a container using the
+    matching package manager (see each container's own "Install package" section). No automatic
+    dependency resolution — a missing dependency shows up as a visible error when installed, it's
+    not fixed automatically. Choosing <strong>ISO</strong> as the package manager uploads a
+    mountable ISO image instead — those show up under a container's "Removable media" section, to
+    be mounted (not installed), one at a time, like a real CD drive.</p>
+<div class="card">
+    <h2>Upload a package</h2>
+    <form id="upload-form" class="card" enctype="multipart/form-data">
+        <div class="field">
+            <label for="packageManager">Package manager</label>
+            <select id="packageManager" name="packageManager">
+                <option th:each="pm : ${packageManagers}" th:value="${pm}" th:text="${pm}">package manager</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="file">File (.deb / .rpm / .iso / etc.)</label>
+            <input type="file" id="file" name="file" required/>
+        </div>
+        <div class="field">
+            <label for="description">Description</label>
+            <input type="text" id="description" name="description" placeholder="What is this package for?"/>
+        </div>
+        <button type="submit" class="btn-primary">Upload</button>
+    </form>
+    <p id="upload-status" class="status-message"></p>
+</div>
+<table>
+    <thead>
+    <tr>
+        <th>Filename</th>
+        <th>Package manager</th>
+        <th>Description</th>
+        <th>Uploaded by</th>
+        <th>Size</th>
+        <th>Actions</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="p : ${packages}" th:attr="data-package-id=${p.id}">
+        <td th:text="${p.originalFilename}">filename</td>
+        <td th:text="${p.packageManager}">package manager</td>
+        <td th:text="${p.description}">description</td>
+        <td th:text="${p.uploadedBy.username}">uploaded by</td>
+        <td th:text="${p.sizeBytes}">size</td>
+        <td>
+            <button class="btn-danger btn-delete" th:attr="data-package-id=${p.id}">Delete</button>
+        </td>
+    </tr>
+    </tbody>
+</table>
+<div class="card">
+    <h2>Transitive dependencies</h2>
+    <p class="hint">Installing a package with unresolved dependencies (APT/DNF/PACMAN) pre-fetches
+        those dependencies onto the host too, but they're deliberately never listed in the table
+        above individually - a single desktop-environment install can pull in ~450 of them, which
+        would be noise, not a usable table. This generates a list on demand straight from the host's
+        own cache directory instead; nothing here is stored in the database.</p>
+    <div class="field">
+        <label for="autoCachePackageManager">Package manager</label>
+        <select id="autoCachePackageManager">
+            <option th:each="pm : ${dependencyPreFetchManagers}" th:value="${pm}" th:text="${pm}">package manager</option>
+        </select>
+    </div>
+    <button id="btn-show-auto-cache" type="button" class="btn-primary">Show transitive dependencies</button>
+    <p id="auto-cache-status" class="status-message"></p>
+    <table id="auto-cache-table" style="display: none;">
+        <thead>
+        <tr>
+            <th>Filename</th>
+            <th>Size</th>
+        </tr>
+        </thead>
+        <tbody id="auto-cache-tbody"></tbody>
+    </table>
+</div>
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/admin-packages.js}"></script>
+</body>
+</html>

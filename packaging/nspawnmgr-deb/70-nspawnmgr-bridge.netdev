@@ -1,0 +1,11 @@
+# Installed at /etc/systemd/network/70-nspawnmgr-bridge.netdev by the nspawnmgr .deb postinst.
+#
+# Creates the shared bridge every managed container's veth gets enslaved into (systemd-nspawn's own
+# Bridge= handling does the enslaving at container start - see NspawnSettingsRenderer). One fixed
+# bridge for every container to sit on, instead of each getting an isolated point-to-point veth on
+# its own private subnet - lets dnsmasq (see dnsmasq-nspawnmgr.conf) bind one well-known interface
+# instead of glob-matching N per-container links, and is what makes container-to-container name
+# resolution (and, eventually, other backends resolving nspawn containers by name) possible at all.
+[NetDev]
+Name=nspawnbr0
+Kind=bridge

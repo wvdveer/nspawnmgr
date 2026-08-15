@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — Login required</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body>
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<h1>Login required</h1>
+<p>Your session cookie was not recognized. Please log in via your organization's login page and return here.</p>
+<script th:src="@{/js/theme-toggle.js}"></script>
+</body>
+</html>

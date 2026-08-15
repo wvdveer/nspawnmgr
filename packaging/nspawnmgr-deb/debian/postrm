@@ -1,0 +1,35 @@
+#!/bin/sh
+# Deliberately does NOT remove the nspawnmgr_exec account, its home directory, /etc/nspawnmgr, or
+# the generated SSH keypair/password on purge — common Debian practice for system accounts, to
+# avoid orphaned file ownership on the machinectl-managed container filesystem tree, which this
+# package never owned in the first place. If a future maintainer is tempted to "clean up" here,
+# don't: that would delete the only credential nspawnmgr's containers are reachable through.
+set -e
+
+# /opt/guacd-bundle IS safe to remove on purge, unlike the above — it holds no admin
+# customization or irreplaceable secrets, only this package's own shipped guacd build.
+#
+# /opt/tomcat9 is NOT treated the same way, even though this package also owns extracting it:
+# unlike guacd-bundle, it holds real admin customization (conf/server.xml port/HTTPS edits via
+# TomcatConfigService, logs, work/temp) that postinst's own re-extraction already takes care to
+# preserve across upgrades (see postinst step 6a) - purge shouldn't be the one place that throws
+# it away. Only this package's own systemd unit/drop-in are removed; the tomcat user and
+# /opt/tomcat9 itself are left alone, same rule as nspawnmgr_exec above.
+case "$1" in
+    purge)
+        rm -rf /opt/guacd-bundle
+        rm -f /etc/systemd/system/guacd.service
+        rm -f /etc/systemd/system/tomcat9.service
+        rm -rf /etc/systemd/system/tomcat9.service.d
+        systemctl daemon-reload 2>/dev/null || true
+        deluser --system guacd 2>/dev/null || true
+        # /etc/nspawnmgr/dns-hosts is NOT removed here - same rule as the rest of /etc/nspawnmgr
+        # (see the top of this file): this package never removes anything under it on purge.
+        # dnsmasq itself (a real apt dependency, not bundled) is left installed and running.
+        rm -f /etc/dnsmasq.d/nspawnmgr.conf
+        rm -f /etc/dnsmasq.d/nspawnmgr-upstream.conf
+        systemctl restart dnsmasq 2>/dev/null || true
+        ;;
+esac
+
+exit 0

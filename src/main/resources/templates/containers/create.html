@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — New Container</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<h1>New container</h1>
+<form id="create-form" class="card">
+    <div class="field">
+        <label for="name">Name</label>
+        <input type="text" id="name" name="name" pattern="^[a-z0-9][a-z0-9-]{1,62}$" required/>
+    </div>
+    <div class="field">
+        <label for="templateId">Template</label>
+        <select id="templateId" name="templateId">
+            <option th:each="t : ${templates}" th:value="${t.id}" th:text="${t.name}"
+                    th:attr="data-rdp-capable=${t.rdpCapable}">template</option>
+        </select>
+    </div>
+    <div class="field">
+        <label for="description">Description</label>
+        <input type="text" id="description" name="description" placeholder="What is this machine for?"/>
+    </div>
+    <div class="field field-inline">
+        <input type="checkbox" id="rdpEnabled" name="rdpEnabled"/>
+        <label for="rdpEnabled">Enable RDP</label>
+    </div>
+    <p id="rdp-unavailable-hint" class="hint" style="display:none">RDP isn't available for this
+        template — see its own "RDP capable" setting on the Templates admin page for why.</p>
+    <div class="field field-inline">
+        <input type="checkbox" id="vncEnabled" name="vncEnabled"/>
+        <label for="vncEnabled">Enable VNC</label>
+    </div>
+    <div class="field">
+        <label for="desktopManager">Desktop manager</label>
+        <select id="desktopManager" name="desktopManager" disabled>
+            <option value="NONE">None</option>
+            <option value="KDE_STANDARD">KDE (standard)</option>
+            <option value="XFCE4">Xfce</option>
+        </select>
+    </div>
+    <button type="submit" class="btn-primary">Create</button>
+</form>
+<p id="status" class="status-message"></p>
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/create.js}"></script>
+</body>
+</html>

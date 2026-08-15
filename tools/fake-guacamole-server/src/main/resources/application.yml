@@ -1,0 +1,4 @@
+fake-guacamole:
+  admin-username: guacadmin
+  admin-password: guacadmin
+  data-source: fake

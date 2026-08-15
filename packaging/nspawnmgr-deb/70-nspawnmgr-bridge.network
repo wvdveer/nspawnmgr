@@ -1,0 +1,20 @@
+# Installed at /etc/systemd/network/70-nspawnmgr-bridge.network by the nspawnmgr .deb postinst.
+#
+# The bridge's own L3 identity: one address, one DHCP server (handing out leases + this same
+# address as the DNS server to every container's host0), NAT'd out to the real network. Fixed,
+# non-admin-configurable convention (10.100.0.0/24) - same treatment as the package cache root or
+# the DNS hosts-file path, an internal implementation detail rather than a real customization point.
+# ConfigureWithoutCarrier=yes: a bridge with no container attached yet still has no "carrier" in the
+# usual sense - without this, systemd-networkd would never bring the address up until something
+# else was plugged into it.
+[Match]
+Name=nspawnbr0
+
+[Network]
+Address=10.100.0.1/24
+DHCPServer=yes
+IPMasquerade=yes
+ConfigureWithoutCarrier=yes
+
+[DHCPServer]
+DNS=10.100.0.1

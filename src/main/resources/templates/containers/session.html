@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="${container.name} + '(' + ${protocol} + ') - nspawnmgr'">session</title>
+    <style>html, body { margin: 0; height: 100%; } iframe { border: 0; width: 100%; height: 100%; }</style>
+</head>
+<body th:data-container-id="${container.id}" th:data-protocol="${protocol}"
+      th:attr="data-base-path=@{/}">
+<iframe id="guac-frame" title="Guacamole session"></iframe>
+<script th:src="@{/js/session.js}"></script>
+</body>
+</html>

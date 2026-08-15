@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — Admin: Hosts</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<h1>Hosts</h1>
+<p><a th:href="@{/}">&laquo; Back to containers</a> | <a th:href="@{/admin/hosts/new}">+ New host</a></p>
+<p class="hint">Arbitrary machines on the network — not nspawnmgr-managed containers — that owners
+    can reach via SSH/RDP/VNC. Connections always prompt for credentials live; nspawnmgr never
+    stores a password for these. Owners manage sharing from each host's own detail page.</p>
+<table>
+    <thead>
+    <tr>
+        <th>Name</th>
+        <th>Hostname</th>
+        <th>Owner</th>
+        <th>SSH</th>
+        <th>RDP</th>
+        <th>VNC</th>
+        <th>Actions</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="h : ${hosts}" th:attr="data-host-id=${h.id}">
+        <td><a th:href="@{/containers/{id}(id=${h.id})}" th:text="${h.name}">name</a></td>
+        <td th:text="${h.hostname}">hostname</td>
+        <td th:text="${h.owner.username}">owner</td>
+        <td th:text="${h.externalSshPort} != null ? 'yes (' + ${h.externalSshPort} + ')' : 'no'">ssh</td>
+        <td th:text="${h.rdpEnabled} ? 'yes (' + ${h.externalRdpPort} + ')' : 'no'">rdp</td>
+        <td th:text="${h.vncEnabled} ? 'yes (' + ${h.externalVncPort} + ')' : 'no'">vnc</td>
+        <td>
+            <a th:href="@{/admin/hosts/{id}/edit(id=${h.id})}" class="btn-primary">Edit</a>
+            <button class="btn-danger btn-delete" th:attr="data-host-id=${h.id}">Delete</button>
+        </td>
+    </tr>
+    </tbody>
+</table>
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/admin-hosts.js}"></script>
+</body>
+</html>

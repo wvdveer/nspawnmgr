@@ -1,0 +1,33 @@
+[Unit]
+Description=Apache Tomcat 9 (bundled by nspawnmgr)
+# See docs/administrator-guide.md §6 for why this is bundled rather than an apt dependency: the
+# apt tomcat9 package's availability varies enough by Debian/Ubuntu/Mint release (unlike guacd,
+# genuinely varies rather than being universally gone - see packaging/nspawnmgr-deb/vendor/README.md
+# for the guacd case) that this package now owns the whole Tomcat instance itself instead, the same
+# vanilla upstream Apache Tomcat binary distribution tools/scripts/setup-tomcat.sh already uses for
+# dev/CI. This unit is intentionally the *only* thing named tomcat9.service on this system - the
+# apt tomcat9 package is not installed alongside it.
+After=network.target
+
+[Service]
+Type=simple
+# catalina.sh's CATALINA_OUT/CATALINA_OUT_CMD (the documented rotatelogs hook) only exists in its
+# "start" branch, never "run" - piping the whole ExecStart through rotatelogs here is the standard
+# way to get rotated catalina.out.<date> files under a Type=simple/"run" unit like this one. Must be
+# bash (not /bin/sh/dash) with `set -o pipefail`: without it, systemd sees the exit status of
+# rotatelogs (the pipeline's last command), not Tomcat's - a Tomcat crash would look like a clean
+# exit and Restart=on-failure would never fire. The %% (not %) is required: systemd unit files treat
+# a bare % as the start of its own specifier syntax (%i, %n, etc.), so rotatelogs' strftime-style
+# %Y-%m-%d format string must be escaped or systemd would misparse/reject the line entirely.
+ExecStart=/bin/bash -c 'set -o pipefail; /opt/tomcat9/bin/catalina.sh run 2>&1 | /usr/bin/rotatelogs -f /opt/tomcat9/logs/catalina.out.%%Y-%%m-%%d.log 86400'
+ExecStop=/opt/tomcat9/bin/catalina.sh stop
+User=tomcat
+Group=tomcat
+Restart=on-failure
+RestartSec=2
+# Populated by postinst's EnvironmentFile= drop-in at
+# /etc/systemd/system/tomcat9.service.d/nspawnmgr.conf (SSH_PASSWORD, DB_URL, etc.) - deliberately
+# not baked in here, so nothing in this base unit needs touching across upgrades of this package.
+
+[Install]
+WantedBy=multi-user.target

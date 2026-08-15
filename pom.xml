@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <!--
+            Spring Boot 2.7 (not 3.x): deliberately pinned to the javax.servlet / Java EE
+            generation so nspawnmgr runs on the SAME Tomcat major version (9.x) as Apache
+            Guacamole's own webapp, which still targets javax.servlet. Spring Boot 3.x requires
+            Jakarta EE / Tomcat 10+, which Guacamole's WAR can't run on unmodified.
+        -->
+        <version>2.7.18</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.nspawnmgr</groupId>
+    <artifactId>nspawnmgr</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <!--
+        WAR, not an executable jar: deployed into the same servlet container (Tomcat) as
+        Guacamole's own webapp (real or the tools/fake-guacamole-server stand-in), rather than
+        running as a separate embedded-Tomcat process — including for local/CI dev use, via
+        tools/scripts/start-dev-stack.sh (see tools/fake-machinectl's pom for how it depends on
+        this module's classes).
+    -->
+    <packaging>war</packaging>
+
+    <name>nspawnmgr</name>
+    <description>Web manager for systemd-nspawn containers with Apache Guacamole access</description>
+
+    <properties>
+        <java.version>17</java.version>
+        <jsonpath.version>2.9.0</jsonpath.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!-- provided: the external Tomcat (real or dev/CI) supplies the servlet container; only
+             needed at compile time here. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-tomcat</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <!--
+            DB vendor is a deployment-time choice (nspawnmgr.db.vendor / DB_VENDOR), not fixed at
+            build time: all three drivers + Flyway modules ship, and only the configured one is
+            actually connected to. See db/migration/{h2,mysql,postgresql} for the per-vendor schema.
+
+            The mysql-connector-j/postgresql jars below are also reused, unmodified, for something
+            unrelated to nspawnmgr's own database: maven-dependency-plugin (see <build> below)
+            copies both out to target/guacamole-jdbc-drivers/, which the .deb ships and postinst
+            copies into GUACAMOLE_HOME/lib/ — Guacamole's own JDBC auth extension needs its own
+            copy of these same drivers (separate webapp classloader), and this avoids a second,
+            separate download at install time for something already sitting in this WAR anyway.
+            See packaging/nspawnmgr-deb/scripts/install-guacamole-jdbc-drivers.sh.
+        -->
+        <dependency>
+            <!-- Explicit version: not managed by Boot 2.7.18's BOM under either the legacy
+                 "mysql:mysql-connector-java" or newer "com.mysql:mysql-connector-j" coordinates. -->
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>8.0.33</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <!-- Boot 2.7's managed Flyway generation (8.5.13) bundles PostgreSQL/H2 support directly in
+             flyway-core, but NOT MySQL - MySQL was already split into its own flyway-mysql module
+             as of Flyway 8.0, not just the Flyway 9+ (Boot-3.x-era) split this used to assume for
+             every vendor. Without flyway-mysql on the classpath, migrating against a real
+             jdbc:mysql: URL fails with "No database found to handle jdbc:mysql://..." - confirmed
+             by inspecting flyway-core-8.5.13.jar directly (no org/flywaydb/core/internal/database/
+             mysql/ package at all, unlike the postgresql/h2 packages that are present). -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <!-- Explicit version: matches the flyway-core version Boot 2.7.18's BOM manages, since
+                 flyway-mysql isn't itself part of that BOM. -->
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+            <version>8.5.13</version>
+        </dependency>
+        <!-- HttpComponentsClientHttpRequestFactory backs GuacamoleAdminClient's RestTemplate,
+             since the default JDK-based factory doesn't support HTTP PATCH. -->
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpclient</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jayway.jsonpath</groupId>
+            <artifactId>json-path</artifactId>
+            <version>${jsonpath.version}</version>
+        </dependency>
+        <!-- Tomcat runs as a non-privileged, non-sudo Linux user, so RealContainerCliExecutor /
+             RealContainerFilesystemProvisioner reach machinectl/systemd-run and root-owned paths
+             over SSH into a separate sudo-capable local account, instead of ProcessBuilder/local
+             java.nio.file I/O against the host directly. -->
+        <dependency>
+            <groupId>com.hierynomus</groupId>
+            <artifactId>sshj</artifactId>
+            <version>0.40.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <!-- Deployed filename controls the Tomcat context path: nspawnmgr.war -> /nspawnmgr,
+             sitting next to Guacamole's own /guacamole context in the same container. -->
+        <finalName>nspawnmgr</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-war-plugin</artifactId>
+                <!-- Explicit, matching what's inherited from spring-boot-starter-parent's plugin
+                     management (confirmed via `mvn help:effective-pom`) — IntelliJ's Maven plugin
+                     inspector doesn't reliably resolve versions inherited that way through the
+                     full parent chain and flags it as unresolved even though the build is fine. -->
+                <version>3.3.2</version>
+                <configuration>
+                    <failOnMissingWebXml>false</failOnMissingWebXml>
+                    <!--
+                        Also produces nspawnmgr-<version>-classes.jar (plain compiled classes, no
+                        bundled dependencies) as a secondary artifact — that's what
+                        tools/fake-machinectl depends on to reuse ContainerCliExecutor et al,
+                        since a WAR itself isn't consumable as a normal compile dependency.
+                    -->
+                    <attachClasses>true</attachClasses>
+                    <classesClassifier>classes</classesClassifier>
+                </configuration>
+            </plugin>
+            <!-- Stages plain copies of the mysql-connector-j/postgresql jars above (already needed
+                 for nspawnmgr's own use) into target/guacamole-jdbc-drivers/ — see the long comment
+                 on those two <dependency> entries for why. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>stage-guacamole-jdbc-drivers</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>com.mysql</groupId>
+                                    <artifactId>mysql-connector-j</artifactId>
+                                    <destFileName>mysql-connector-j.jar</destFileName>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>org.postgresql</groupId>
+                                    <artifactId>postgresql</artifactId>
+                                    <destFileName>postgresql.jar</destFileName>
+                                </artifactItem>
+                            </artifactItems>
+                            <outputDirectory>${project.build.directory}/guacamole-jdbc-drivers</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

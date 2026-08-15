@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — Hosts</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<h1>Hosts</h1>
+<p><a th:href="@{/}">&laquo; Back to containers</a></p>
+<p class="hint">Machines on the network — not nspawnmgr-managed containers — reachable via
+    SSH/RDP/VNC. You'll be prompted for credentials each time you connect, since nspawnmgr doesn't
+    generate or store an account for these. Ask an admin to add or edit entries here.</p>
+<table>
+    <thead>
+    <tr>
+        <th>Name</th>
+        <th>Hostname</th>
+        <th>Owner</th>
+        <th>Actions</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="h : ${hosts}">
+        <td><a th:href="@{/containers/{id}(id=${h.id})}" th:text="${h.name}">name</a></td>
+        <td th:text="${h.hostname}">hostname</td>
+        <td th:text="${h.owner.username}">owner</td>
+        <td>
+            <button class="btn-primary btn-session-ssh" th:data-host-id="${h.id}"
+                    th:disabled="${h.guacSshConnectionId == null}">SSH</button>
+            <button class="btn-primary btn-session-rdp" th:data-host-id="${h.id}"
+                    th:disabled="${h.guacRdpConnectionId == null}">RDP</button>
+            <button class="btn-primary btn-session-vnc" th:data-host-id="${h.id}"
+                    th:disabled="${h.guacVncConnectionId == null}">VNC</button>
+        </td>
+    </tr>
+    </tbody>
+</table>
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/hosts.js}"></script>
+</body>
+</html>

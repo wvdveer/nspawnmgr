@@ -1,0 +1,19 @@
+# Staged (inert) at /usr/share/nspawnmgr/nspawnmgr-ci.sudoers by the nspawnmgr .deb - installing the
+# package does NOT activate this grant. scripts/setup-ci-template-account.sh copies it into
+# /etc/sudoers.d/nspawnmgr_ci (mode 0440, root:root) and validates it with `visudo -cf`; an admin
+# runs that script by hand to opt in.
+#
+# nspawnmgr_ci is a second, deliberately isolated sudo account - see docs/administrator-guide.md
+# "Trust boundary". Unlike nspawnmgr_exec (loopback-only, broad NOPASSWD/PASSWORD grants used by
+# nspawnmgr itself), this account is meant to be reached over the network by an external CI/CD
+# pipeline, so its grant is kept to exactly two fixed-shape commands - install/update a container
+# template, and install/update an admin package-cache entry. NOPASSWD because a CI pipeline has no
+# human present to answer a sudo prompt; that's no broader than nspawnmgr_exec's own NOPASSWD
+# nspawnmgr-write-file.sh (which can already write arbitrary root-owned content to an arbitrary
+# path) - each of these grants is narrower in every dimension: one fixed script, each of which only
+# ever writes under its own fixed directory (TEMPLATES_DIR/nspawn/, or the package cache's own
+# uploaded/ dir) and only ever touches its own database table(s).
+
+nspawnmgr_ci ALL=(root) NOPASSWD: \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-install-template.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-install-package.sh *

@@ -1,0 +1,6 @@
+# Real Linux deployment: MySQL/MariaDB, real machinectl, real Guacamole.
+# All values are expected to come from environment variables (see README settings table);
+# this file intentionally carries no secrets.
+nspawnmgr:
+  cli:
+    executor: real

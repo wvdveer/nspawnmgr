@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="'nspawnmgr — ' + ${container.name} + ' — Files'">nspawnmgr — Files</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/},data-container-id=${container.id}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<h1 th:text="${container.name} + ' — Files'">Files</h1>
+<p><a th:href="@{/containers/{id}(id=${container.id})}">&laquo; Back to <span th:text="${container.name}">container</span></a></p>
+<p class="hint">Browses this container's filesystem directly - works whether or not the container is
+    running. Click a folder to open it, double-click a file to download it, or drag and drop a file
+    onto the list below to upload it into the current folder (up to 200MB).</p>
+
+<nav id="breadcrumb" class="inline-controls"></nav>
+
+<table id="file-table">
+    <thead>
+    <tr>
+        <th>Name</th>
+        <th>Size</th>
+        <th>Modified</th>
+    </tr>
+    </thead>
+    <tbody id="file-tbody"></tbody>
+</table>
+<p id="files-status" class="status-message"></p>
+
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/files.js}"></script>
+</body>
+</html>

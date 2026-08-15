@@ -1,0 +1,73 @@
+# Copy this file to dev_env/application-dev_env.yml (gitignored) and fill in the values your
+# system administrator gave you. It's picked up automatically — application.yml imports it via
+# `spring.config.import: optional:file:./dev_env/application-dev_env.yml` — and overlays on top
+# of whichever Spring profile is active (dev by default), so you only need to set what actually
+# differs from that profile's defaults. Delete keys you don't need to override.
+
+spring:
+  datasource:
+    # DB_VENDOR selects which db/migration/{vendor} schema Flyway applies — must match.
+    url: jdbc:mysql://localhost:3306/nspawnmgr
+    username: nspawnmgr
+    password: change-me
+  flyway:
+    locations: classpath:db/migration/mysql
+
+  # Optional: only needed if your administrator wants local HTTPS with a real cert instead of
+  # plain HTTP. Drop the keystore file under dev_env/certs/ (gitignored) first.
+  # server:
+  #   port: 8443
+  #   ssl:
+  #     enabled: true
+  #     key-store: dev_env/certs/nspawnmgr-dev.p12
+  #     key-store-password: change-me
+  #     key-store-type: PKCS12
+
+nspawnmgr:
+  host:
+    # The hostname you and your team access nspawnmgr/auth.war/Guacamole through (must match the
+    # cert's CN/SAN if using HTTPS, and must be the same hostname across all three so the auth
+    # cookie is shared). Add it to your hosts file pointing at 127.0.0.1 if it's not "localhost".
+    external-hostname: nspawnmgr.local
+    # A DIFFERENT setting from external-hostname above: what guacd (running on this same dev box)
+    # uses to reach into a container's SSH/RDP port, not what your browser uses. Leave at
+    # 127.0.0.1 unless guacd runs somewhere else.
+    public-address: 127.0.0.1
+  auth:
+    user-id-url: http://nspawnmgr.local:8080/auth/userinfo
+
+  # Point at a REAL Guacamole (e.g. tools/scripts/setup-tomcat.sh + setup-guacamole.sh, with guacd
+  # actually running and an auth backend configured) instead of tools/fake-guacamole-server when
+  # you need to test actual RDP/SSH sessions rather than just the create/share/connect plumbing.
+  guacamole:
+    base-url: http://nspawnmgr.local:8080/guacamole
+    admin-username: guacadmin
+    admin-password: guacadmin
+    data-source: mysql
+
+  # Tomcat runs as a non-privileged, non-sudo Linux user, so RealContainerCliExecutor and
+  # RealContainerFilesystemProvisioner SSH into this separate sudo-capable local account (always
+  # 127.0.0.1) to run machinectl/systemd-run and touch root-owned paths. The same password is
+  # piped to `sudo -S` once connected, so it must be that account's real sudo password.
+  ssh:
+    host: 127.0.0.1
+    port: 22
+    username: nspawn-admin
+    password: change-me
+    connect-timeout-ms: 5000
+    # Loopback-only by design, so host key checking is off by default; flip to true only if this
+    # ever stops being localhost, and make sure the account running nspawnmgr has a populated
+    # ~/.ssh/known_hosts for the target.
+    strict-host-key-checking: false
+
+  # Admin-configured pre-existing hosts (not provisioned/controlled by nspawnmgr) — see
+  # ExternalHostSyncService. No credentials are set here; Guacamole prompts the connecting user
+  # for them interactively. owner-username must belong to a user who has already logged in once.
+  # Handy for exercising real RDP sessions through a real Guacamole during manual testing.
+  external-hosts:
+    - name: my-windows-test-box
+      hostname: 192.168.1.50
+      rdp-enabled: true
+      rdp-port: 3389
+      ssh-enabled: false
+      owner-username: ward

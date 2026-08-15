@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+        No <parent> here: this module's parent would need to be packaging=pom, but the root
+        nspawnmgr pom is the main app (packaging=war). Standalone POM importing the Spring Boot
+        BOM instead; kept version-aligned with root manually (both are 0.1.0-SNAPSHOT).
+    -->
+    <groupId>com.nspawnmgr</groupId>
+    <artifactId>nspawnmgr-fake-machinectl</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+    <name>nspawnmgr-fake-machinectl</name>
+    <description>Windows-runnable fake ContainerCliExecutor/ContainerFilesystemProvisioner for the dev profile</description>
+
+    <properties>
+        <maven.compiler.release>17</maven.compiler.release>
+        <!-- Must match root's Boot version (javax/Tomcat 9 generation) — see root pom.xml. -->
+        <spring-boot.version>2.7.18</spring-boot.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- Root is now packaging=war (deployed alongside Guacamole's webapp), so its compiled
+             classes are only available via the "classes" classifier jar maven-war-plugin attaches
+             (root/pom.xml's attachClasses config), not as a normal main-artifact dependency. -->
+        <dependency>
+            <groupId>com.nspawnmgr</groupId>
+            <artifactId>nspawnmgr</artifactId>
+            <version>${project.version}</version>
+            <classifier>classes</classifier>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+            </plugin>
+        </plugins>
+    </build>
+</project>

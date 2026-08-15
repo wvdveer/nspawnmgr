@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="${script != null} ? 'nspawnmgr — Edit Script' : 'nspawnmgr — New Script'">nspawnmgr — Script</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/},data-container-id=${container.id},data-script-id=${script != null ? script.id : ''}">
+<div th:replace="fragments/theme-toggle :: widget"></div>
+<h1 th:text="${script != null} ? 'Edit script' : 'New script'">Script</h1>
+<p><a th:href="@{/containers/{id}(id=${container.id})}">&laquo; Back to <span th:text="${container.name}">container</span></a></p>
+
+<form id="script-form" class="card card-wide" onsubmit="return false;">
+    <div class="field">
+        <label for="name">Name</label>
+        <input type="text" id="name" name="name" th:value="${script != null ? script.name : ''}" required/>
+    </div>
+    <div class="field">
+        <label for="scriptBody">Script</label>
+        <textarea id="scriptBody" name="scriptBody" rows="16" class="script-textarea" spellcheck="false"
+                  th:text="${script != null ? script.scriptBody : ''}" required></textarea>
+    </div>
+    <button id="btn-save" type="button" class="btn-primary">Save</button>
+    <button id="btn-execute" type="button" class="btn-primary">Execute</button>
+    <button id="btn-abort" type="button" class="btn-danger" style="display:none;">Abort</button>
+    <button th:if="${script != null}" id="btn-delete" type="button" class="btn-danger">Delete</button>
+</form>
+<p id="status" class="status-message"></p>
+
+<div id="output-panel" class="panel" style="display:none;">
+    <div class="panel-section">
+        <h3>Output</h3>
+        <div id="output-lines" class="output-lines"></div>
+    </div>
+</div>
+
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/script-form.js}"></script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- Standalone POM (see tools/fake-machinectl/pom.xml for why there's no <parent>). -->
+    <groupId>com.nspawnmgr</groupId>
+    <artifactId>nspawnmgr-auth</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>war</packaging>
+    <name>nspawnmgr-auth</name>
+    <description>
+        OS-native login provider implementing the USER_ID_URL/cookie contract nspawnmgr expects.
+        An optional real component a system administrator may choose to deploy — not just a dev/
+        test fake — when there's no existing SSO to point nspawnmgr at. Authenticates against
+        either local Linux accounts on this host (PAM) or a remote Windows machine/domain over
+        SMB (auth.backend=smb), configurable in web.xml. Builds to auth.war.
+    </description>
+
+    <properties>
+        <!--
+            Targets javax.servlet (Servlet 4.0), not jakarta.servlet, so auth.war can be deployed
+            into the SAME Tomcat 9 instance as nspawnmgr.war and guacamole.war (both javax.servlet
+            themselves — see the root pom's comment on why). 17, matching the root pom's
+            java.version and debian/control's Depends: (openjdk-17-jre-headless is enough) - both
+            language features this module actually uses (sealed interfaces, records) have been
+            standard since Java 17, so there's no real reason to target anything newer. A prior
+            21 here silently required a JDK 21+ runtime the packaged Depends: never actually
+            promised, breaking auth.war specifically (with a class-file-version error) on any host
+            that only has the JRE the .deb says is sufficient.
+        -->
+        <maven.compiler.release>17</maven.compiler.release>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>javax.servlet-api</artifactId>
+            <version>4.0.1</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.17.2</version>
+        </dependency>
+        <!-- libpam4j pulls in JNA transitively; no direct JNA usage remains in this module. -->
+        <dependency>
+            <groupId>org.kohsuke</groupId>
+            <artifactId>libpam4j</artifactId>
+            <version>1.11</version>
+        </dependency>
+        <!-- jcifs-ng: SMB client used by SmbOsAuthenticator to authenticate against a remote
+             Windows machine/domain, since this webapp runs on Linux and has no local Windows
+             API to call. -->
+        <dependency>
+            <groupId>eu.agno3.jcifs</groupId>
+            <artifactId>jcifs-ng</artifactId>
+            <version>2.1.10</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>auth</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-war-plugin</artifactId>
+                <version>3.4.0</version>
+                <configuration>
+                    <failOnMissingWebXml>true</failOnMissingWebXml>
+                </configuration>
+            </plugin>
+            <!-- 9.4.x (not 10/11+): the last Jetty line built on javax.servlet rather than
+                 jakarta.servlet, matching this module's own Servlet 4.0 dependency above. Used
+                 only for fast local dev iteration (mvn jetty:run, no WAR rebuild/redeploy needed)
+                 - a real deployment runs auth.war in Tomcat 9 itself, not via this plugin. -->
+            <plugin>
+                <groupId>org.eclipse.jetty</groupId>
+                <artifactId>jetty-maven-plugin</artifactId>
+                <version>9.4.58.v20250814</version>
+                <configuration>
+                    <httpConnector>
+                        <port>9092</port>
+                    </httpConnector>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

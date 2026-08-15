@@ -1,0 +1,76 @@
+# Installed at /etc/sudoers.d/nspawnmgr_exec (mode 0440, root:root) by the nspawnmgr .deb.
+# Validated with `visudo -cf` by postinst after every install/upgrade.
+#
+# Two tiers, matching docs/administrator-guide.md "The sudo-capable SSH account":
+#   - NOPASSWD: fixed-shape, always-safe commands (container start/stop/status/delete, outbound
+#     firewall sync) that must never block on an admin, regardless of container-creation mode.
+#   - password-required (no NOPASSWD tag): creation-time-only commands that run template-authored
+#     content as root inside a fresh container (systemd-run) or clone a template (fixed shape, but
+#     still creation-time-only) — gated by the stored-secret / admin-approval mode.
+
+Cmnd_Alias NSPAWNMGR_NOPASSWD = /usr/bin/machinectl start *, \
+    /usr/bin/machinectl poweroff *, \
+    /usr/bin/machinectl terminate *, \
+    /usr/bin/machinectl reboot *, \
+    /usr/bin/machinectl remove *, \
+    /usr/bin/systemctl freeze systemd-nspawn@*.service, \
+    /usr/bin/systemctl thaw systemd-nspawn@*.service, \
+    /usr/bin/machinectl show * --property=State, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-write-file.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-delete-machine-files.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-outbound-ensure-chain.sh, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-outbound-discover-veth.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-outbound-flush-rules.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-outbound-add-accept-rule.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-outbound-add-drop-rule.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-mount-iso.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-unmount-iso.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-restart-tomcat.sh, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-setup-database.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-list-container-users.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-get-internal-address.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-resolve-hostname.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-get-machine-boot-settings.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-set-machine-autostart.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-set-machine-requires.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-list-machine-images.sh, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-list-template-files.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-list-auto-cache.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-upload-package.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-delete-cached-package.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-copy-into-container.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-list-rootfs-dir.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-download-rootfs-file.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-upload-rootfs-file.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-diag-check-bridge.sh, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-reload-dnsmasq.sh, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-restart-dnsmasq.sh, \
+    /usr/bin/systemctl is-active systemd-networkd, \
+    /usr/sbin/ufw status verbose, \
+    /usr/sbin/visudo -cf /etc/sudoers.d/nspawnmgr_exec, \
+    /usr/sbin/ip -4 -o addr show scope global, \
+    /usr/bin/systemd-run --machine=* --pipe --quiet --wait --unit=nspawnmgr-script-*.service /bin/sh -s, \
+    /usr/bin/systemctl --machine=* kill --signal=SIGKILL --kill-who=all nspawnmgr-script-*.service
+
+Cmnd_Alias NSPAWNMGR_PASSWORD = /usr/bin/systemd-run --machine=* --pipe --quiet --wait *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-clone-template.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-create-debian-template.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-create-fedora-template.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-create-arch-template.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-bootstrap-db-machine.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-pack-machine-as-template.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-download-packages.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-simulate-install.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-download-packages-dnf.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-simulate-install-dnf.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-download-packages-pacman.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-simulate-install-pacman.sh *, \
+    /usr/bin/systemctl enable --now systemd-networkd
+
+# Order matters: sudo grants access based on the LAST matching entry, and
+# NSPAWNMGR_PASSWORD's `systemd-run --machine=* --pipe --quiet --wait *` also matches the
+# `/bin/sh -s` tail covered by NSPAWNMGR_NOPASSWD's more specific entry - the NOPASSWD grant must
+# come second (last) or the broader password-required rule silently wins and every script run
+# would hang waiting on a password that never comes.
+nspawnmgr_exec ALL=(root) NSPAWNMGR_PASSWORD
+nspawnmgr_exec ALL=(root) NOPASSWD: NSPAWNMGR_NOPASSWD

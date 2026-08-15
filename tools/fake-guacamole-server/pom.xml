@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- Standalone POM (see tools/fake-machinectl/pom.xml for why there's no <parent>). -->
+    <groupId>com.nspawnmgr</groupId>
+    <artifactId>nspawnmgr-fake-guacamole-server</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>war</packaging>
+    <name>nspawnmgr-fake-guacamole-server</name>
+    <description>In-memory stand-in for Guacamole's REST API, deployed as guacamole.war alongside nspawnmgr.war</description>
+
+    <properties>
+        <!-- Must match root's Boot version (javax.servlet/Tomcat 9 generation): this WAR is
+             deployed into the same external Tomcat 9 instance as nspawnmgr.war (see
+             tools/scripts/start-dev-stack.sh / start-real-stack.sh), and Tomcat 9 only implements
+             Servlet 4.0 (javax.servlet) — Boot 3.x/Spring Framework 6.x require Jakarta Servlet
+             5+ regardless of whether this module's own code touches servlet types directly, so
+             it can't be Boot 3.x here even though it was originally written against 3.3.4/Java 21
+             back when it ran as its own standalone embedded-Tomcat process. -->
+        <maven.compiler.release>17</maven.compiler.release>
+        <spring-boot.version>2.7.18</spring-boot.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!-- Provided: the external Tomcat supplies it (same reasoning as root pom.xml). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-tomcat</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>guacamole</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <!-- Standalone POM, so it doesn't inherit spring-boot-starter-parent's default
+                         -parameters flag: without it, @RequestParam/@PathVariable that don't name
+                         themselves explicitly (all of them in FakeGuacamoleController) fail at
+                         request time with "parameter name information not available via
+                         reflection", not at compile time. -->
+                    <parameters>true</parameters>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-war-plugin</artifactId>
+                <!-- No <parent>, so this doesn't inherit spring-boot-starter-parent's plugin
+                     management — without an explicit version, Maven falls back to a decade-old
+                     default (2.2) that breaks on modern JDKs. Matches root pom.xml's pinned
+                     version. -->
+                <version>3.3.2</version>
+                <configuration>
+                    <failOnMissingWebXml>false</failOnMissingWebXml>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
