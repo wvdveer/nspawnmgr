@@ -109,9 +109,11 @@ first-boot setup wizard creates both databases for you, with opinionated fixed n
 
 nspawnmgr provisions new containers by cloning a "template" into `/var/lib/machines` via
 `machinectl import-tar`. Templates themselves live under `TEMPLATES_DIR` (default
-`/var/lib/nspawnmgr/templates`), one subdirectory per backend — `nspawn/` today (`podman/`/`qemu/`
-join it once those backends exist) — each holding `<name>.tar.gz` files: plain gzipped tars of a
-root filesystem, exactly what `machinectl import-tar` itself consumes. You need to prepare at
+`/var/lib/nspawnmgr/templates`), one subdirectory per backend — `nspawn/`, `podman/`, and `qemu/`
+(see ["Podman: pods"](#podman-pods) and ["QEMU: virtual machines"](#qemu-virtual-machines) below
+for the other two backends' own template formats and how each is populated — this section is
+about nspawn's `<name>.tar.gz` files specifically: plain gzipped tars of a root filesystem, exactly
+what `machinectl import-tar` itself consumes). You need to prepare at
 least one real, bootable one yourself — nspawnmgr does not download or build these for you, with
 one exception: `/admin/templates` offers three independent **"Set up X-minimal"** buttons —
 **debian-minimal** (APT), **fedora-minimal** (DNF), **arch-minimal** (PACMAN) — each shown only
@@ -192,9 +194,9 @@ specific known risk areas, roughly in order of how likely they are to bite:
 - **RDP is unavailable for `arch-minimal` entirely.** Confirmed live: `xrdp`/`xorgxrdp` have been
   dropped from Arch's official repos (`pacman -Ss xrdp` finds neither, on a freshly-synced, fully
   populated mirror — not a stale-cache or wrong-mirror issue) and this app has no AUR support to
-  fall back on. `arch-minimal` sets its own `rdpCapable=false` by default (see the Templates admin
-  page's "RDP capable" checkbox), which is what actually disables the "Enable RDP" option on the
-  New container form for it — flip it back on by hand only if a future Arch release restores the
+  fall back on. `arch-minimal` sets its own RDP state to "not capable" by default (see the
+  Templates admin page's "RDP" selector), which is what actually disables the "Enable RDP" option on the
+  New Nspawn form for it — flip it back on by hand only if a future Arch release restores the
   package, or the template's own install command is hand-edited to something that works (e.g.
   KDE's own `krdp`, still in `extra`, but tied to KDE/Plasma specifically).
 - **Every Fedora container needs its `sshd` account-phase PAM check bypassed to be reachable over
@@ -314,10 +316,10 @@ Each `.tar.gz` file under `TEMPLATES_DIR/nspawn/` is one selectable template; re
 matching `Template` row at `/admin/templates` (admin-only) — name, source identifier (the bare
 filename, no `.tar.gz`, no backend-folder prefix — e.g. `debian-minimal` for
 `TEMPLATES_DIR/nspawn/debian-minimal.tar.gz`), backend, package manager, and optional
-install-command overrides. Every template has a **backend** (`domain/ContainerBackend.java`)
-recorded against it — only `SYSTEMD_NSPAWN` exists today, but the column (and its matching
-`TEMPLATES_DIR` subdirectory) is there ahead of planned podman/QEMU support so existing templates
-don't need a later migration to backfill it. A fresh install starts with **zero** templates —
+install-command overrides. Every template has a **backend** (`domain/ContainerBackend.java`:
+`SYSTEMD_NSPAWN`, `PODMAN`, or `QEMU`) recorded against it, each with its own
+`TEMPLATES_DIR` subdirectory and file format — see the sections below for the Podman and QEMU
+ones. A fresh install starts with **zero** templates —
 nothing is seeded — so this page (or the "Set up debian-minimal" button below) is genuinely how
 you get your first one; the tarball itself under `TEMPLATES_DIR` still has to be prepared
 out-of-band as above regardless, the page only manages metadata pointing at it. Deactivating a
@@ -505,7 +507,7 @@ changes.
 
 ### Graphical access: RDP, VNC, and desktop managers
 
-The "New container" form has two independent checkboxes, **Enable RDP** and **Enable VNC** — either,
+The "New Nspawn" form has two independent checkboxes, **Enable RDP** and **Enable VNC** — either,
 both, or neither. Choosing either reveals a **Desktop manager** dropdown (None/GNOME/KDE
 (`kde-standard`)/Xfce (`xfce4`)): a graphical protocol is of limited use without an actual desktop
 environment inside a minimal template, so picking one installs it during provisioning, shared
@@ -517,6 +519,189 @@ password set via `chpasswd`; VNC reuses the same account but only sets a VNC-spe
 `vncpasswd` — it needs no Linux login password of its own). The exact `vncserver`/`xstartup`/
 package-install sequence has only been exercised against the one real `debian-minimal` (APT)
 template in active use — worth confirming again after installing a `.deb` that includes this.
+
+### Podman: pods
+
+Alongside nspawn containers, the "+" menu's **New Pod** creates a real `podman`-run container
+(badge `PODMAN` on the Machines grid, alongside `NSPAWN`/`QEMU`/`HOST`) — same ownership/sharing
+rules, same card grid, same detail-page relationship as everything else here. It's available to
+any logged-in user, not admin-gated; the link is only disabled while no podman-backend templates
+exist yet, same posture as New Nspawn.
+
+**Creation** (`/containers/new-pod`): Name, Template (a dropdown of podman-backend templates
+only), Description, and an optional Command — like a Dockerfile `CMD` override; leaving it blank
+trusts the image's own baked-in command. A bare interactive shell as the command will exit within
+moments once nothing is left attached to its stdin, landing the pod STOPPED rather than failed —
+worth knowing if a first pod seems to disappear immediately after creation. Provisioning
+(`ProvisioningService.provisionPod()`) loads the template's image, creates and starts the
+container, grants the owner access, resolves and persists its internal address, and lands it
+straight at **RUNNING** — unlike nspawn containers, there's no `BOOTING`/readiness-polling phase,
+since `podman create`+`start` are synchronous and a pod gets no auto-provisioned SSH credential to
+poll for in the first place.
+
+**Networking**: pods share the same `nspawnbr0` bridge as nspawn containers, but through a
+dedicated podman network definition (`/etc/containers/networks/nspawnbr0.json`, written by
+`nspawnmgr-configure-podman-network.sh`) using netavark's **host-local IPAM** rather than DHCP —
+netavark's own DHCP proxy transmits from the host's network namespace, and the kernel never loops
+that traffic back to the bridge's own receive queue, a confirmed dead end rather than an
+unexplored option. The address pool is split from nspawn's own DHCP range to avoid collisions:
+pods get `10.100.0.192`–`10.100.0.254`, nspawn containers keep `10.100.0.2`–`10.100.0.191`. DNS is
+set explicitly at creation (`podman create --dns 10.100.0.1 --dns-search internal ...`) rather than
+relying on any DHCP-delivered config a pod never gets — podman's own `aardvark-dns` is disabled on
+this network specifically to avoid fighting with nspawnmgr's own dnsmasq, already bound to that
+same address (see ["Resolving containers by name"](#resolving-containers-by-name) above).
+
+**Lifecycle** has full parity with nspawn containers — Start/Stop/Restart/Pause/Resume all dispatch
+to native podman commands (`start`/`stop`/`kill`/`restart`/`pause`/`unpause`) rather than any
+nspawn-specific mechanism. A separate **`PodLivenessPollingService`** re-checks every `RUNNING`
+pod's real podman status on its own ~30s schedule and flips nspawnmgr's own state to `STOPPED` the
+moment podman disagrees — needed because a pod can exit entirely on its own (a bad or missing
+keep-alive command, see the Command field above) with nothing else in the app ever noticing, since
+pods skip the nspawn-only readiness-polling path entirely. `PAUSED` pods aren't polled.
+
+**Access**: SSH/RDP/VNC are **prompt-credentials only**, the same reachability-gated mechanism
+Hosts and discovered containers use
+([§ above](#remote-access-for-containers-nspawnmgr-didnt-set-up-itself)) — enabled per-protocol
+from the pod's own detail page once the guest's own service is actually listening. A pod never gets an
+auto-generated credential the way an nspawn container's SSH access does.
+
+**Files** works via `podman mount`, which exposes the container's merged overlay filesystem as an
+ordinary host path — the same browse/upload/download code nspawn containers use then runs against
+that path directly.
+
+**Scripts** run via `podman exec -i <name> sh -s` (piped stdin, a real exit code back to
+nspawnmgr). Abort is a narrower approximation than nspawn's own transient-unit kill: the script
+body is prefixed with `echo $$ > <pidfile>`, and Abort sends `kill -9` to that recorded process
+group — a real process-group kill, but not a true cgroup-wide one the way nspawn's abort is,
+documented in the code as a known, deliberate narrowing rather than a bug.
+
+**Explicitly not offered for a pod** (all present for nspawn containers): no auto-provisioned
+SSH/RDP/VNC credential, no desktop-manager install, no custom inbound port mappings, no
+outbound-firewall toggle (a pod already has real network access via netavark — there's nothing to
+gate), no ISO mount, no `machinectl`-style autostart/requires configuration.
+
+**Templates** live under `TEMPLATES_DIR/podman/<name>.tar` — a `podman save` archive, loaded via
+`podman load` at creation time, distinct from nspawn's plain-tar convention. Populate one either by
+pulling straight from a registry (`nspawnmgr-podman-pull-template.sh`) or by converting an existing
+nspawn template (`nspawnmgr-podman-convert-nspawn-to-podman.sh`, and the reverse,
+`nspawnmgr-podman-convert-podman-to-nspawn.sh`, for going the other way). There's currently no
+"create template from this pod" convenience the way a stopped nspawn or QEMU machine's own detail
+page offers — only fresh pulls or conversions.
+
+No dedicated automated test suite exists for the podman backend (no `*Podman*` test classes) — it's
+covered by the general test suite running against fakes, plus manual dev-stack and live click-through
+on yoga. The DNS fix and the netavark host-local-IPAM networking decision above are both confirmed
+live (see `nspawnmgr-configure-podman-network.sh`'s and `nspawnmgr-podman-create-container.sh`'s
+own header comments) — the process-group-kill abort approximation is the main known, deliberate gap.
+
+### QEMU: virtual machines
+
+Alongside nspawn containers and podman pods, the "+" menu's **New QEMU** creates a real QEMU/KVM
+virtual machine (badge `QEMU`), on the same Machines grid with the same ownership/sharing rules.
+Available to any logged-in user; the link is disabled while QEMU isn't installed on the host (see
+the Diagnostics page).
+
+**Creation** (`/containers/new-qemu`): Name; disk source — **Empty disk** (a size in GB) or **From
+template** (clone an existing QEMU-backed Template's own disk), mutually exclusive; **Processor
+type**; **Number of CPUs**; **Memory (MB)**; **Network card** (NIC device model — `virtio-net-pci`
+by default, or `e1000`/`rtl8139`/`pcnet` for guest OSes that need a specific one, e.g. FreeDOS
+typically needs `pcnet`); **Pointer device** (`PS/2` by default, or `USB tablet`, which fixes mouse
+cursor drift under VNC for GUI guests — but DOS-family guests have no USB driver stack at all and
+need PS/2, which is why it stays the default rather than USB tablet); and an optional **Boot ISO**.
+
+`POST /api/containers/qemu` validates that exactly one of the disk-size/template fields is set,
+then `ProvisioningService.createPendingQemu()` persists the row and `provisionQemu()` does the
+actual work: clone the template's disk or create a fresh empty one, allocate a VNC port, write the
+VM's systemd unit, start it, generate and store a VNC password, and create a matching Guacamole VNC
+connection — landing at **RUNNING** immediately, the same synchronous-launch reasoning as pods
+above (no `BOOTING`/readiness poll). A separate, asynchronous `QemuAddressPollingService` tries to
+resolve a guest IP afterward purely for SSH purposes — "not ready yet, possibly for a long time" is
+the expected, normal state for a freshly created VM that may not even have a guest OS installed on
+its disk yet.
+
+**Disk creation** (`nspawnmgr-qemu-create-disk.sh`) is a plain `qemu-img create -f qcow2 <path>
+<size>G` under `/var/lib/nspawnmgr/qemu-disks/`. Same PASSWORD-tier sudo as any other new
+persistent artifact ([§3](#3-the-sudo-capable-ssh-account)) — actually starting the VM afterward is
+a separate NOPASSWD step.
+
+**The VM's systemd unit** (`nspawnmgr-qemu-write-unit.sh`) is a real, persistent unit at
+`/etc/systemd/system/nspawnmgr-qemu-<name>.service` — rewritten, not just written once, both at
+creation and again whenever the mounted ISO changes while the VM is stopped (see below). It's
+persistent rather than a transient `systemd-run` invocation because a plain `systemctl start/stop`
+against it (which is how nspawnmgr always drives a QEMU VM's lifecycle) takes just a bare machine
+name, with nothing VM-specific to reconstruct an invocation from. Its `ExecStart` line covers: the
+memory/CPU-model/CPU-count/`-enable-kvm` flags (KVM auto-detected via `/dev/kvm`'s existence); the
+qcow2 disk as a virtio drive; the network card on `nspawnbr0` with a MAC address deterministically
+derived from the VM's name (`52:54:00:` + the first 3 bytes of an md5 hash of the name — the
+address-resolution script has to derive the identical value independently, since neither script
+persists it); the pointer-device flags (empty for PS/2, `-usb -device usb-tablet` for USB tablet);
+the VNC listener; a Unix-socket QEMU monitor; and the boot order (`-cdrom ... -boot order=d` when an
+ISO is mounted, `-boot order=c` otherwise). Falls back to `/usr/libexec/qemu-kvm` when
+`qemu-system-x86_64` isn't on `PATH` (a Fedora/RHEL packaging quirk, same fallback
+`nspawnmgr-diag-check-qemu.sh` already uses).
+
+**VNC access**: the port is allocated from an admin-configurable range
+([`/admin/settings`](#live-editable-settings-adminsettings), validated to start at `5900` or
+above — QEMU's own `-vnc host:display` syntax addresses a display number, and `display = port -
+5900`), picking the lowest free port not already claimed by another VM. The listener always binds
+`nspawnbr0`'s own gateway address (`10.100.0.1`) — unlike nspawn/podman, where Guacamole dials a
+container's own internal address directly, every QEMU VM's hypervisor console shares one address
+and is differentiated purely by port. A Guacamole VNC connection with a generated password is
+created automatically at provisioning time — nothing for the owner to enable, it's just there.
+QEMU itself doesn't persist that password across a restart, so `ContainerLifecycleService`
+re-applies the stored credential over the HMP monitor (see below) on every start/restart.
+
+**The HMP monitor** is internal-only — there's no UI for sending arbitrary monitor commands.
+`nspawnmgr-qemu-monitor-exec.sh` relays one HMP line at a time over SSH to the VM's monitor Unix
+socket via `socat` (closing the connection 2 seconds after QEMU stops responding, since HMP's
+plain-text REPL has no clean per-response framing to detect completion by — a starting point,
+documented as not yet verified against a real `qemu-system-x86_64` monitor). It backs: graceful
+Stop (`system_powerdown`, an ACPI request — a no-op if no guest OS is installed yet, by design, not
+a bug); Pause/Resume (`stop`/`cont` — QEMU's own equivalent, not the cgroup freezer nspawn
+containers use); re-applying the VNC password above; and live ISO swap (`change ide1-cd0`/`eject
+ide1-cd0`).
+
+**Files access isn't available for a QEMU VM** — unlike podman's `podman mount`, there's no
+host-side directory to browse for a VM whose storage is a single qcow2 disk file, and real
+guest-side access (SFTP over the VM's own SSH connection, once enabled) hasn't been built yet. The
+FILES pill is disabled on a QEMU VM's card for this reason; planned for a future release.
+
+**ISO mounting** reuses the same `PackageManager.ISO` package cache as nspawn containers
+([§ above](#removable-media-iso-images)). Unlike nspawn's static bind-mount (which only takes
+effect on the VM's next start), QEMU can **live-swap** the mounted disc through the HMP monitor
+while the VM is currently running, and separately persists the same choice into the unit file (via
+the same `nspawnmgr-qemu-write-unit.sh` rewrite mentioned above) so it's also correct the next time
+the VM cold-starts.
+
+**Templates**: cloning a VM's disk from an existing QEMU-backed Template (`TEMPLATES_DIR/qemu/
+<name>.qcow2`) is fully supported alongside the empty-disk-plus-ISO path described above — pick
+**From template** on the New QEMU form. A stopped VM's own detail page also has a "Create template
+from this machine" field, the same convention as nspawn containers use, to snapshot a VM's current
+disk into a brand-new, independent template.
+
+**Lifecycle** has full parity with nspawn/podman through the persistent systemd unit above, plus
+the HMP monitor for the operations QEMU itself has to be asked to do gracefully: Start, Force stop,
+and Restart are plain `systemctl start/stop/restart` against the VM's own unit; graceful Stop and
+Pause/Resume go through HMP as described above rather than `systemctl freeze`/`thaw`.
+
+**One known gap**: there's no QEMU-equivalent of podman's `PodLivenessPollingService` above —
+nothing reconciles nspawnmgr's own database state against a QEMU guest process crashing or being
+killed out from under its own systemd unit, only against the unit itself stopping (which
+`systemctl start/stop` already tracks correctly, since nspawnmgr always drives a VM's lifecycle
+through that same unit rather than touching the QEMU process directly). Worth keeping in mind if a
+VM's badge ever seems to disagree with reality after an unusual host-side event.
+
+No dedicated automated test suite exists for the QEMU backend either (no `*Qemu*` test classes) —
+covered by the general suite against fakes, plus manual dev-stack and live click-through; the
+pointer-device setting specifically has been confirmed live against a real KolibriOS VM on yoga.
+The HMP monitor's response-framing heuristic above, and some of `nspawnmgr-diag-check-qemu.sh`'s
+own checks, are explicitly marked unverified against a real `qemu-system-x86_64` monitor in their
+own header comments.
+
+**Discover machines** ([§ above](#discovering-machines-created-outside-nspawnmgr)) covers all three
+backends in one click — it runs a separate pass over `machinectl`, `podman`, and QEMU's own
+systemd units each, registering anything untracked it finds in any of them, skipping a backend
+outright if it isn't installed on the host at all.
 
 ### Package installation: downloaded first, not installed straight from a live network fetch
 
@@ -727,7 +912,8 @@ made-up domain, so it's guaranteed to never collide with a real public one. Scop
 containers only (EXTERNAL, admin-configured hosts already have their own `hostname` and aren't
 added here), and the namespace is flat across all of them — this is purely network-level
 reachability, independent of which containers a given user can see or connect to in the web UI
-(the containers list only shows containers a user owns or has been shared).
+(the Machines grid only shows machines a user owns or has been shared, except for an admin, who
+sees everything regardless of ownership).
 
 Two more pieces are needed for this to work end-to-end:
 
@@ -802,12 +988,30 @@ with a prompt-credentials connection.
 
 ### Hosts: admin-managed external machines
 
-The **Hosts** page (linked from the containers list, visible to every user) lists arbitrary
-machines on the network that aren't nspawnmgr-managed containers at all — an existing Windows box,
-a NAS, another team's server, anything reachable over SSH/RDP/VNC that's convenient to access
-through the same Guacamole SSO flow as everything else here. Admins add and edit entries from
-**Manage hosts** (`/admin/hosts`): a name, a hostname/IP, an owner username (must belong to a user
-who has already logged in at least once), and which of SSH/RDP/VNC to offer plus the port for each.
+A **Host** is an entry for an arbitrary machine on the network that isn't an nspawnmgr-managed
+container at all — an existing Windows box, a NAS, another team's server, anything reachable over
+SSH/RDP/VNC that's convenient to access through the same Guacamole SSO flow as everything else
+here. There's no separate Hosts page: a Host is a `Container` row under the hood (kind
+`EXTERNAL`), so it shows up as an ordinary card — a fixed `HOST` badge instead of a backend badge
+— right alongside nspawn/podman/QEMU machines on the main **Machines** grid, and its detail page
+is the same `/containers/{id}` route every other machine uses. Admins add one from the "+" menu's
+**New Host** item (`/admin/hosts/new`, admin-only) or edit an existing one at
+`/admin/hosts/{id}/edit`: a name, a hostname/IP, an owner username (must belong to a user who has
+already logged in at least once), and which of SSH/RDP/VNC to offer plus the port for each. The
+admin pages above are the only way to manage these entries; the database is the sole source of
+truth.
+
+**Visibility follows the same owner/admin/shared rule as every other machine** — a Host isn't
+public just because it's admin-created; only an admin, its owner, or someone it's been explicitly
+shared with sees it in their own Machines grid (`ContainerRepository.findVisibleToUserOrderByName`
+applies this uniformly across nspawn, podman, QEMU, and Host rows alike).
+
+**RUNNING/STOPPED is resolved live, not stored.** Since nspawnmgr doesn't control a Host's
+lifecycle at all, its state badge comes from a single TCP reachability check
+(`HostLivenessService`) against whichever of its configured SSH/RDP/VNC ports is enabled — SSH
+first if present, then RDP, then VNC — cached for one minute per host so the Machines grid and the
+host's own detail page don't each trigger a fresh probe on every request. A Host with none of the
+three enabled has nothing to probe and always shows RUNNING.
 
 Connections always prompt for credentials live — nspawnmgr never stores a password for a host, the
 same prompt-credentials mechanism discovery's own auto-wiring and the per-container Remote access
@@ -824,24 +1028,21 @@ works, and a DHCP-reassigned address is picked up automatically on the next conn
 an admin to notice and re-save the entry. If the hostname doesn't resolve on the host at connect
 time, the connection attempt fails with a clear error rather than proceeding with a stale address.
 
-Sharing works the same way it does for containers: the owner manages who
-else can connect from the entry's own detail page (Hosts rows are Container rows under the hood,
-kind `EXTERNAL`, so `/containers/{id}` is still where sharing lives — the Hosts page itself is just
-a purpose-built list/connect view, same relationship the containers list has to a container's own
-detail page).
+Sharing works the same way it does for containers: the owner manages who else can connect from the
+entry's own detail page. An admin who isn't the owner sees a **Take ownership** button under
+Manage there instead — useful for taking over a Host (or any machine) whose owner has since left,
+without needing database access.
 
-The SSH/RDP/VNC buttons on both the Hosts page and the containers list open the Guacamole session in
-a new browser tab rather than navigating away from the list — useful when connecting to several
-machines from the same page. Clicking one on the Hosts page opens
-`/hosts/{id}/session/{protocol}`, its own URL namespace distinct from the containers list's
-`/containers/{id}/session/{protocol}` — a host is a Container row under the hood as noted above, but
-the *session* URL a user actually sees in their browser deliberately doesn't say "containers" for
-something that isn't one from an admin's point of view. Both routes render the identical
-template/JS underneath (an iframe plus a fetch to the same `/api/containers/{id}/session/{protocol}`
-API endpoint); only the page URL differs.
-
-The admin page above is the only way to manage these entries; the database is the sole source of
-truth.
+The SSH/RDP/VNC buttons on both the Machines grid and a Host's own detail page open the Guacamole
+session in a new browser tab rather than navigating away — useful when connecting to several
+machines from the same page. Opening one from a Host's card uses `/hosts/{name}/session/{protocol}`,
+its own URL namespace distinct from an ordinary machine's `/containers/{name}/session/{protocol}` —
+a Host is a Container row under the hood as noted above, but the *session* URL a user actually sees
+in their browser deliberately doesn't say "containers" for something that isn't one from an admin's
+point of view. Both routes render the identical template/JS underneath (an iframe plus a fetch to
+the same `/api/containers/{id}/session/{protocol}` API endpoint); only the page URL differs. Both
+key off the machine's **name**, not its numeric id — a deliberate choice so the URL in a shared
+link or a browser's history stays meaningful.
 
 ### Custom port mappings and outbound access
 
@@ -936,10 +1137,13 @@ from whether `nspawnmgr.ssh.password`/`SSH_PASSWORD` is configured — there's n
   "create container" request provisions immediately and automatically, same as before this
   feature existed.
 - **Admin-approval mode** (password left blank): a new container lands in a `PENDING_APPROVAL`
-  state instead of provisioning right away. Any admin can review it at `/admin/containers/pending`
-  and either **Approve** (supplying a sudo password, used only for this one container's
-  creation-time steps, held in memory and zeroed once that run completes — never persisted) or
-  **Deny** (moves it to a terminal `DENIED` state; no SSH is ever attempted).
+  state instead of provisioning right away. The **Requests** page (`/requests` — its sidebar nav
+  item only appears, to anyone, while this mode is active) lists it alongside any pending
+  in-container user-account requests in one combined view. An admin sees and can act on every
+  pending item from every user; a non-admin only sees their own and can **Deny** them (moves to a
+  terminal `DENIED` state, no SSH ever attempted) but not **Approve** — approving needs a sudo
+  password, supplied inline, used only for that one item's creation-time steps, held in memory and
+  zeroed once that run completes, never persisted — deliberately only ever asked of an admin.
 
 SSH transport login and the sudo password share the same configured value, so blanking
 `SSH_PASSWORD` to select admin-approval mode would otherwise leave the SSH session itself with
@@ -1148,7 +1352,7 @@ a Gitea access token with package-write scope — see that job's own comment in 
 **Install it:**
 
 ```bash
-sudo apt install ./nspawnmgr_0.1.0_all.deb   # pulls in a JRE, openssh-server, openssl, apache2-utils, dnsmasq - not tomcat9
+sudo apt install ./nspawnmgr_0.2.0_all.deb   # pulls in a JRE, openssh-server, openssl, apache2-utils, dnsmasq, systemd-container - not tomcat9
 ```
 
 Neither `tomcat9` nor `guacd`/`guacamole-tomcat` are in this package's `Depends:` — apt's own
@@ -1963,5 +2167,5 @@ means the port the install printed during `postinst` (8080 unless already taken)
 - **Rotating `APP_SECRET_KEY`**: there's no built-in re-encryption tool; treat this as a
   break-glass, plan-ahead operation, not something to change casually on a running system.
 - **Pending container requests** (admin-approval mode only): show up at
-  `/admin/containers/pending`. `DENIED` is currently a terminal state — there's no resubmission
+  `/requests`. `DENIED` is currently a terminal state — there's no resubmission
   affordance, the requesting user has to create a new container from scratch.

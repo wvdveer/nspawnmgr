@@ -75,7 +75,7 @@ class ContainerScriptServiceTest {
         executeSynchronously();
         AbortableScriptRun handle = mock(AbortableScriptRun.class);
         when(handle.await()).thenReturn(new ScriptRunResult(0, List.of()));
-        when(cliExecutor.startScript(eq("my-container"), eq("echo hi"), any(Duration.class))).thenReturn(handle);
+        when(cliExecutor.startScript(eq("my-container"), any(), eq("echo hi"), any(Duration.class))).thenReturn(handle);
         Container container = container(9L);
         User user = user();
 
@@ -94,7 +94,7 @@ class ContainerScriptServiceTest {
         AbortableScriptRun handle = mock(AbortableScriptRun.class);
         when(handle.await()).thenReturn(new ScriptRunResult(-1, List.of(
                 new OutputLine(Instant.now(), OutputSource.STDERR, "aborted"))));
-        when(cliExecutor.startScript(eq("my-container"), eq("sleep 60"), any(Duration.class))).thenReturn(handle);
+        when(cliExecutor.startScript(eq("my-container"), any(), eq("sleep 60"), any(Duration.class))).thenReturn(handle);
         Container container = container(9L);
         User user = user();
 
@@ -116,7 +116,7 @@ class ContainerScriptServiceTest {
     void rejectedExecutionAbortsHandleAndThrows() {
         doThrow(new RejectedExecutionException("pool exhausted")).when(taskExecutor).execute(any());
         AbortableScriptRun handle = mock(AbortableScriptRun.class);
-        when(cliExecutor.startScript(eq("my-container"), eq("echo hi"), any(Duration.class))).thenReturn(handle);
+        when(cliExecutor.startScript(eq("my-container"), any(), eq("echo hi"), any(Duration.class))).thenReturn(handle);
         Container container = container(9L);
 
         assertThatThrownBy(() -> service.startRun(container, "echo hi", user()))
@@ -136,7 +136,7 @@ class ContainerScriptServiceTest {
         executeSynchronously();
         AbortableScriptRun handle = mock(AbortableScriptRun.class);
         when(handle.await()).thenReturn(new ScriptRunResult(0, List.of()));
-        when(cliExecutor.startScript(eq("my-container"), eq("echo hi"), any(Duration.class))).thenReturn(handle);
+        when(cliExecutor.startScript(eq("my-container"), any(), eq("echo hi"), any(Duration.class))).thenReturn(handle);
         Container owningContainer = container(9L);
         String runId = service.startRun(owningContainer, "echo hi", user());
 

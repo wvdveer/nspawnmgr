@@ -7,25 +7,12 @@
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/},data-auth-cookie-name=${settings.authCookieName()}">
-<div th:replace="fragments/theme-toggle :: widget"></div>
-<h1>Settings</h1>
-<p><a th:href="@{/}">&laquo; Back to containers</a></p>
+<div th:replace="~{fragments/app-shell :: shell(
+        title='Settings', subtitle='Global application configuration',
+        activeNav='settings', currentUser=${currentUser}, addMenu=null,
+        content=~{::#page-content})}">
+<div id="page-content">
 <form id="settings-form" class="card">
-    <h2>Guacamole</h2>
-    <div class="field">
-        <label for="guacamoleBaseUrl">Base URL</label>
-        <input type="text" id="guacamoleBaseUrl" th:value="${settings.guacamoleBaseUrl()}"/>
-        <button type="button" id="guacamoleBaseUrl-refresh" class="btn-primary">Refresh hostname/port/protocol</button>
-    </div>
-    <div class="field">
-        <label for="guacamoleDataSource">Data source</label>
-        <input type="text" id="guacamoleDataSource" th:value="${settings.guacamoleDataSource()}"/>
-        <button type="button" id="guacamoleDataSource-refresh" class="btn-primary">Refresh from Guacamole config</button>
-        <p class="hint">Must match whatever your <code>guacamole-auth-jdbc</code> extension calls
-            itself in <code>guacamole.properties</code> (see the Guacamole section below) — shown
-            in red if it doesn't currently match. "Refresh" copies the detected value across.</p>
-    </div>
-
     <h2>Host</h2>
     <div class="field">
         <label for="hostExternalHostname">External hostname</label>
@@ -55,12 +42,12 @@
     <div class="field">
         <label for="authUserIdUrl">User-ID URL</label>
         <input type="text" id="authUserIdUrl" th:value="${settings.authUserIdUrl()}"/>
-        <button type="button" id="authUserIdUrl-refresh" class="btn-primary">Refresh hostname/port/protocol</button>
+        <button type="button" id="authUserIdUrl-refresh" class="btn-primary btn-refresh">Refresh hostname/port/protocol</button>
     </div>
     <div class="field">
         <label for="authLoginUrl">Login URL</label>
         <input type="text" id="authLoginUrl" th:value="${settings.authLoginUrl()}"/>
-        <button type="button" id="authLoginUrl-refresh" class="btn-primary">Refresh hostname/port/protocol</button>
+        <button type="button" id="authLoginUrl-refresh" class="btn-primary btn-refresh">Refresh hostname/port/protocol</button>
     </div>
     <div class="field">
         <label for="authUserIdJson">User-ID JsonPath</label>
@@ -89,6 +76,37 @@
     <div class="field">
         <label for="authHttpTimeoutMs">Identity HTTP timeout (ms)</label>
         <input type="number" id="authHttpTimeoutMs" th:value="${settings.authHttpTimeoutMs()}"/>
+    </div>
+
+    <div th:if="${settings.isAuthDetected()}">
+        <h2>Auth (auth.war)</h2>
+        <p>auth.war was detected at the configured login URL. These settings are mirrored to a
+            shared file auth.war reads on every request — changes take effect immediately, no
+            restart needed.</p>
+        <div class="field">
+            <label for="authBackend">Backend</label>
+            <select id="authBackend">
+                <option value="" th:selected="${settings.authBackend() == null}">(inherit auth.war's own default)</option>
+                <option value="pam" th:selected="${settings.authBackend() == 'pam'}">pam (local Linux accounts)</option>
+                <option value="smb" th:selected="${settings.authBackend() == 'smb'}">smb (remote Windows machine/domain)</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="authSmbServer">SMB server (smb backend only)</label>
+            <input type="text" id="authSmbServer" th:value="${settings.authSmbServer()}"/>
+        </div>
+        <div class="field">
+            <label for="authSmbDomain">SMB domain (smb backend only, optional)</label>
+            <input type="text" id="authSmbDomain" th:value="${settings.authSmbDomain()}"/>
+        </div>
+        <div class="field">
+            <label for="authRequiredGroup">Required Unix group (pam backend only, optional)</label>
+            <input type="text" id="authRequiredGroup" th:value="${settings.authRequiredGroup()}"/>
+        </div>
+        <div class="field">
+            <label for="authSmbRequiredShare">Required SMB share (smb backend only, optional)</label>
+            <input type="text" id="authSmbRequiredShare" th:value="${settings.authSmbRequiredShare()}"/>
+        </div>
     </div>
 
     <h2>Provisioning</h2>
@@ -164,38 +182,36 @@
             forwarded to. Defaults to <code>1.1.1.1,9.9.9.9</code>.</p>
     </div>
 
-    <div th:if="${settings.isAuthDetected()}">
-        <h2>Auth (auth.war)</h2>
-        <p>auth.war was detected at the configured login URL. These settings are mirrored to a
-            shared file auth.war reads on every request — changes take effect immediately, no
-            restart needed.</p>
-        <div class="field">
-            <label for="authBackend">Backend</label>
-            <select id="authBackend">
-                <option value="" th:selected="${settings.authBackend() == null}">(inherit auth.war's own default)</option>
-                <option value="pam" th:selected="${settings.authBackend() == 'pam'}">pam (local Linux accounts)</option>
-                <option value="smb" th:selected="${settings.authBackend() == 'smb'}">smb (remote Windows machine/domain)</option>
-            </select>
-        </div>
-        <div class="field">
-            <label for="authSmbServer">SMB server (smb backend only)</label>
-            <input type="text" id="authSmbServer" th:value="${settings.authSmbServer()}"/>
-        </div>
-        <div class="field">
-            <label for="authSmbDomain">SMB domain (smb backend only, optional)</label>
-            <input type="text" id="authSmbDomain" th:value="${settings.authSmbDomain()}"/>
-        </div>
-        <div class="field">
-            <label for="authRequiredGroup">Required Unix group (pam backend only, optional)</label>
-            <input type="text" id="authRequiredGroup" th:value="${settings.authRequiredGroup()}"/>
-        </div>
-        <div class="field">
-            <label for="authSmbRequiredShare">Required SMB share (smb backend only, optional)</label>
-            <input type="text" id="authSmbRequiredShare" th:value="${settings.authSmbRequiredShare()}"/>
-        </div>
+    <h2>QEMU</h2>
+    <div class="field">
+        <label for="qemuVncPortRangeStart">VNC port range start</label>
+        <input type="number" id="qemuVncPortRangeStart" th:value="${settings.qemuVncPortRangeStart()}"/>
+    </div>
+    <div class="field">
+        <label for="qemuVncPortRangeEnd">VNC port range end</label>
+        <input type="number" id="qemuVncPortRangeEnd" th:value="${settings.qemuVncPortRangeEnd()}"/>
+        <p class="hint">TCP ports on nspawnbr0's own address (10.100.0.1) that QEMU VMs' VNC
+            listeners are allocated from, one per VM. Must both be set (or both left blank to use
+            the default) and be 5900 or higher. Defaults to 5900-5999.</p>
+    </div>
+
+    <h2>Guacamole</h2>
+    <div class="field">
+        <label for="guacamoleBaseUrl">Base URL</label>
+        <input type="text" id="guacamoleBaseUrl" th:value="${settings.guacamoleBaseUrl()}"/>
+        <button type="button" id="guacamoleBaseUrl-refresh" class="btn-primary btn-refresh">Refresh hostname/port/protocol</button>
+    </div>
+    <div class="field">
+        <label for="guacamoleDataSource">Data source</label>
+        <input type="text" id="guacamoleDataSource" th:value="${settings.guacamoleDataSource()}"/>
+        <button type="button" id="guacamoleDataSource-refresh" class="btn-primary btn-refresh">Refresh from Guacamole config</button>
+        <p class="hint">Must match whatever your <code>guacamole-auth-jdbc</code> extension calls
+            itself in <code>guacamole.properties</code> (see the Guacamole section below) — shown
+            in red if it doesn't currently match. "Refresh" copies the detected value across.</p>
     </div>
 
     <button type="submit" class="btn-primary">Save</button>
+    <button type="button" id="download-report" class="btn-primary">Download settings report</button>
 </form>
 <p id="status" class="status-message"></p>
 
@@ -272,14 +288,15 @@
             &sect;6 "Enabling HTTPS" if you're using Let's Encrypt/Certbot.</p>
     </div>
     <button type="button" id="tomcat-save" class="btn-primary">Save</button>
+    <button type="button" id="restart-tomcat" class="btn-primary">Restart Tomcat</button>
+    <p id="restart-status" class="status-message"></p>
 </div>
-
-<p><button type="button" id="download-report" class="btn-primary">Download settings report</button></p>
-<p><button type="button" id="restart-tomcat" class="btn-primary">Restart Tomcat</button></p>
-<p id="restart-status" class="status-message"></p>
+</div>
+</div>
 
 <script th:src="@{/js/theme-toggle.js}"></script>
 <script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/password-toggle.js}"></script>
 <script th:src="@{/js/admin-settings.js}"></script>
 </body>
 </html>

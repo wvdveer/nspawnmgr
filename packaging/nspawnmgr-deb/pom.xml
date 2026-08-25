@@ -13,7 +13,7 @@
     -->
     <groupId>com.nspawnmgr</groupId>
     <artifactId>nspawnmgr-deb</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.2.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>nspawnmgr-deb</name>
     <description>Debian package for production nspawnmgr deployment</description>
@@ -21,11 +21,11 @@
     <properties>
         <jdeb.version>1.10</jdeb.version>
         <!-- Must match debian/control's Package/Version exactly. jdeb's default output filename
-             uses this MODULE's own Maven artifactId/version ("nspawnmgr-deb"/"0.1.0-SNAPSHOT"),
+             uses this MODULE's own Maven artifactId/version ("nspawnmgr-deb"/"0.2.0-SNAPSHOT"),
              not the control file's actual package identity — without this override, a local
-             build produces a confusingly-misnamed nspawnmgr-deb_0.1.0~SNAPSHOT_all.deb instead
+             build produces a confusingly-misnamed nspawnmgr-deb_0.2.0~SNAPSHOT_all.deb instead
              of the real installable package name. Bump both together when releasing a version. -->
-        <deb.output>${project.build.directory}/nspawnmgr_0.1.0_all.deb</deb.output>
+        <deb.output>${project.build.directory}/nspawnmgr_0.2.0_all.deb</deb.output>
         <nspawnmgr.war>${project.basedir}/../../target/nspawnmgr.war</nspawnmgr.war>
         <auth.war>${project.basedir}/../../auth/target/auth.war</auth.war>
         <root.war>${project.basedir}/../../root-wizard/target/ROOT.war</root.war>

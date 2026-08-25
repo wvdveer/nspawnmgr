@@ -7,60 +7,38 @@
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/}">
-<div th:replace="fragments/theme-toggle :: widget"></div>
-<h1>Package cache</h1>
-<p><a th:href="@{/}">&laquo; Back to containers</a></p>
+<div th:replace="~{fragments/app-shell :: shell(
+        title='Packages', subtitle='Upload and manage installable packages and ISO images',
+        activeNav='packages', currentUser=${currentUser},
+        addMenu=~{::#add-menu-items},
+        content=~{::#page-content})}">
+<div id="add-menu-items">
+    <a th:href="@{/admin/packages/new}">Add a package</a>
+</div>
+<div id="page-content">
 <p class="hint">Packages uploaded here can be installed by any owner onto a container using the
     matching package manager (see each container's own "Install package" section). No automatic
     dependency resolution — a missing dependency shows up as a visible error when installed, it's
     not fixed automatically. Choosing <strong>ISO</strong> as the package manager uploads a
     mountable ISO image instead — those show up under a container's "Removable media" section, to
     be mounted (not installed), one at a time, like a real CD drive.</p>
-<div class="card">
-    <h2>Upload a package</h2>
-    <form id="upload-form" class="card" enctype="multipart/form-data">
-        <div class="field">
-            <label for="packageManager">Package manager</label>
-            <select id="packageManager" name="packageManager">
-                <option th:each="pm : ${packageManagers}" th:value="${pm}" th:text="${pm}">package manager</option>
-            </select>
-        </div>
-        <div class="field">
-            <label for="file">File (.deb / .rpm / .iso / etc.)</label>
-            <input type="file" id="file" name="file" required/>
-        </div>
-        <div class="field">
-            <label for="description">Description</label>
-            <input type="text" id="description" name="description" placeholder="What is this package for?"/>
-        </div>
-        <button type="submit" class="btn-primary">Upload</button>
-    </form>
-    <p id="upload-status" class="status-message"></p>
+<div th:if="${#lists.isEmpty(packages)}" class="card" id="no-packages-card">
+    <p>No packages uploaded yet — use the + button above to add one.</p>
 </div>
-<table>
-    <thead>
-    <tr>
-        <th>Filename</th>
-        <th>Package manager</th>
-        <th>Description</th>
-        <th>Uploaded by</th>
-        <th>Size</th>
-        <th>Actions</th>
-    </tr>
-    </thead>
-    <tbody>
-    <tr th:each="p : ${packages}" th:attr="data-package-id=${p.id}">
-        <td th:text="${p.originalFilename}">filename</td>
-        <td th:text="${p.packageManager}">package manager</td>
-        <td th:text="${p.description}">description</td>
-        <td th:text="${p.uploadedBy.username}">uploaded by</td>
-        <td th:text="${p.sizeBytes}">size</td>
-        <td>
+<div class="machine-grid" th:unless="${#lists.isEmpty(packages)}">
+    <div class="machine-card" th:each="p : ${packages}" th:attr="data-package-id=${p.id}">
+        <div class="machine-card-header">
+            <span class="machine-card-name" th:text="${p.originalFilename}">filename</span>
+        </div>
+        <p class="machine-card-desc" th:if="${p.description != null and p.description != ''}" th:text="${p.description}">description</p>
+        <p class="machine-card-meta" th:text="${p.packageManager}">package manager</p>
+        <p class="machine-card-meta">Uploaded by <span th:text="${p.uploadedBy.username}">user</span> ·
+            <span th:text="${p.sizeBytes}">size</span> bytes</p>
+        <div class="machine-card-footer">
             <button class="btn-danger btn-delete" th:attr="data-package-id=${p.id}">Delete</button>
-        </td>
-    </tr>
-    </tbody>
-</table>
+        </div>
+    </div>
+</div>
 <div class="card">
     <h2>Transitive dependencies</h2>
     <p class="hint">Installing a package with unresolved dependencies (APT/DNF/PACMAN) pre-fetches
@@ -85,6 +63,8 @@
         </thead>
         <tbody id="auto-cache-tbody"></tbody>
     </table>
+</div>
+</div>
 </div>
 <script th:src="@{/js/theme-toggle.js}"></script>
 <script th:src="@{/js/dialog.js}"></script>

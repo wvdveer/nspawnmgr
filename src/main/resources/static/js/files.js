@@ -1,6 +1,7 @@
 const basePath = document.body.getAttribute('data-base-path').replace(/\/$/, '');
 const containerId = document.body.getAttribute('data-container-id');
-const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
+// Matches spring.servlet.multipart.max-file-size (application.yml) - keep both in sync.
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 * 1024;
 
 let currentPath = new URLSearchParams(window.location.search).get('path') || '';
 
@@ -107,7 +108,7 @@ async function loadDirectory(path) {
 
 async function uploadFile(file) {
     if (file.size > MAX_UPLOAD_BYTES) {
-        await window.appDialog.alert(`"${file.name}" is too large (${formatBytes(file.size)}). The upload limit is 200MB.`);
+        await window.appDialog.alert(`"${file.name}" is too large (${formatBytes(file.size)}). The upload limit is 10GB.`);
         return;
     }
     const formData = new FormData();

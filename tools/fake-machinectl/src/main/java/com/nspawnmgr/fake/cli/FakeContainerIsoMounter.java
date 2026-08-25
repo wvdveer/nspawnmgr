@@ -1,6 +1,7 @@
 package com.nspawnmgr.fake.cli;
 
 import com.nspawnmgr.cli.ContainerIsoMounter;
+import com.nspawnmgr.domain.ContainerBackend;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -23,13 +24,13 @@ public class FakeContainerIsoMounter implements ContainerIsoMounter {
     }
 
     @Override
-    public void mount(String machineName, String isoHostSourcePath) {
-        log("iso-mount " + machineName + " source=" + isoHostSourcePath);
+    public void mount(String machineName, ContainerBackend backend, String isoHostSourcePath) {
+        log(backend + " iso-mount " + machineName + " source=" + isoHostSourcePath);
     }
 
     @Override
-    public void unmount(String machineName) {
-        log("iso-unmount " + machineName);
+    public void unmount(String machineName, ContainerBackend backend) {
+        log(backend + " iso-unmount " + machineName);
     }
 
     private void log(String line) {

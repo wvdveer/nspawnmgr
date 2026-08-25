@@ -45,7 +45,7 @@ public class RealContainerReadinessChecker implements ContainerReadinessChecker 
 
     @Override
     public Readiness check(Container container, String privateKeyPem, String accountName, boolean checkRdp) {
-        String internalAddress = cliExecutor.getInternalAddress(container.getName());
+        String internalAddress = cliExecutor.getInternalAddress(container.getName(), container.getBackend());
         if (internalAddress.isEmpty()) {
             return new Readiness(false, false, null);
         }

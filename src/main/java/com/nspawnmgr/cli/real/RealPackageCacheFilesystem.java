@@ -10,6 +10,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
@@ -29,14 +31,30 @@ public class RealPackageCacheFilesystem implements PackageCacheFilesystem {
         this.ssh = ssh;
     }
 
+    // Loopback SSH (same host Tomcat runs on - see SshRemoteExecutor's own javadoc), so this is
+    // disk-to-disk + Base64 CPU overhead, not real network transfer time - 30 minutes is meant to
+    // be generous headroom for a large (multi-GB) file on a modest host, not a tuned real-world
+    // measurement.
+    private static final Duration UPLOAD_TIMEOUT = Duration.ofMinutes(30);
+
     @Override
-    public void upload(String targetPath, byte[] content) {
-        // Base64 rather than a raw byte passthrough - the SSH stdin channel this arrives over is a
-        // Java String (UTF-8 encoded), which would corrupt arbitrary binary content otherwise. The
-        // script decodes it back to raw bytes server-side (nspawnmgr-upload-package.sh).
-        String encoded = Base64.getEncoder().encodeToString(content);
-        CommandResult result = ssh.execNoPasswordSudo(Duration.ofMinutes(2),
-                List.of(wrapperScript("nspawnmgr-upload-package.sh"), targetPath), encoded);
+    public void upload(String targetPath, InputStream content) {
+        // Streams content -> Base64-encode -> stdin incrementally, never materializing the whole
+        // file (encoded or not) in memory - confirmed live, the previous byte[]-then-one-big-
+        // Base64-String approach caused a real OutOfMemoryError on a large real upload. Base64
+        // rather than a raw byte passthrough - the SSH stdin channel is fundamentally a byte stream
+        // the remote shell script reads, and the classic reason to Base64-wrap it is to survive a
+        // text-oriented hop; here the real reason is compatibility with
+        // SshRemoteExecutor's existing String-payload-oriented exec methods' own on-the-wire
+        // convention - the script decodes it back to raw bytes server-side, streaming the whole way
+        // (nspawnmgr-upload-package.sh's `base64 -d` never buffers its input either).
+        CommandResult result = ssh.execNoPasswordSudoStreamingStdin(UPLOAD_TIMEOUT,
+                List.of(wrapperScript("nspawnmgr-upload-package.sh"), targetPath),
+                stdin -> {
+                    try (OutputStream encoded = Base64.getEncoder().wrap(stdin)) {
+                        content.transferTo(encoded);
+                    }
+                });
         if (!result.success()) {
             throw new ContainerCliException("Failed to upload package to " + targetPath + ": " + result.stderr());
         }
@@ -57,6 +75,16 @@ public class RealPackageCacheFilesystem implements PackageCacheFilesystem {
                 List.of(wrapperScript("nspawnmgr-copy-into-container.sh"), sourcePath, destDir));
         if (!result.success()) {
             throw new ContainerCliException("Failed to copy " + sourcePath + " into " + destDir + ": " + result.stderr());
+        }
+    }
+
+    @Override
+    public void copyIntoPodmanContainer(String sourcePath, String containerName, String destPathInContainer) {
+        CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(30),
+                List.of("podman", "cp", sourcePath, containerName + ":" + destPathInContainer));
+        if (!result.success()) {
+            throw new ContainerCliException("Failed to copy " + sourcePath + " into " + containerName + ":"
+                    + destPathInContainer + ": " + result.stderr());
         }
     }
 

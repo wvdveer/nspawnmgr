@@ -27,10 +27,14 @@ spring:
     locations: classpath:db/migration/${DB_VENDOR:mysql}
   servlet:
     multipart:
-      # Spring Boot's own default (1MB/10MB) is too small for real .deb/.rpm uploads (the admin
-      # package-cache upload page) - a real package easily exceeds that.
-      max-file-size: 200MB
-      max-request-size: 200MB
+      # Spring Boot's own default (1MB/10MB) is far too small for real uploads on the admin
+      # package-cache page - a typical install ISO alone easily runs into multiple GB, well past
+      # the 200MB this was previously raised to for plain .deb/.rpm packages. A
+      # MaxUploadSizeExceededException past this limit is caught by MultipartSizeLimitFilter (see
+      # its own comment for why a plain @ExceptionHandler can't do this) rather than reaching the
+      # browser as an opaque error page.
+      max-file-size: 10GB
+      max-request-size: 10GB
 
 # Inert: every mode now deploys nspawnmgr.war into an external Tomcat (see
 # tools/scripts/start-dev-stack.sh / start-real-stack.sh), which ignores this and uses its own

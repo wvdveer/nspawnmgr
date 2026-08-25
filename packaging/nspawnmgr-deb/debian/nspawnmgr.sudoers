@@ -38,11 +38,20 @@ Cmnd_Alias NSPAWNMGR_NOPASSWD = /usr/bin/machinectl start *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-list-auto-cache.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-upload-package.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-delete-cached-package.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-download-package-start.sh *, \
+    /usr/bin/curl -sIL --max-time 8 *, \
+    /usr/bin/stat -c%s *, \
+    /usr/bin/systemctl show nspawnmgr-download-*.service --property=LoadState\,ActiveState\,ExecMainStatus, \
+    /usr/bin/systemctl stop nspawnmgr-download-*.service, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-copy-into-container.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-list-rootfs-dir.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-download-rootfs-file.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-upload-rootfs-file.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-diag-check-bridge.sh, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-diag-check-podman.sh, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-diag-check-qemu.sh, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-diag-check-podman-network.sh, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-diag-check-qemu-bridge.sh, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-reload-dnsmasq.sh, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-restart-dnsmasq.sh, \
     /usr/bin/systemctl is-active systemd-networkd, \
@@ -50,27 +59,64 @@ Cmnd_Alias NSPAWNMGR_NOPASSWD = /usr/bin/machinectl start *, \
     /usr/sbin/visudo -cf /etc/sudoers.d/nspawnmgr_exec, \
     /usr/sbin/ip -4 -o addr show scope global, \
     /usr/bin/systemd-run --machine=* --pipe --quiet --wait --unit=nspawnmgr-script-*.service /bin/sh -s, \
-    /usr/bin/systemctl --machine=* kill --signal=SIGKILL --kill-who=all nspawnmgr-script-*.service
+    /usr/bin/systemctl --machine=* kill --signal=SIGKILL --kill-who=all nspawnmgr-script-*.service, \
+    /usr/bin/podman start *, \
+    /usr/bin/podman stop *, \
+    /usr/bin/podman kill *, \
+    /usr/bin/podman restart *, \
+    /usr/bin/podman pause *, \
+    /usr/bin/podman unpause *, \
+    /usr/bin/podman rm *, \
+    /usr/bin/podman inspect *, \
+    /usr/bin/podman ps *, \
+    /usr/bin/podman mount *, \
+    /usr/bin/podman cp *, \
+    /usr/bin/podman exec -i * sh -s, \
+    /usr/bin/podman exec * sh -c kill*, \
+    /usr/bin/systemctl start nspawnmgr-qemu-*.service, \
+    /usr/bin/systemctl stop nspawnmgr-qemu-*.service, \
+    /usr/bin/systemctl restart nspawnmgr-qemu-*.service, \
+    /usr/bin/systemctl is-active nspawnmgr-qemu-*.service, \
+    /usr/bin/systemctl list-unit-files nspawnmgr-qemu-*.service --no-legend, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-qemu-write-unit.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-qemu-monitor-exec.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-get-qemu-internal-address.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-qemu-remove.sh *
 
 Cmnd_Alias NSPAWNMGR_PASSWORD = /usr/bin/systemd-run --machine=* --pipe --quiet --wait *, \
+    /usr/bin/podman exec -i * *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-clone-template.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-create-debian-template.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-create-fedora-template.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-create-arch-template.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-bootstrap-db-machine.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-pack-machine-as-template.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-podman-pull-template.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-podman-convert-nspawn-to-podman.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-podman-convert-podman-to-nspawn.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-podman-create-container.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-download-packages.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-simulate-install.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-download-packages-dnf.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-simulate-install-dnf.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-download-packages-pacman.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-simulate-install-pacman.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-install-podman.sh, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-install-qemu.sh, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-configure-qemu-bridge.sh, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-configure-podman-network.sh, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-qemu-create-disk.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-qemu-pack-disk-as-template.sh *, \
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-qemu-clone-template.sh *, \
     /usr/bin/systemctl enable --now systemd-networkd
 
 # Order matters: sudo grants access based on the LAST matching entry, and
 # NSPAWNMGR_PASSWORD's `systemd-run --machine=* --pipe --quiet --wait *` also matches the
 # `/bin/sh -s` tail covered by NSPAWNMGR_NOPASSWD's more specific entry - the NOPASSWD grant must
 # come second (last) or the broader password-required rule silently wins and every script run
-# would hang waiting on a password that never comes.
+# would hang waiting on a password that never comes. `podman exec -i * *` (PASSWORD) vs
+# `podman exec -i * sh -s` (NOPASSWD) is the identical pattern, one layer down: any owner-authored
+# ContainerScript run against a PODMAN container needs the same NOPASSWD carve-out the
+# systemd-run/script-unit pair already gets for SYSTEMD_NSPAWN.
 nspawnmgr_exec ALL=(root) NSPAWNMGR_PASSWORD
 nspawnmgr_exec ALL=(root) NOPASSWD: NSPAWNMGR_NOPASSWD

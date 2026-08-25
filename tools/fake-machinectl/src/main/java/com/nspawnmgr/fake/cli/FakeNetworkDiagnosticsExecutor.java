@@ -17,6 +17,13 @@ import org.springframework.stereotype.Component;
 public class FakeNetworkDiagnosticsExecutor implements NetworkDiagnosticsExecutor {
 
     private volatile boolean networkdActive = false;
+    // Both start "not installed" - matches a freshly-installed real host, same reasoning as
+    // networkdActive above, and lets the dev stack exercise the v0.2.0 podman/QEMU groundwork's
+    // full check -> fail -> fix loop too.
+    private volatile boolean podmanInstalled = false;
+    private volatile boolean qemuInstalled = false;
+    private volatile boolean qemuBridgeConfigured = false;
+    private volatile boolean podmanNetworkConfigured = false;
 
     @Override
     public CommandResult networkdStatus() {
@@ -41,8 +48,9 @@ public class FakeNetworkDiagnosticsExecutor implements NetworkDiagnosticsExecuto
     }
 
     @Override
-    public void enableNetworkd(char[] sudoPassword) {
+    public CommandResult enableNetworkd(char[] sudoPassword) {
         networkdActive = true;
+        return new CommandResult(0, "Created symlink /etc/systemd/system/multi-user.target.wants/systemd-networkd.service.\n", "");
     }
 
     // Always "ok" - the shared bridge is created unconditionally by postinst now (nothing
@@ -51,5 +59,49 @@ public class FakeNetworkDiagnosticsExecutor implements NetworkDiagnosticsExecuto
     @Override
     public CommandResult checkBridge() {
         return new CommandResult(0, "ok\n", "");
+    }
+
+    @Override
+    public CommandResult checkPodman() {
+        return new CommandResult(0, podmanInstalled ? "ok\n" : "missing\n", "");
+    }
+
+    @Override
+    public CommandResult checkQemu() {
+        return new CommandResult(0, qemuInstalled ? "ok\n" : "missing\n", "");
+    }
+
+    @Override
+    public CommandResult installPodman(char[] sudoPassword) {
+        podmanInstalled = true;
+        return new CommandResult(0, "Reading package lists...\nBuilding dependency tree...\nSetting up podman...\n", "");
+    }
+
+    @Override
+    public CommandResult installQemu(char[] sudoPassword) {
+        qemuInstalled = true;
+        return new CommandResult(0, "Reading package lists...\nBuilding dependency tree...\nSetting up qemu-system-x86...\nSetting up qemu-utils...\n", "");
+    }
+
+    @Override
+    public CommandResult checkPodmanNetwork() {
+        return new CommandResult(0, podmanNetworkConfigured ? "ok\n" : "missing\n", "");
+    }
+
+    @Override
+    public CommandResult configurePodmanNetwork(char[] sudoPassword) {
+        podmanNetworkConfigured = true;
+        return new CommandResult(0, "nspawnbr0\n", "");
+    }
+
+    @Override
+    public CommandResult checkQemuBridge() {
+        return new CommandResult(0, qemuBridgeConfigured ? "ok\n" : "missing\n", "");
+    }
+
+    @Override
+    public CommandResult configureQemuBridge(char[] sudoPassword) {
+        qemuBridgeConfigured = true;
+        return new CommandResult(0, "/etc/qemu/bridge.conf now contains:\nallow nspawnbr0\n", "");
     }
 }

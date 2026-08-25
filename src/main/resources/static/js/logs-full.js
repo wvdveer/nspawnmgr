@@ -4,7 +4,7 @@ const selectedFile = new URLSearchParams(window.location.search).get('file');
 
 async function loadMainContent() {
     const content = document.getElementById('log-content');
-    const title = document.getElementById('log-title');
+    const title = document.getElementById('shell-title');
     const downloadLink = document.getElementById('btn-download');
     let url;
     if (selectedFile) {

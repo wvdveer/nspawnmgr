@@ -39,6 +39,16 @@ public class Container {
     @Column(nullable = false)
     private ContainerKind kind = ContainerKind.MANAGED;
 
+    /** Which container/VM technology this MANAGED container actually runs under - mirrors {@link
+     *  Template#getBackend()}, but tracked here too since {@link #template} is null for a
+     *  discovered/ad-hoc container (same "admin-supplied fallback for when template is null"
+     *  reasoning as {@link #packageManager}). Meaningless for EXTERNAL hosts (always defaults to
+     *  SYSTEMD_NSPAWN, same harmless-default convention as other MANAGED-only fields like {@link
+     *  #outboundEnabled}). */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ContainerBackend backend = ContainerBackend.SYSTEMD_NSPAWN;
+
     /** Only set for MANAGED containers — EXTERNAL hosts aren't cloned from a template. */
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "template_id", nullable = true)
@@ -64,6 +74,20 @@ public class Container {
 
     @Column(length = 500)
     private String description;
+
+    /**
+     * PODMAN only: the command run as the pod's PID 1 - like a Dockerfile {@code CMD}, run through a
+     * shell (see nspawnmgr-podman-create-container.sh). Null/blank means "trust whatever CMD is
+     * already baked into the loaded image" - confirmed live (yoga, 2026-08-16) that this is a real
+     * footgun: a pod whose image's own default CMD is a bare interactive shell (no TTY attached,
+     * since podman create/start here never runs interactively) exits within milliseconds of
+     * starting, landing on podman's own "Exited" state that nspawnmgr never notices (see
+     * PodLivenessPollingService) - editable after creation (pod-detail.html), but only takes effect
+     * on the next full recreate (podman's own command is baked in at create time, not something
+     * `podman start` can change) - see ProvisioningService#updatePodCommand.
+     */
+    @Column(name = "pod_command", length = 1000)
+    private String podCommand;
 
     /** EXTERNAL only: the target port on the external host itself — not unique (e.g. many hosts use 22). */
     @Column(name = "external_ssh_port")
@@ -154,6 +178,47 @@ public class Container {
     @Column(name = "internal_address")
     private String internalAddress;
 
+    /**
+     * QEMU only: the TCP port on nspawnbr0's own gateway address (10.100.0.1) QEMU's own hypervisor
+     * VNC listener binds to - allocated once at creation (see ProvisioningService#allocateQemuVncPort)
+     * from the admin-configured range (SettingsService#qemuVncPortRangeStart/End) and reused for the
+     * VM's whole lifetime. Unlike nspawn/podman VNC (a service *inside* the container, differentiated
+     * by address, always port 5900), QEMU's VNC server is a host-side process listener - multiple VMs
+     * share one address and need distinct ports instead.
+     */
+    @Column(name = "qemu_vnc_port")
+    private Integer qemuVncPort;
+
+    /** QEMU only: the disk size (GB) requested at creation - a one-time {@code qemu-img create}
+     *  input, persisted only so admin-approval mode (see ProvisioningService#requiresApproval) has
+     *  it available when provisioning is later kicked off from just a container id. Meaningless once
+     *  the disk actually exists. */
+    @Column(name = "qemu_disk_size_gb")
+    private Integer qemuDiskSizeGb;
+
+    /** QEMU only: launch hardware chosen at creation (New QEMU page), baked into the VM's systemd
+     *  unit by {@link com.nspawnmgr.cli.ContainerFilesystemProvisioner#writeQemuUnit} - not editable
+     *  afterward, same posture as {@link #qemuDiskSizeGb}. Null (a pre-this-feature QEMU VM, or a
+     *  never-provisioned one) means "use the previous hardcoded defaults" - see that method's own
+     *  javadoc and nspawnmgr-qemu-write-unit.sh. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "qemu_cpu_model")
+    private QemuCpuModel qemuCpuModel;
+
+    @Column(name = "qemu_cpu_count")
+    private Integer qemuCpuCount;
+
+    @Column(name = "qemu_memory_mb")
+    private Integer qemuMemoryMb;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "qemu_nic_model")
+    private QemuNicModel qemuNicModel;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "qemu_pointer_device")
+    private QemuPointerDevice qemuPointerDevice;
+
     @Column(name = "guac_ssh_connection_id")
     private String guacSshConnectionId;
 
@@ -177,6 +242,7 @@ public class Container {
         this.owner = owner;
         this.kind = ContainerKind.MANAGED;
         this.template = template;
+        this.backend = template.getBackend();
         this.rdpEnabled = rdpEnabled;
         this.description = description;
         Instant now = Instant.now();
@@ -203,14 +269,37 @@ public class Container {
      * nspawnmgr's own provisioning — {@code template} stays null (unknown), {@code rdpEnabled}
      * stays false (no signal to guess from), and no SSH/RDP credentials or Guacamole connections
      * exist yet. Caller is responsible for setting the real {@code state} (and {@code
-     * internalAddress} if running) right after construction.
+     * internalAddress} if running) right after construction. {@code backend} comes from which
+     * discovery pass found it (machinectl vs podman) - see ContainerDiscoveryService.
      */
-    public static Container discovered(String name, User owner) {
+    public static Container discovered(String name, User owner, ContainerBackend backend) {
         Container container = new Container();
         container.name = name;
         container.owner = owner;
         container.kind = ContainerKind.MANAGED;
+        container.backend = backend;
         container.rdpEnabled = false;
+        container.outboundEnabled = true;
+        Instant now = Instant.now();
+        container.createdAt = now;
+        container.updatedAt = now;
+        return container;
+    }
+
+    /**
+     * A from-scratch QEMU VM (name/disk/ISO chosen directly on the New QEMU page) - unlike every
+     * other MANAGED container, there's no {@link Template} to derive {@link #backend} from at all
+     * (QEMU v1 is from-scratch + ISO only), so this mirrors {@link #discovered} rather than the
+     * Template-taking constructor.
+     */
+    public static Container qemu(String name, User owner, String description) {
+        Container container = new Container();
+        container.name = name;
+        container.owner = owner;
+        container.kind = ContainerKind.MANAGED;
+        container.backend = ContainerBackend.QEMU;
+        container.rdpEnabled = false;
+        container.description = description;
         container.outboundEnabled = true;
         Instant now = Instant.now();
         container.createdAt = now;

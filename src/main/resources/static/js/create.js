@@ -16,14 +16,14 @@ function syncDesktopManagerEnabled() {
 rdpEnabledCheckbox.addEventListener('change', syncDesktopManagerEnabled);
 vncEnabledCheckbox.addEventListener('change', syncDesktopManagerEnabled);
 
-// Flows from the selected template's own "RDP capable" flag (set on the Templates admin page) -
-// not a hardcoded package-manager check here, so an admin controls this per-template. Confirmed
-// live: arch-minimal defaults it to false, since xrdp/xorgxrdp were dropped from Arch's official
+// Flows from the selected template's own "RDP" state (set on the Templates admin page) - not a
+// hardcoded package-manager check here, so an admin controls this per-template. Confirmed live:
+// arch-minimal defaults it to NOT_CAPABLE, since xrdp/xorgxrdp were dropped from Arch's official
 // repos entirely (AUR-only now, which this app has no way to build from) - offering the checkbox
 // for it just led to a confusing pacman "target not found" failure partway through creation.
 function syncRdpAvailability() {
     const selected = templateIdSelect.selectedOptions[0];
-    const rdpCapable = selected ? selected.getAttribute('data-rdp-capable') === 'true' : true;
+    const rdpCapable = selected ? selected.getAttribute('data-rdp-state') !== 'NOT_CAPABLE' : true;
     rdpEnabledCheckbox.disabled = !rdpCapable;
     rdpUnavailableHint.style.display = rdpCapable ? 'none' : '';
     if (!rdpCapable && rdpEnabledCheckbox.checked) {

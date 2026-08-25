@@ -98,6 +98,71 @@ class SettingsServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void qemuVncPortRangeFallsBackToDefaultWhenNoOverrideSet() {
+        assertThat(service.qemuVncPortRangeStart()).isEqualTo(5900);
+        assertThat(service.qemuVncPortRangeEnd()).isEqualTo(5999);
+    }
+
+    @Test
+    void acceptsAValidQemuVncPortRange() {
+        User admin = new User("admin-external-id");
+        admin.setId(1L);
+
+        AppSettings saved = service.update(updateWithQemuVncPortRange(6000, 6099), admin);
+
+        assertThat(saved.getQemuVncPortRangeStart()).isEqualTo(6000);
+        assertThat(saved.getQemuVncPortRangeEnd()).isEqualTo(6099);
+        assertThat(service.qemuVncPortRangeStart()).isEqualTo(6000);
+        assertThat(service.qemuVncPortRangeEnd()).isEqualTo(6099);
+    }
+
+    @Test
+    void rejectsAQemuVncPortRangeBelow5900() {
+        User admin = new User("admin-external-id");
+        admin.setId(1L);
+
+        assertThatThrownBy(() -> service.update(updateWithQemuVncPortRange(5000, 5099), admin))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("5900");
+    }
+
+    @Test
+    void rejectsAQemuVncPortRangeWhereStartIsAfterEnd() {
+        User admin = new User("admin-external-id");
+        admin.setId(1L);
+
+        assertThatThrownBy(() -> service.update(updateWithQemuVncPortRange(6099, 6000), admin))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("start must not be after end");
+    }
+
+    @Test
+    void rejectsAQemuVncPortRangeWithOnlyOneEndSet() {
+        User admin = new User("admin-external-id");
+        admin.setId(1L);
+
+        assertThatThrownBy(() -> service.update(updateWithQemuVncPortRange(6000, null), admin))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("both start and end");
+    }
+
+    private static SettingsService.SettingsUpdate updateWithQemuVncPortRange(Integer start, Integer end) {
+        return new SettingsService.SettingsUpdate(
+                null, null, null,
+                null, null, null,
+                null, null, null,
+                null, null, null,
+                null, null,
+                null, null, null,
+                null, null,
+                null, null, null, null,
+                null, null, null,
+                null, null, null,
+                null, null, null,
+                null, start, end);
+    }
+
     private static SettingsService.SettingsUpdate updateWithDns(String dnsUpstreamServers) {
         return new SettingsService.SettingsUpdate(
                 null, null, null,
@@ -111,6 +176,6 @@ class SettingsServiceTest {
                 null, null, null,
                 null, null, null,
                 null, null, null,
-                dnsUpstreamServers);
+                dnsUpstreamServers, null, null);
     }
 }

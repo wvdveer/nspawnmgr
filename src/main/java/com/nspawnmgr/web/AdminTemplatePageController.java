@@ -5,6 +5,9 @@ import com.nspawnmgr.domain.MinimalTemplateFlavor;
 import com.nspawnmgr.domain.PackageManager;
 import com.nspawnmgr.domain.PrivateUsersMode;
 import com.nspawnmgr.domain.Template;
+import com.nspawnmgr.domain.TemplateFeatureState;
+import com.nspawnmgr.security.CurrentUserProvider;
+import com.nspawnmgr.service.NetworkDiagnosticsService;
 import com.nspawnmgr.service.SettingsService;
 import com.nspawnmgr.service.TemplateService;
 import org.springframework.stereotype.Controller;
@@ -21,10 +24,16 @@ public class AdminTemplatePageController {
 
     private final TemplateService templateService;
     private final SettingsService settingsService;
+    private final NetworkDiagnosticsService networkDiagnosticsService;
+    private final CurrentUserProvider currentUserProvider;
 
-    public AdminTemplatePageController(TemplateService templateService, SettingsService settingsService) {
+    public AdminTemplatePageController(TemplateService templateService, SettingsService settingsService,
+                                        NetworkDiagnosticsService networkDiagnosticsService,
+                                        CurrentUserProvider currentUserProvider) {
         this.templateService = templateService;
         this.settingsService = settingsService;
+        this.networkDiagnosticsService = networkDiagnosticsService;
+        this.currentUserProvider = currentUserProvider;
     }
 
     @GetMapping("/admin/templates")
@@ -35,7 +44,24 @@ public class AdminTemplatePageController {
         model.addAttribute("minimalFlavors", MinimalTemplateFlavor.values());
         Set<String> existingNames = templates.stream().map(Template::getName).collect(Collectors.toSet());
         model.addAttribute("existingTemplateNames", existingNames);
+        model.addAttribute("podmanInstalled", networkDiagnosticsService.isPodmanInstalled());
+        model.addAttribute("currentUser", currentUserProvider.get());
         return "admin/templates";
+    }
+
+    // Also supplies every field the form fragment in admin/template-form.html needs
+    // (~{admin/template-form :: formCard}) - the Edit page used to be a separate route/view, now
+    // merged directly onto this one under its own "Manage" panel.
+    @GetMapping("/admin/templates/{id}")
+    public String detail(@PathVariable Long id, Model model) {
+        model.addAttribute("template", templateService.getById(id));
+        model.addAttribute("sudoApprovalRequired", settingsService.sshApprovalRequired());
+        model.addAttribute("packageManagers", PackageManager.forTemplates());
+        model.addAttribute("backends", ContainerBackend.values());
+        model.addAttribute("privateUsersModes", PrivateUsersMode.values());
+        model.addAttribute("templateFeatureStates", TemplateFeatureState.values());
+        model.addAttribute("currentUser", currentUserProvider.get());
+        return "admin/template-detail";
     }
 
     @GetMapping("/admin/templates/new")
@@ -43,15 +69,8 @@ public class AdminTemplatePageController {
         model.addAttribute("packageManagers", PackageManager.forTemplates());
         model.addAttribute("backends", ContainerBackend.values());
         model.addAttribute("privateUsersModes", PrivateUsersMode.values());
-        return "admin/template-form";
-    }
-
-    @GetMapping("/admin/templates/{id}/edit")
-    public String editForm(@PathVariable Long id, Model model) {
-        model.addAttribute("template", templateService.getById(id));
-        model.addAttribute("packageManagers", PackageManager.forTemplates());
-        model.addAttribute("backends", ContainerBackend.values());
-        model.addAttribute("privateUsersModes", PrivateUsersMode.values());
+        model.addAttribute("templateFeatureStates", TemplateFeatureState.values());
+        model.addAttribute("currentUser", currentUserProvider.get());
         return "admin/template-form";
     }
 }

@@ -59,12 +59,12 @@ class PamCredentialAuthServiceTest {
         cliExecutor = mock(ContainerCliExecutor.class);
         guacamoleAdminClient = mock(GuacamoleAdminClient.class);
         secretEncryptionService = mock(SecretEncryptionService.class);
-        when(cliExecutor.runScript(anyString(), anyString(), any(Duration.class))).thenReturn(new ScriptRunResult(0, List.of()));
+        when(cliExecutor.runScript(anyString(), any(), anyString(), any(Duration.class))).thenReturn(new ScriptRunResult(0, List.of()));
         when(outboundAllowlistRepository.findByContainer(any())).thenReturn(List.of());
         // "" (never null - see ContainerCliExecutor#getInternalAddress's own javadoc) means most
         // tests that don't care about RDP connection reconciliation get a harmless no-op there;
         // tests that DO care override this explicitly.
-        when(cliExecutor.getInternalAddress(anyString())).thenReturn("");
+        when(cliExecutor.getInternalAddress(anyString(), any())).thenReturn("");
         PamAuthProperties properties = new PamAuthProperties("http://10.100.0.1:8080/nspawnmgr");
         service = new PamCredentialAuthService(containerRepository, pamServiceRepository, credentialRepository,
                 outboundAllowlistRepository, cliExecutor, guacamoleAdminClient, secretEncryptionService, properties);
@@ -97,7 +97,7 @@ class PamCredentialAuthServiceTest {
         verify(pamServiceRepository, times(2)).save(captor.capture());
         assertThat(captor.getAllValues().stream().map(ContainerPamService::getServiceName))
                 .containsExactlyInAnyOrder(PamServiceCatalog.XRDP_SESMAN, PamServiceCatalog.SSHD);
-        verify(cliExecutor).runScript(eq("hand-built-1"), anyString(), any(Duration.class));
+        verify(cliExecutor).runScript(eq("hand-built-1"), any(), anyString(), any(Duration.class));
     }
 
     @Test
@@ -128,7 +128,7 @@ class PamCredentialAuthServiceTest {
 
         service.updateSettings(container, PamAuthSource.RDP_PASSWORD, Set.of(PamServiceCatalog.XRDP_SESMAN));
 
-        verify(cliExecutor, never()).runScript(any(), any(), any());
+        verify(cliExecutor, never()).runScript(any(), any(), any(), any());
     }
 
     @Test
@@ -166,7 +166,7 @@ class PamCredentialAuthServiceTest {
         verify(pamServiceRepository, never()).save(any());
         // No services enabled - applies live (empty config is still a real state to push, e.g.
         // clearing a previous config) but never touches the outbound allowlist.
-        verify(cliExecutor).runScript(any(), any(), any());
+        verify(cliExecutor).runScript(any(), any(), any(), any());
         verify(outboundAllowlistRepository, never()).save(any());
     }
 
@@ -180,7 +180,7 @@ class PamCredentialAuthServiceTest {
         ArgumentCaptor<ContainerPamService> captor = ArgumentCaptor.forClass(ContainerPamService.class);
         verify(pamServiceRepository).save(captor.capture());
         assertThat(captor.getValue().getServiceName()).isEqualTo(PamServiceCatalog.XRDP_SESMAN);
-        verify(cliExecutor).runScript(eq("hand-built-1"), anyString(), any(Duration.class));
+        verify(cliExecutor).runScript(eq("hand-built-1"), any(), anyString(), any(Duration.class));
     }
 
     @Test
@@ -201,7 +201,7 @@ class PamCredentialAuthServiceTest {
         assertThat(container.getPamAuthSource()).isEqualTo(PamAuthSource.NSPAWNMGR_AUTH_BACKEND);
         verify(pamServiceRepository, never()).save(any());
         verify(containerRepository, never()).save(any());
-        verify(cliExecutor, never()).runScript(any(), any(), any());
+        verify(cliExecutor, never()).runScript(any(), any(), any(), any());
     }
 
     @Test
@@ -234,7 +234,7 @@ class PamCredentialAuthServiceTest {
 
         service.reapplyIfConfigured(container);
 
-        verify(cliExecutor, never()).runScript(any(), any(), any());
+        verify(cliExecutor, never()).runScript(any(), any(), any(), any());
     }
 
     @Test
@@ -245,7 +245,7 @@ class PamCredentialAuthServiceTest {
 
         service.reapplyIfConfigured(container);
 
-        verify(cliExecutor).runScript(eq("hand-built-1"), anyString(), any(Duration.class));
+        verify(cliExecutor).runScript(eq("hand-built-1"), any(), anyString(), any(Duration.class));
     }
 
     @Test
@@ -282,7 +282,7 @@ class PamCredentialAuthServiceTest {
         service.updateSettings(container, PamAuthSource.RDP_PASSWORD, Set.of(PamServiceCatalog.XRDP_SESMAN));
 
         ArgumentCaptor<String> scriptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(cliExecutor).runScript(eq("hand-built-1"), scriptCaptor.capture(), any(Duration.class));
+        verify(cliExecutor).runScript(eq("hand-built-1"), any(), scriptCaptor.capture(), any(Duration.class));
         assertThat(scriptCaptor.getValue())
                 .contains("account [success=done default=die] pam_permit.so")
                 .contains("auth [success=done default=die] pam_exec.so");
@@ -299,7 +299,7 @@ class PamCredentialAuthServiceTest {
         // match whatever xrdp-sesman is actually configured to check.
         Container container = runningContainer();
         container.setGuacRdpConnectionId("conn-rdp");
-        when(cliExecutor.getInternalAddress("hand-built-1")).thenReturn("10.100.0.42");
+        when(cliExecutor.getInternalAddress(eq("hand-built-1"), any())).thenReturn("10.100.0.42");
         // reconcileRdpConnectionCredentials re-reads the persisted rows rather than trusting the
         // just-passed set - stub the post-save state it'll see (same pattern as
         // applyAlsoOverridesTheAccountPhaseWithPamPermit above).
@@ -317,7 +317,7 @@ class PamCredentialAuthServiceTest {
     void switchingRdpCheckToVncPasswordPointsTheConnectionAtTheVncCredential() {
         Container container = runningContainer();
         container.setGuacRdpConnectionId("conn-rdp");
-        when(cliExecutor.getInternalAddress("hand-built-1")).thenReturn("10.100.0.42");
+        when(cliExecutor.getInternalAddress(eq("hand-built-1"), any())).thenReturn("10.100.0.42");
         when(pamServiceRepository.findByContainer(container))
                 .thenReturn(List.of(new ContainerPamService(container, PamServiceCatalog.XRDP_SESMAN)));
         ContainerCredential vncCredential = new ContainerCredential();
@@ -340,7 +340,7 @@ class PamCredentialAuthServiceTest {
         Container container = runningContainer();
         container.setGuacRdpConnectionId("conn-rdp");
         container.setPamAuthSource(PamAuthSource.NSPAWNMGR_AUTH_BACKEND);
-        when(cliExecutor.getInternalAddress("hand-built-1")).thenReturn("10.100.0.42");
+        when(cliExecutor.getInternalAddress(eq("hand-built-1"), any())).thenReturn("10.100.0.42");
         // Persisted state has sshd only - xrdp-sesman was just unticked. Stubbed explicitly (not
         // left as Mockito's empty-list default) so this test genuinely exercises the "off" branch
         // rather than passing by coincidence of an unstubbed call.
@@ -363,7 +363,7 @@ class PamCredentialAuthServiceTest {
     void skipsRdpConnectionReconciliationWhenNoInternalAddressYet() {
         Container container = runningContainer();
         container.setGuacRdpConnectionId("conn-rdp");
-        when(cliExecutor.getInternalAddress("hand-built-1")).thenReturn("");
+        when(cliExecutor.getInternalAddress(eq("hand-built-1"), any())).thenReturn("");
         when(credentialRepository.findByContainerAndType(container, CredentialType.RDP_PASSWORD))
                 .thenReturn(Optional.of(new ContainerCredential()));
 
@@ -377,7 +377,7 @@ class PamCredentialAuthServiceTest {
     void skipsRdpConnectionReconciliationWhenContainerHasNoRdpConnection() {
         Container container = runningContainer();
         // No setGuacRdpConnectionId call - stays null, e.g. RDP was never enabled on this container.
-        when(cliExecutor.getInternalAddress("hand-built-1")).thenReturn("10.100.0.42");
+        when(cliExecutor.getInternalAddress(eq("hand-built-1"), any())).thenReturn("10.100.0.42");
         when(credentialRepository.findByContainerAndType(container, CredentialType.RDP_PASSWORD))
                 .thenReturn(Optional.of(new ContainerCredential()));
 

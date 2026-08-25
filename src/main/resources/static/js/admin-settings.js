@@ -1,5 +1,7 @@
 const basePath = document.body.getAttribute('data-base-path').replace(/\/$/, '');
 
+attachPasswordToggle(document.getElementById('sshPassword'));
+
 function intOrNull(id) {
     const value = document.getElementById(id).value;
     return value === '' ? null : parseInt(value, 10);
@@ -46,6 +48,8 @@ document.getElementById('settings-form').addEventListener('submit', async (event
         nspawnSettingsDir: textOrNull('nspawnSettingsDir'),
         nspawnPrivilegedScriptsDir: textOrNull('nspawnPrivilegedScriptsDir'),
         dnsUpstreamServers: textOrNull('dnsUpstreamServers'),
+        qemuVncPortRangeStart: intOrNull('qemuVncPortRangeStart'),
+        qemuVncPortRangeEnd: intOrNull('qemuVncPortRangeEnd'),
     };
     if (document.getElementById('authBackend')) {
         body.authBackend = textOrNull('authBackend');
@@ -193,10 +197,19 @@ function updateSchemaScriptsDirectoryDefault(dbType) {
     }
 }
 
+// Guacamole/database field groups are rendered as HTML strings (renderGuacField), so any
+// PASSWORD-type field among them needs its toggle attached after insertion, not at page load
+// like the static sshPassword field above.
+function attachPasswordTogglesWithin(container) {
+    container.querySelectorAll('input[type="password"]').forEach(attachPasswordToggle);
+}
+
 function renderGuacamoleDbFields() {
     const dbType = document.getElementById('guacamoleDatabaseType').value;
     const groups = dbType === 'postgresql' ? guacamoleConfig.postgresqlGroups : guacamoleConfig.mysqlGroups;
-    document.getElementById('guacamole-db-fields').innerHTML = renderGuacGroups(groups, guacamoleConfig.values);
+    const container = document.getElementById('guacamole-db-fields');
+    container.innerHTML = renderGuacGroups(groups, guacamoleConfig.values);
+    attachPasswordTogglesWithin(container);
     updateSchemaScriptsDirectoryDefault(dbType);
 }
 
@@ -211,8 +224,9 @@ async function loadGuacamoleConfig() {
     status.textContent = guacamoleConfig.fileExists
         ? `Existing file found at ${guacamoleConfig.path}, last modified ${guacamoleConfig.lastModified}.`
         : `No file found yet at ${guacamoleConfig.path} — it will be created on first save.`;
-    document.getElementById('guacamole-guacd-fields').innerHTML =
-        renderGuacGroups(guacamoleConfig.guacdGroups, guacamoleConfig.values);
+    const guacdFields = document.getElementById('guacamole-guacd-fields');
+    guacdFields.innerHTML = renderGuacGroups(guacamoleConfig.guacdGroups, guacamoleConfig.values);
+    attachPasswordTogglesWithin(guacdFields);
     document.getElementById('guacamoleDatabaseType').value = guacamoleConfig.databaseType;
     renderGuacamoleDbFields();
     updateDataSourceMismatchState();

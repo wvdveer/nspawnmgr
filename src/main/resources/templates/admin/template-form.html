@@ -7,9 +7,18 @@
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/},data-template-id=${template != null ? template.id : ''}">
-<div th:replace="fragments/theme-toggle :: widget"></div>
-<h1 th:text="${template != null} ? 'Edit template' : 'New template'">Template</h1>
+<div th:replace="~{fragments/app-shell :: shell(
+        title=${template != null ? 'Edit template' : 'New template'}, subtitle=null,
+        activeNav='templates', currentUser=${currentUser}, addMenu=null,
+        content=~{::#page-content})}">
+<div id="page-content">
 <p><a th:href="@{/admin/templates}">&laquo; Back to templates</a></p>
+<!-- Reused as-is by admin/template-detail.html (~{admin/template-form :: formCard}) - the Edit
+     page used to be this file rendered standalone for an existing template; now this fragment is
+     inserted directly under that page's own "Manage" panel instead. Relies on the calling page's
+     model already having template/backends/packageManagers/templateFeatureStates/privateUsersModes
+     (both AdminTemplatePageController#detail and #newForm supply them), not fragment parameters. -->
+<div th:fragment="formCard">
 <form id="template-form" class="card">
     <div class="field">
         <label for="name">Name</label>
@@ -33,10 +42,12 @@
         <datalist id="sourcePathOptions"></datalist>
     </div>
     <div class="field">
-        <label for="packageManager">Package manager</label>
+        <label for="packageManager">Package manager (none = no way to install SSH/RDP/VNC/desktop
+            packages via this template - the options below that need one are disabled)</label>
         <select id="packageManager" name="packageManager">
             <option th:each="pm : ${packageManagers}" th:value="${pm}" th:text="${pm}"
                     th:selected="${template != null and template.packageManager == pm}">package manager</option>
+            <option value="" th:selected="${template != null and template.packageManager == null}">(none)</option>
         </select>
     </div>
     <div class="field">
@@ -51,12 +62,15 @@
         <input type="text" id="sshPreDownloadPackages" name="sshPreDownloadPackages"
                th:value="${template != null ? template.sshPreDownloadPackages : ''}"/>
     </div>
-    <div class="field field-inline">
-        <input type="checkbox" id="sshPreinstalled" name="sshPreinstalled"
-               th:checked="${template != null and template.sshPreinstalled}"/>
-        <label for="sshPreinstalled">SSH preinstalled (the template's own image already has
-            openssh installed and enabled - skips the redundant install/enable step when a
-            container is created from it)</label>
+    <div class="field">
+        <label for="sshState">SSH</label>
+        <select id="sshState" name="sshState">
+            <option th:each="s : ${templateFeatureStates}" th:value="${s}" th:text="${s.label()}"
+                    th:selected="${template != null ? template.sshState == s : s.name() == 'CAPABLE'}">state</option>
+        </select>
+        <p class="hint">Preinstalled: the template's own image already has openssh installed and
+            enabled - skips the redundant install/enable step when a container is created from it.
+            Not capable: there's no way to install it via this template (e.g. no package manager).</p>
     </div>
     <div class="field">
         <label for="installXrdpCommand">Install-XRDP command override (blank = package-manager default)</label>
@@ -68,10 +82,12 @@
         <input type="text" id="xrdpPreDownloadPackages" name="xrdpPreDownloadPackages"
                th:value="${template != null ? template.xrdpPreDownloadPackages : ''}"/>
     </div>
-    <div class="field field-inline">
-        <input type="checkbox" id="rdpCapable" name="rdpCapable"
-               th:checked="${template == null or template.rdpCapable}"/>
-        <label for="rdpCapable">RDP capable</label>
+    <div class="field">
+        <label for="rdpState">RDP</label>
+        <select id="rdpState" name="rdpState">
+            <option th:each="s : ${templateFeatureStates}" th:value="${s}" th:text="${s.label()}"
+                    th:selected="${template != null ? template.rdpState == s : s.name() == 'CAPABLE'}">state</option>
+        </select>
     </div>
     <div class="field">
         <label for="installVncCommand">Install-VNC command override (blank = package-manager default)</label>
@@ -83,10 +99,12 @@
         <input type="text" id="vncPreDownloadPackages" name="vncPreDownloadPackages"
                th:value="${template != null ? template.vncPreDownloadPackages : ''}"/>
     </div>
-    <div class="field field-inline">
-        <input type="checkbox" id="vncCapable" name="vncCapable"
-               th:checked="${template == null or template.vncCapable}"/>
-        <label for="vncCapable">VNC capable</label>
+    <div class="field">
+        <label for="vncState">VNC</label>
+        <select id="vncState" name="vncState">
+            <option th:each="s : ${templateFeatureStates}" th:value="${s}" th:text="${s.label()}"
+                    th:selected="${template != null ? template.vncState == s : s.name() == 'CAPABLE'}">state</option>
+        </select>
     </div>
     <div class="field">
         <label for="vncXstartupTemplate">VNC xstartup session command (blank = default)</label>
@@ -157,6 +175,9 @@
     <button type="submit" class="btn-primary">Save</button>
 </form>
 <p id="status" class="status-message"></p>
+</div>
+</div>
+</div>
 <script th:src="@{/js/theme-toggle.js}"></script>
 <script th:src="@{/js/admin-template-form.js}"></script>
 </body>

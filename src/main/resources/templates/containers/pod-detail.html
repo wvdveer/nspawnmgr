@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="'nspawnmgr — ' + ${container.name}">pod</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:data-container-id="${container.id}" th:data-container-name="${container.name}"
+      th:data-is-owner="${container.owner.id == currentUser.id}"
+      th:data-container-state="${container.state}" th:attr="data-base-path=@{/}">
+<div th:replace="~{fragments/app-shell :: shell(
+        title=${container.name}, subtitle='Pod (podman)',
+        activeNav='machines', currentUser=${currentUser}, addMenu=null,
+        content=~{::#page-content})}">
+<div id="page-content">
+<p>State: <span class="badge badge-status" th:classappend="${container.state.name()}" th:text="${container.state}">state</span></p>
+<p th:if="${container.errorMessage}" th:text="${container.errorMessage}">error</p>
+<p>Owner: <span th:text="${container.owner.username}">owner</span></p>
+<p th:if="${container.description}" th:text="${container.description}">description</p>
+
+<div th:if="${currentUser.role.name() == 'ADMIN' and container.owner.id != currentUser.id}" class="panel">
+    <h2>Manage</h2>
+    <div class="panel-section">
+        <button id="btn-take-ownership" class="btn-primary">Take ownership</button>
+    </div>
+</div>
+
+<div th:if="${container.owner.id == currentUser.id}" class="panel">
+    <h2>Manage</h2>
+    <div class="panel-section">
+        <button id="btn-start" class="btn-primary" th:disabled="${container.state.name() != 'STOPPED'}">Start</button>
+        <button id="btn-stop" class="btn-primary"
+                th:disabled="${container.state.name() != 'BOOTING' and container.state.name() != 'RUNNING'}">Stop</button>
+        <button id="btn-restart" class="btn-primary" th:disabled="${container.state.name() != 'RUNNING'}">Restart</button>
+        <button id="btn-pause" class="btn-primary" th:disabled="${container.state.name() != 'RUNNING'}">Pause</button>
+        <button id="btn-resume" class="btn-primary" th:disabled="${container.state.name() != 'PAUSED'}">Resume</button>
+        <button id="btn-force-stop" class="btn-primary" th:disabled="${container.state.name() == 'STOPPED'}">Force stop</button>
+        <button id="btn-delete" class="btn-primary">Delete</button>
+    </div>
+
+    <div class="panel-section">
+        <h3>Description</h3>
+        <div class="inline-controls">
+            <input type="text" id="description" placeholder="What is this pod for?" th:value="${container.description}"/>
+            <button id="btn-save-description" class="btn-primary">Save</button>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h3>Command</h3>
+        <p class="hint">The command run as this pod's main process, like a Dockerfile <code>CMD</code> -
+            left blank, the pod trusts whatever command its image already has built in.
+            <strong>If that's a plain interactive shell (or anything else that doesn't keep running
+            on its own), the pod will exit within moments of starting - or, if the image has no
+            command at all, it'll fail to start entirely.</strong> Changing this only takes effect
+            the next time the pod is recreated, which happens automatically on Save - only available
+            while the pod is stopped, or in ERROR (e.g. it never managed to start at all - this is
+            how you'd fix that).</p>
+        <div class="inline-controls">
+            <input type="text" id="pod-command" placeholder="e.g. /sbin/init, sleep infinity"
+                   th:value="${container.podCommand}"
+                   th:disabled="${container.state.name() != 'STOPPED' and container.state.name() != 'ERROR'}"/>
+            <button id="btn-save-pod-command" class="btn-primary"
+                    th:disabled="${container.state.name() != 'STOPPED' and container.state.name() != 'ERROR'}">Save</button>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h3>Shared with</h3>
+        <ul id="share-list" class="list-plain">
+            <li th:each="s : ${shares}" th:if="${s.user.id != container.owner.id}">
+                <span th:text="${s.user.username}">user</span>
+                <button class="btn-remove-share btn-danger" th:attr="data-user-id=${s.user.id}">Remove</button>
+            </li>
+        </ul>
+        <div class="inline-controls">
+            <input type="text" id="share-username" placeholder="username"/>
+            <button id="btn-add-share" class="btn-primary">Add</button>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h3>Remote access</h3>
+        <p class="hint">Checks the port is actually listening before connecting it to Guacamole.
+            You'll be prompted for credentials each time you connect, since nspawnmgr doesn't
+            generate or store an account for a pod.</p>
+        <div class="inline-controls">
+            <span th:if="${container.guacSshConnectionId == null}">SSH: not connected via nspawnmgr.</span>
+            <button id="btn-enable-ssh" class="btn-primary" th:if="${container.guacSshConnectionId == null}">Enable SSH access</button>
+            <span th:if="${container.guacSshConnectionId != null}">SSH: connected (prompts for credentials).</span>
+            <button id="btn-disable-ssh" class="btn-danger" th:if="${container.guacSshConnectionId != null}">Disable</button>
+        </div>
+        <div class="inline-controls">
+            <span th:if="${container.guacRdpConnectionId == null}">RDP: not connected via nspawnmgr.</span>
+            <button id="btn-enable-rdp" class="btn-primary" th:if="${container.guacRdpConnectionId == null}">Enable RDP access</button>
+            <span th:if="${container.guacRdpConnectionId != null}">RDP: connected (prompts for credentials).</span>
+            <button id="btn-disable-rdp" class="btn-danger" th:if="${container.guacRdpConnectionId != null}">Disable</button>
+        </div>
+        <div class="inline-controls">
+            <span th:if="${container.guacVncConnectionId == null}">VNC: not connected via nspawnmgr.</span>
+            <button id="btn-enable-vnc" class="btn-primary" th:if="${container.guacVncConnectionId == null}">Enable VNC access</button>
+            <span th:if="${container.guacVncConnectionId != null}">VNC: connected (prompts for credentials).</span>
+            <button id="btn-disable-vnc" class="btn-danger" th:if="${container.guacVncConnectionId != null}">Disable</button>
+        </div>
+        <div class="inline-controls">
+            <label for="rdp-security-select">RDP security</label>
+            <select id="rdp-security-select">
+                <option th:each="mode : ${T(com.nspawnmgr.domain.RdpSecurityMode).values()}" th:value="${mode}" th:text="${mode}"
+                        th:selected="${mode == container.rdpSecurity}">mode</option>
+            </select>
+            <button id="btn-save-rdp-security" class="btn-primary">Save</button>
+        </div>
+    </div>
+
+    <div th:if="${availablePackageManagers != null}" class="panel-section">
+        <h3>Package manager</h3>
+        <p class="hint">This pod has no template, so nspawnmgr doesn't otherwise know which
+            package manager it uses. Set it here to enable package installation below.</p>
+        <div class="inline-controls">
+            <select id="package-manager-select">
+                <option th:each="pm : ${availablePackageManagers}" th:value="${pm}" th:text="${pm}"
+                        th:selected="${pm == container.packageManager}">manager</option>
+            </select>
+            <button id="btn-save-package-manager" class="btn-primary">Save</button>
+        </div>
+    </div>
+
+    <div th:if="${installablePackages != null}" class="panel-section">
+        <h3>Install package</h3>
+        <p class="hint">Packages an admin has uploaded for this pod's package manager (see the
+            Packages admin page).</p>
+        <p th:if="${#lists.isEmpty(installablePackages)}">No packages uploaded for this pod's package manager yet.</p>
+        <div th:unless="${#lists.isEmpty(installablePackages)}" class="inline-controls">
+            <select id="install-package-select">
+                <option th:each="p : ${installablePackages}" th:value="${p.id}"
+                        th:text="${p.originalFilename} + (${p.description} != null and ${p.description} != '' ? ' — ' + ${p.description} : '')">package</option>
+            </select>
+            <button id="btn-install-package" class="btn-primary">Install</button>
+        </div>
+        <pre id="install-package-output" class="hint" style="white-space: pre-wrap;"></pre>
+    </div>
+</div>
+
+<div th:if="${canManageScripts}" class="panel">
+    <div class="panel-section">
+        <h3>Scripts</h3>
+        <p class="hint">Named, reusable scripts run inside this pod (via <code>podman exec</code>) as
+            root. Anyone this pod is shared with can create, edit, delete, and run them, same as the
+            owner.</p>
+        <ul id="script-list" class="list-plain">
+            <li th:each="s : ${scripts}">
+                <a th:href="@{/containers/{id}/scripts/{scriptId}(id=${container.id},scriptId=${s.id})}"
+                   th:text="${s.name}">script name</a>
+            </li>
+        </ul>
+        <p><a th:href="@{/containers/{id}/scripts/new(id=${container.id})}" class="btn-primary">+ New script</a></p>
+    </div>
+</div>
+
+<h2>Connect</h2>
+<p th:if="${container.state.name() != 'RUNNING'}">Pod must be running to connect.</p>
+<p th:if="${container.guacSshConnectionId == null and container.guacRdpConnectionId == null and container.guacVncConnectionId == null}">
+    No managed SSH/RDP/VNC access configured yet — see Remote access above.</p>
+<div>
+    <button id="btn-session-ssh" class="btn-primary"
+            th:disabled="${container.state.name() != 'RUNNING' or container.guacSshConnectionId == null}">SSH</button>
+    <button id="btn-session-rdp" class="btn-primary"
+            th:disabled="${container.state.name() != 'RUNNING' or !container.rdpEnabled or container.guacRdpConnectionId == null}">RDP</button>
+    <button id="btn-session-vnc" class="btn-primary"
+            th:disabled="${container.state.name() != 'RUNNING' or !container.vncEnabled or container.guacVncConnectionId == null}">VNC</button>
+    <a th:href="@{/containers/{id}/files(id=${container.id})}" class="btn-primary">Files</a>
+</div>
+</div>
+</div>
+
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/password-toggle.js}"></script>
+<script th:src="@{/js/detail.js}"></script>
+</body>
+</html>

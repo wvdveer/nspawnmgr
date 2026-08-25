@@ -127,7 +127,7 @@ public class PamCredentialAuthService {
             pamServiceRepository.save(new ContainerPamService(container, serviceName));
         }
 
-        String hostname = cliExecutor.getInternalAddress(container.getName());
+        String hostname = cliExecutor.getInternalAddress(container.getName(), container.getBackend());
         if (!hostname.isEmpty()) {
             reconcileRdpConnectionCredentials(container, hostname);
         }
@@ -262,7 +262,7 @@ public class PamCredentialAuthService {
                 .orElseThrow(() -> new IllegalArgumentException("No such container: " + container.getId()));
 
         String script = buildApplyScript(withTemplate, enabled);
-        ScriptRunResult result = cliExecutor.runScript(container.getName(), script, APPLY_TIMEOUT);
+        ScriptRunResult result = cliExecutor.runScript(container.getName(), container.getBackend(), script, APPLY_TIMEOUT);
         if (!result.success()) {
             log.warn("Failed to apply pam_nspawnmgr settings on container {} (exit {})",
                     container.getName(), result.exitCode());

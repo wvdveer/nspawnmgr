@@ -1,4 +1,5 @@
 const containerId = document.body.getAttribute('data-container-id');
+const containerName = document.body.getAttribute('data-container-name');
 const basePath = document.body.getAttribute('data-base-path').replace(/\/$/, '');
 
 async function post(path) {
@@ -77,13 +78,13 @@ document.getElementById('btn-disable-rdp')?.addEventListener('click', () => dele
 document.getElementById('btn-disable-vnc')?.addEventListener('click', () => deleteAccess('vnc'));
 
 document.getElementById('btn-session-ssh')?.addEventListener('click', () => {
-    window.location.href = `${basePath}/containers/${containerId}/session/ssh`;
+    window.location.href = `${basePath}/containers/${containerName}/session/ssh`;
 });
 document.getElementById('btn-session-rdp')?.addEventListener('click', () => {
-    window.location.href = `${basePath}/containers/${containerId}/session/rdp`;
+    window.location.href = `${basePath}/containers/${containerName}/session/rdp`;
 });
 document.getElementById('btn-session-vnc')?.addEventListener('click', () => {
-    window.location.href = `${basePath}/containers/${containerId}/session/vnc`;
+    window.location.href = `${basePath}/containers/${containerName}/session/vnc`;
 });
 
 // Reloads once the container's state changes (e.g. BOOTING -> RUNNING) so the Connect buttons and
@@ -120,6 +121,23 @@ document.getElementById('btn-save-description')?.addEventListener('click', async
         body: JSON.stringify({ description }),
     });
     if (!response.ok) {
+        await window.appDialog.alert('Failed: ' + await response.text());
+        return;
+    }
+    window.location.reload();
+});
+
+document.getElementById('btn-save-pod-command')?.addEventListener('click', async () => {
+    const command = document.getElementById('pod-command').value;
+    const button = document.getElementById('btn-save-pod-command');
+    button.disabled = true;
+    const response = await fetch(`${basePath}/api/containers/${containerId}/pod-command`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command }),
+    });
+    if (!response.ok) {
+        button.disabled = false;
         await window.appDialog.alert('Failed: ' + await response.text());
         return;
     }

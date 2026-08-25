@@ -88,6 +88,61 @@ public class SshRemoteExecutor {
     }
 
     /**
+     * As {@link #execNoPasswordSudo(Duration, List, String)}, but streams {@code stdinWriter}'s
+     * output to the command's stdin incrementally instead of writing one pre-built String payload -
+     * needed for package uploads, which can be multiple GB (see RealPackageCacheFilesystem#upload's
+     * own comment for why buffering the whole thing first - in memory, or as one giant Base64
+     * String - caused a real OutOfMemoryError live). {@code stdinWriter} is handed the raw stdin
+     * {@link OutputStream} to write to however it needs (e.g. wrapped in a
+     * {@code Base64.getEncoder().wrap(...)} before streaming a source file into it) - closing it is
+     * this method's job, not the writer's.
+     *
+     * <p>Unlike {@link #run}, the stdout/stderr reader threads are started <em>before</em> the stdin
+     * write begins, not after. {@code run()}'s "write the whole (small) payload, then start readers"
+     * ordering only works because that payload is small enough to fit in the SSH channel's
+     * flow-control window without the remote side needing to drain its own output first - for a
+     * multi-GB streamed write that's a real deadlock risk (this thread blocks on window space while
+     * the remote process blocks on an unread stdout/stderr buffer, each waiting on the other).
+     * Starting readers first eliminates that regardless of how much either side ever writes.
+     */
+    public CommandResult execNoPasswordSudoStreamingStdin(Duration timeout, List<String> command, StdinWriter stdinWriter) {
+        try (SSHClient ssh = connect()) {
+            try (Session session = ssh.startSession()) {
+                try (Session.Command cmd = session.exec(buildNoPasswordSudoCommandLine(command))) {
+                    StringBuilder stdout = new StringBuilder();
+                    StringBuilder stderr = new StringBuilder();
+                    Thread stdoutReader = startStreamReader(cmd.getInputStream(), stdout);
+                    Thread stderrReader = startStreamReader(cmd.getErrorStream(), stderr);
+                    try (OutputStream stdin = cmd.getOutputStream()) {
+                        stdinWriter.writeTo(stdin);
+                    }
+                    ConnectionException timeoutCause = null;
+                    try {
+                        cmd.join(timeout.toMillis(), TimeUnit.MILLISECONDS);
+                    } catch (ConnectionException e) {
+                        timeoutCause = e;
+                    }
+                    joinQuietly(stdoutReader, Duration.ofSeconds(5));
+                    joinQuietly(stderrReader, Duration.ofSeconds(5));
+                    if (timeoutCause != null) {
+                        throw new ContainerCliException("Command timed out: " + describe(command), timeoutCause);
+                    }
+                    Integer exitStatus = cmd.getExitStatus();
+                    return new CommandResult(exitStatus == null ? -1 : exitStatus, stdout.toString(), stderr.toString());
+                }
+            }
+        } catch (IOException e) {
+            throw new ContainerCliException("SSH command failed: " + describe(command), e);
+        }
+    }
+
+    /** Writes directly to a live SSH command's stdin - see {@link #execNoPasswordSudoStreamingStdin}. */
+    @FunctionalInterface
+    public interface StdinWriter {
+        void writeTo(OutputStream out) throws IOException;
+    }
+
+    /**
      * As {@link #execNoPasswordSudo(Duration, List, String)}, but captures stdout/stderr line by
      * line as they arrive (two concurrent reader threads, one per stream) instead of reading each
      * stream fully only after the command exits — needed so each line can be timestamped at the

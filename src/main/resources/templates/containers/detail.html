@@ -6,20 +6,26 @@
     <link rel="stylesheet" th:href="@{/css/app.css}"/>
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
-<body th:data-container-id="${container.id}" th:data-is-owner="${container.owner.id == currentUser.id}"
+<body th:data-container-id="${container.id}" th:data-container-name="${container.name}"
+      th:data-is-owner="${container.owner.id == currentUser.id}"
       th:data-container-state="${container.state}" th:attr="data-base-path=@{/}">
-<div th:replace="fragments/theme-toggle :: widget"></div>
-<p><a th:href="@{/}">&larr; Containers</a> | <a th:href="@{/account}">My account</a>
-    | <a th:href="@{/logs}">View log</a></p>
-<h1 th:text="${container.name}">name</h1>
+<div th:replace="~{fragments/app-shell :: shell(
+        title=${container.name}, subtitle=null,
+        activeNav='machines', currentUser=${currentUser}, addMenu=null,
+        content=~{::#page-content})}">
+<div id="page-content">
 <p th:if="${container.kind.name() == 'EXTERNAL'}">Admin-configured external host — nspawnmgr does not control its lifecycle.</p>
-<p>State: <span th:text="${container.state}">state</span></p>
+<p>State: <span class="badge badge-status" th:classappend="${container.state.name()}" th:text="${container.state}">state</span></p>
 <p th:if="${container.errorMessage}" th:text="${container.errorMessage}">error</p>
 <p>Owner: <span th:text="${container.owner.username}">owner</span></p>
 <p th:if="${container.description}" th:text="${container.description}">description</p>
-<p th:if="${currentUser.role.name() == 'ADMIN' and container.owner.id != currentUser.id and container.kind.name() != 'EXTERNAL'}">
-    <button id="btn-take-ownership" class="btn-primary">Take ownership</button>
-</p>
+
+<div th:if="${currentUser.role.name() == 'ADMIN' and container.owner.id != currentUser.id}" class="panel">
+    <h2>Manage</h2>
+    <div class="panel-section">
+        <button id="btn-take-ownership" class="btn-primary">Take ownership</button>
+    </div>
+</div>
 
 <div th:if="${container.owner.id == currentUser.id}" class="panel">
     <h2 th:if="${container.kind.name() != 'EXTERNAL'}">Manage</h2>
@@ -117,7 +123,7 @@
         </div>
     </div>
 
-    <div th:if="${container.kind.name() != 'EXTERNAL'}" class="panel-section">
+    <div th:if="${container.kind.name() != 'EXTERNAL'}" class="panel-section" id="container-users-section">
         <h3>Container users</h3>
         <p class="hint">Listed live while the container is running; shows the last-known list
             otherwise. Adding a user or changing a password needs the container running — if it
@@ -314,7 +320,12 @@
             th:disabled="${container.state.name() != 'RUNNING' or !container.rdpEnabled or container.guacRdpConnectionId == null}">RDP</button>
     <button id="btn-session-vnc" class="btn-primary"
             th:disabled="${container.state.name() != 'RUNNING' or !container.vncEnabled or container.guacVncConnectionId == null}">VNC</button>
-    <a th:href="@{/containers/{id}/files(id=${container.id})}" class="btn-primary">Files</a>
+    <a th:if="${container.kind.name() != 'EXTERNAL'}"
+       th:href="@{/containers/{id}/files(id=${container.id})}" class="btn-primary">Files</a>
+    <button th:if="${container.kind.name() == 'EXTERNAL'}" class="btn-primary" disabled
+            title="Files access isn't available for network hosts.">Files</button>
+</div>
+</div>
 </div>
 
 <script th:src="@{/js/theme-toggle.js}"></script>

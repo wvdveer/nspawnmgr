@@ -36,7 +36,14 @@ public class NetworkDiagnosticsService {
 
     public enum Status { OK, WARN, FAIL }
 
-    public record DiagnosticCheck(String id, String label, Status status, String detail, boolean fixable) {
+    /** {@code log} is only ever populated by a fix method's own response (the fix command's raw
+     *  output), and only while the check is still failing afterward - once a fix actually
+     *  resolves the check, there's nothing left worth showing, see the 5-arg constructor below
+     *  used by every plain check-building method. */
+    public record DiagnosticCheck(String id, String label, Status status, String detail, boolean fixable, String log) {
+        public DiagnosticCheck(String id, String label, Status status, String detail, boolean fixable) {
+            this(id, label, status, detail, fixable, null);
+        }
     }
 
     private static final String[] EXCLUDED_INTERFACE_PREFIXES =
@@ -63,6 +70,10 @@ public class NetworkDiagnosticsService {
         checks.add(checkGuacd());
         checks.add(checkBridge());
         checks.add(checkSudoers());
+        checks.add(checkPodman());
+        checks.add(checkQemu());
+        checks.add(checkPodmanNetwork());
+        checks.add(checkQemuBridge());
         checks.forEach(NetworkDiagnosticsService::logIfNotOk);
         return checks;
     }
@@ -86,8 +97,9 @@ public class NetworkDiagnosticsService {
      * every other privileged action in this app when not in approval mode.
      */
     public DiagnosticCheck fixNetworkd(User actingAdmin, char[] sudoPassword) {
+        CommandResult fixResult;
         try {
-            executor.enableNetworkd(sudoPassword);
+            fixResult = executor.enableNetworkd(sudoPassword);
         } finally {
             zero(sudoPassword);
         }
@@ -95,7 +107,7 @@ public class NetworkDiagnosticsService {
                 "enabled systemd-networkd");
         DiagnosticCheck result = checkNetworkd();
         logIfNotOk(result);
-        return result;
+        return result.fixable() ? withLog(result, commandLog(fixResult)) : result;
     }
 
     /**
@@ -119,6 +131,95 @@ public class NetworkDiagnosticsService {
         DiagnosticCheck result = checkHostAddress();
         logIfNotOk(result);
         return result;
+    }
+
+    /** As {@link #fixNetworkd} - a plain apt-get install, no extra state to reconcile afterward. */
+    public DiagnosticCheck fixPodman(User actingAdmin, char[] sudoPassword) {
+        CommandResult fixResult;
+        try {
+            fixResult = executor.installPodman(sudoPassword);
+        } finally {
+            zero(sudoPassword);
+        }
+        auditLogService.log(actingAdmin, AuditAction.UPDATED, AuditTargetType.SYSTEM, null, "network-diagnostics",
+                "installed podman");
+        DiagnosticCheck result = checkPodman();
+        logIfNotOk(result);
+        return result.fixable() ? withLog(result, commandLog(fixResult)) : result;
+    }
+
+    /** As {@link #fixPodman}, for QEMU. */
+    public DiagnosticCheck fixQemu(User actingAdmin, char[] sudoPassword) {
+        CommandResult fixResult;
+        try {
+            fixResult = executor.installQemu(sudoPassword);
+        } finally {
+            zero(sudoPassword);
+        }
+        auditLogService.log(actingAdmin, AuditAction.UPDATED, AuditTargetType.SYSTEM, null, "network-diagnostics",
+                "installed QEMU");
+        DiagnosticCheck result = checkQemu();
+        logIfNotOk(result);
+        return result.fixable() ? withLog(result, commandLog(fixResult)) : result;
+    }
+
+    /** As {@link #fixPodman}. Only ever reachable when {@link #checkPodmanNetwork} already
+     *  confirmed netavark is new enough (see that method's own comment for the exact 1.14
+     *  threshold) - so unlike before that check knew the precise version, this is now genuinely
+     *  expected to succeed; a failure here would be a real bug, not the expected common case. */
+    public DiagnosticCheck fixPodmanNetwork(User actingAdmin, char[] sudoPassword) {
+        CommandResult fixResult;
+        try {
+            fixResult = executor.configurePodmanNetwork(sudoPassword);
+        } finally {
+            zero(sudoPassword);
+        }
+        auditLogService.log(actingAdmin, AuditAction.UPDATED, AuditTargetType.SYSTEM, null, "network-diagnostics",
+                "configured podman network for nspawnbr0");
+        DiagnosticCheck result = checkPodmanNetwork();
+        logIfNotOk(result);
+        return result.fixable() ? withLog(result, commandLog(fixResult)) : result;
+    }
+
+    /** As {@link #fixPodmanNetwork}, for QEMU - a plain ACL entry, so unlike that one this is
+     *  expected to actually succeed regardless of installed version. */
+    public DiagnosticCheck fixQemuBridge(User actingAdmin, char[] sudoPassword) {
+        CommandResult fixResult;
+        try {
+            fixResult = executor.configureQemuBridge(sudoPassword);
+        } finally {
+            zero(sudoPassword);
+        }
+        auditLogService.log(actingAdmin, AuditAction.UPDATED, AuditTargetType.SYSTEM, null, "network-diagnostics",
+                "allow-listed nspawnbr0 in /etc/qemu/bridge.conf");
+        DiagnosticCheck result = checkQemuBridge();
+        logIfNotOk(result);
+        return result.fixable() ? withLog(result, commandLog(fixResult)) : result;
+    }
+
+    /** Reattaches a fix command's captured output to an already-built check - used only while the
+     *  check is still failing after the fix attempt (see the DiagnosticCheck record's own javadoc
+     *  on {@code log}); a resolved check is returned as-is, with no log, so the admin-page JS's own
+     *  "clear the log once the Fix button disappears" behavior falls out naturally. */
+    private static DiagnosticCheck withLog(DiagnosticCheck check, String log) {
+        return new DiagnosticCheck(check.id(), check.label(), check.status(), check.detail(), check.fixable(), log);
+    }
+
+    /** Combines stdout+stderr into one displayable blob, stderr appended after stdout (matching
+     *  how a terminal naturally interleaves them close enough for a human reading it after the
+     *  fact) - blank segments are dropped rather than left as empty lines. */
+    private static String commandLog(CommandResult result) {
+        StringBuilder log = new StringBuilder();
+        if (!result.stdout().isBlank()) {
+            log.append(result.stdout().stripTrailing());
+        }
+        if (!result.stderr().isBlank()) {
+            if (log.length() > 0) {
+                log.append('\n');
+            }
+            log.append(result.stderr().stripTrailing());
+        }
+        return log.toString();
     }
 
     private static void zero(char[] password) {
@@ -212,6 +313,96 @@ public class NetworkDiagnosticsService {
                         + "and that /etc/systemd/network/70-nspawnmgr-bridge.netdev/.network are present; "
                         + "reinstalling the .deb re-applies them.",
                 false);
+    }
+
+    /** Part of the v0.2.0 podman/QEMU backend groundwork - detects whether podman is installed at
+     *  all, ahead of any actual podman-backed container support. Fixable via apt-get install. */
+    private DiagnosticCheck checkPodman() {
+        CommandResult result = executor.checkPodman();
+        boolean ok = "ok".equals(result.stdout().trim());
+        return new DiagnosticCheck("podman", "podman installed", ok ? Status.OK : Status.FAIL,
+                ok ? "podman is installed on this host."
+                        : "podman is not installed - needed for the podman container/VM backend (not yet available "
+                        + "to use, still being built).",
+                !ok);
+    }
+
+    /** As {@link #checkPodman}, but a plain boolean for callers that just need to gate a UI element
+     *  (the Templates admin page's "New Pod" button - pulling/creating a podman template needs real
+     *  podman commands to run on the host, so offering that button before podman is installed just
+     *  leads to a confusing failure partway through) rather than render a full diagnostic row. Same
+     *  single NOPASSWD check script, no separate host round-trip. */
+    public boolean isPodmanInstalled() {
+        return "ok".equals(executor.checkPodman().stdout().trim());
+    }
+
+    /** As {@link #isPodmanInstalled}, for QEMU - gates the container list page's "New QEMU" button. */
+    public boolean isQemuInstalled() {
+        return "ok".equals(executor.checkQemu().stdout().trim());
+    }
+
+    /** As {@link #checkPodman}, for QEMU. */
+    private DiagnosticCheck checkQemu() {
+        CommandResult result = executor.checkQemu();
+        boolean ok = "ok".equals(result.stdout().trim());
+        return new DiagnosticCheck("qemu", "QEMU installed", ok ? Status.OK : Status.FAIL,
+                ok ? "qemu-system-x86_64 is installed on this host."
+                        : "QEMU is not installed - needed for the QEMU container/VM backend (not yet available to "
+                        + "use, still being built).",
+                !ok);
+    }
+
+    /** Correct configuration (not just "installed") for podman means a network attached to
+     *  nspawnbr0, so podman containers can eventually be reachable by name alongside
+     *  systemd-nspawn ones - see {@link #fixPodmanNetwork} for the host-local-IPAM approach, which
+     *  needs netavark 1.14+ for the bridge driver's own "mode=unmanaged" option (attach to an
+     *  existing bridge instead of creating/managing one) - confirmed against netavark's own
+     *  RELEASE_NOTES.md, PR #1090. An earlier revision of this app used netavark's DHCP IPAM driver
+     *  instead (which also needs 1.14+, for a *different* reason landing in that same release -
+     *  DHCP-in-unmanaged-mode support, PR #868) - abandoned after confirming live on yoga
+     *  2026-08-16 that it can never work at all, on any netavark version, due to a kernel TX/RX
+     *  bridge-isolation limitation (containers/netavark#1416, closed as a duplicate of #1008): a
+     *  DHCP server bound to the bridge device itself (which is how this app's own
+     *  70-nspawnmgr-bridge.network configures its DHCP server, for systemd-nspawn containers) is
+     *  unreachable from netavark's own host-netns DHCP proxy. The 1.14 threshold below is entirely
+     *  about mode=unmanaged now, unrelated to DHCP.
+     *
+     *  <p>With the exact threshold confirmed, the check script itself detects a too-old netavark
+     *  and reports it as genuinely not fixable (mapped to WARN, not FAIL - this isn't a
+     *  misconfiguration, it's an environment limitation with no fix this app can offer) rather
+     *  than making the admin click Fix just to get a raw netavark error. Confirmed live (yoga,
+     *  2026-08-15): Linux Mint 22.1's stock podman 4.9.3 ships netavark 1.4.0, and there's no
+     *  trustworthy way to install a newer podman there either - the old Kubic/openSUSE-Build-
+     *  Service repo that used to provide one for Debian/Ubuntu has been discontinued and no longer
+     *  ships podman at all; the only alternatives are building from source or an individual's
+     *  unofficial OBS project, neither appropriate for an automated Fix action to depend on. */
+    private DiagnosticCheck checkPodmanNetwork() {
+        CommandResult result = executor.checkPodmanNetwork();
+        String state = result.stdout().trim();
+        return switch (state) {
+            case "ok" -> new DiagnosticCheck("podman-network", "podman uses nspawnbr0", Status.OK,
+                    "A podman network is attached to nspawnbr0.", false);
+            case "too-old" -> new DiagnosticCheck("podman-network", "podman uses nspawnbr0", Status.WARN,
+                    "This host's netavark is older than the 1.14 that podman needs to attach to nspawnbr0 "
+                    + "(bridge mode=unmanaged) - and there's no reliable way to install a newer podman on this "
+                    + "host's own Linux distribution/release today. No fix available here; podman container "
+                    + "creation will need a newer host once that's actually built.", false);
+            default -> new DiagnosticCheck("podman-network", "podman uses nspawnbr0", Status.FAIL,
+                    "No podman network is attached to nspawnbr0 yet - this host's podman/netavark looks new enough "
+                    + "to support it (bridge mode=unmanaged) - try Fix.", true);
+        };
+    }
+
+    /** As {@link #checkPodmanNetwork}, for QEMU - a plain ACL entry, no IP allocation involved, so
+     *  unlike podman's own check this one has no real caveats about when the fix can/can't work. */
+    private DiagnosticCheck checkQemuBridge() {
+        CommandResult result = executor.checkQemuBridge();
+        boolean ok = "ok".equals(result.stdout().trim());
+        return new DiagnosticCheck("qemu-bridge", "QEMU allowed to use nspawnbr0", ok ? Status.OK : Status.FAIL,
+                ok ? "/etc/qemu/bridge.conf allows nspawnbr0."
+                        : "QEMU's own bridge-helper ACL (/etc/qemu/bridge.conf) doesn't allow nspawnbr0 yet - "
+                        + "\"-netdev bridge,br=nspawnbr0\" would be refused until it does.",
+                !ok);
     }
 
     private static final String GUACD_TEST_PROTOCOL = "ssh";

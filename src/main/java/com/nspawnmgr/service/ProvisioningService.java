@@ -10,13 +10,19 @@ import com.nspawnmgr.cli.ScriptRunResult;
 import com.nspawnmgr.crypto.EncryptedValue;
 import com.nspawnmgr.crypto.SecretEncryptionService;
 import com.nspawnmgr.crypto.SshKeyPairGenerator;
+import com.nspawnmgr.domain.CachedPackage;
 import com.nspawnmgr.domain.Container;
+import com.nspawnmgr.domain.ContainerBackend;
 import com.nspawnmgr.domain.ContainerCredential;
 import com.nspawnmgr.domain.ContainerState;
 import com.nspawnmgr.domain.CredentialType;
 import com.nspawnmgr.domain.DesktopManager;
 import com.nspawnmgr.domain.PackageManager;
+import com.nspawnmgr.domain.QemuCpuModel;
+import com.nspawnmgr.domain.QemuNicModel;
+import com.nspawnmgr.domain.QemuPointerDevice;
 import com.nspawnmgr.domain.Template;
+import com.nspawnmgr.domain.TemplateFeatureState;
 import com.nspawnmgr.domain.User;
 import com.nspawnmgr.guacamole.GuacamoleAdminClient;
 import com.nspawnmgr.repository.ContainerCredentialRepository;
@@ -90,10 +96,43 @@ public class ProvisioningService {
 
     @Transactional
     public Container createPending(String name, Template template, User owner, boolean rdpEnabled, boolean vncEnabled,
-                                    DesktopManager desktopManager, String description) {
-        Container container = new Container(name, owner, template, rdpEnabled && template.isRdpCapable(), description);
-        container.setVncEnabled(vncEnabled && template.isVncCapable());
+                                    DesktopManager desktopManager, String description, String podCommand) {
+        Container container = new Container(name, owner, template, rdpEnabled && template.getRdpState() != TemplateFeatureState.NOT_CAPABLE, description);
+        container.setVncEnabled(vncEnabled && template.getVncState() != TemplateFeatureState.NOT_CAPABLE);
         container.setDesktopManager(desktopManager);
+        // Meaningless for SYSTEMD_NSPAWN - stored regardless (matches packageManager's own
+        // "harmless when irrelevant" convention) rather than validating the backend here, since the
+        // web form itself only ever offers this field on the New Pod page.
+        container.setPodCommand(podCommand);
+        return containerRepository.save(container);
+    }
+
+    /**
+     * QEMU still can't reuse {@link #createPending}'s Template-taking signature (see
+     * {@link Container#qemu}), so it keeps its own creation entry point - but unlike v1
+     * (from-scratch + ISO only), {@code template} may now be a QEMU-backed {@link Template} to
+     * clone from instead of getting a fresh empty disk (see {@link #provisionQemu}'s branch on
+     * {@code container.getTemplate()}). {@code iso} is nullable - a VM can be created with no boot
+     * media, though nothing useful happens until something mounts one. Exactly one of {@code
+     * diskSizeGb}/{@code template} is expected non-null - validated by the caller
+     * (ContainerApiController.createQemu), not here. {@code cpuModel}/{@code cpuCount}/{@code
+     * memoryMb}/{@code nicModel}/{@code pointerDevice} are launch hardware, independent of disk
+     * origin - null for any of them means "use the previous hardcoded default" (see
+     * ContainerFilesystemProvisioner#writeQemuUnit).
+     */
+    @Transactional
+    public Container createPendingQemu(String name, User owner, String description, Integer diskSizeGb, Template template, CachedPackage iso,
+                                        QemuCpuModel cpuModel, Integer cpuCount, Integer memoryMb, QemuNicModel nicModel,
+                                        QemuPointerDevice pointerDevice) {
+        Container container = Container.qemu(name, owner, description);
+        container.setQemuDiskSizeGb(diskSizeGb);
+        container.setTemplate(template);
+        container.setMountedIso(iso);
+        container.setQemuCpuModel(cpuModel);
+        container.setQemuCpuCount(cpuCount);
+        container.setQemuMemoryMb(memoryMb);
+        container.setQemuNicModel(nicModel);
+        container.setQemuPointerDevice(pointerDevice);
         return containerRepository.save(container);
     }
 
@@ -145,16 +184,25 @@ public class ProvisioningService {
         return container;
     }
 
-    /** Fire-and-forget entry point so the create HTTP request can return immediately; UI polls status. */
+    /** Fire-and-forget entry point so the create HTTP request can return immediately; UI polls status.
+     *  Dispatches to {@link #provision}, {@link #provisionPod}, or {@link #provisionQemu} by the
+     *  container's own backend - the one place this choice is made, so callers
+     *  (ContainerApiController) don't need to know it exists. */
     @Async
     public void provisionAsync(Long containerId) {
-        provision(containerId, null);
+        provisionAsync(containerId, null);
     }
 
     /** As {@link #provisionAsync(Long)}, using a per-request admin-supplied password (approval mode). */
     @Async
     public void provisionAsync(Long containerId, char[] sudoPasswordOverride) {
-        provision(containerId, sudoPasswordOverride);
+        Container container = containerRepository.findByIdWithTemplate(containerId)
+                .orElseThrow(() -> new IllegalArgumentException("No such container: " + containerId));
+        switch (container.getBackend()) {
+            case PODMAN -> provisionPod(containerId, sudoPasswordOverride);
+            case QEMU -> provisionQemu(containerId, sudoPasswordOverride);
+            case SYSTEMD_NSPAWN -> provision(containerId, sudoPasswordOverride);
+        }
     }
 
     /** Runs the full provisioning flow for a container already persisted in CREATING state. */
@@ -175,7 +223,7 @@ public class ProvisioningService {
         try {
             filesystemProvisioner.cloneTemplate(container.getTemplate(), container.getName(), sudoPasswordOverride);
             filesystemProvisioner.writeNspawnSettings(container, List.of());
-            cliExecutor.start(container.getName());
+            cliExecutor.start(container.getName(), container.getBackend());
             outboundAccessManager.sync(container.getName(), container.isOutboundEnabled(), List.of());
 
             container.setPrimaryAccountName(resolveInitialAccountName(container));
@@ -222,6 +270,176 @@ public class ProvisioningService {
         }
     }
 
+    /**
+     * Podman equivalent of {@link #provision(Long, char[])} - deliberately much shorter, since a pod
+     * gets none of the auto-provisioned SSH/RDP/VNC/desktop-manager steps nspawn containers do (see
+     * ContainerAccessService's reachability-gated prompt-credentials flow, which is how a pod's owner
+     * gets SSH/RDP/VNC access instead, entirely post-creation). {@code podman create} + {@code podman
+     * start} are both synchronous, and there's no auto-provisioned credential to wait on, so this goes
+     * straight to RUNNING rather than BOOTING - no readiness poll needed.
+     */
+    public void provisionPod(Long containerId, char[] sudoPasswordOverride) {
+        Container container = containerRepository.findByIdWithTemplate(containerId)
+                .orElseThrow(() -> new IllegalArgumentException("No such container: " + containerId));
+        try {
+            // No outboundAccessManager.sync() here - that's the nspawn-specific veth/iptables
+            // mechanism (see plan's "explicitly out of scope for pods" list); a podman container on
+            // nspawnbr0 already has real network access via netavark, nothing to configure.
+            filesystemProvisioner.createPodmanContainer(container.getTemplate().getSourcePath(), container.getName(),
+                    container.getPodCommand(), sudoPasswordOverride);
+            cliExecutor.start(container.getName(), container.getBackend());
+
+            shareService.grantAccess(container, container.getOwner());
+            // ContainerAccessService's reachability-gated enableSsh/Rdp/Vnc (a pod's whole access
+            // story - see this method's own javadoc) reads container.getInternalAddress(), not this
+            // call's own return value - must persist it, not just resolve it. Normally
+            // ContainerReadinessPollingService is what populates this field once RUNNING; a pod skips
+            // that poller entirely (see bootedState()'s twin in ContainerLifecycleService), so this is
+            // the only place it happens for one.
+            container.setInternalAddress(resolveInternalAddress(container));
+
+            container.setState(ContainerState.RUNNING);
+            container.touch();
+            containerRepository.save(container);
+        } catch (Exception e) {
+            log.error("Pod provisioning failed for container '{}': {}", container.getName(), e.getMessage(), e);
+            container.setState(ContainerState.ERROR);
+            container.setErrorMessage(truncateErrorMessage(e.getMessage()));
+            container.touch();
+            containerRepository.save(container);
+            throw e;
+        } finally {
+            if (sudoPasswordOverride != null) {
+                Arrays.fill(sudoPasswordOverride, '\0');
+            }
+        }
+    }
+
+    /**
+     * Changes a pod's {@code podCommand} (see {@link Container#getPodCommand}'s own javadoc) and
+     * makes it take effect immediately by removing and recreating the underlying podman container -
+     * podman bakes a container's own command in at {@code podman create} time, not something a plain
+     * {@code podman start} can change. Only while the pod is STOPPED or ERROR: recreating a RUNNING
+     * one out from under a connected user (Files/Scripts/Connect) would be actively destructive, not
+     * just disruptive - the caller (pod-detail.html's own Save button) mirrors this with a disabled
+     * state, same UX convention as "Create template from this machine" elsewhere in this app. ERROR
+     * is included deliberately, not just STOPPED: confirmed live (yoga, 2026-08-16) that a pod whose
+     * image has neither an Entrypoint nor a Cmd baked in (crun's own "cannot find `` in $PATH") lands
+     * in ERROR straight from {@link #provisionPod} - excluding ERROR here would make that pod
+     * permanently unrecoverable through the UI, with no way to ever supply the command it actually
+     * needs. A podman container that only ever failed to start (never successfully ran) still exists
+     * and removes cleanly either way.
+     */
+    @Transactional
+    public void updatePodCommand(Long containerId, String command, char[] sudoPasswordOverride) {
+        Container container = containerRepository.findByIdWithTemplate(containerId)
+                .orElseThrow(() -> new IllegalArgumentException("No such container: " + containerId));
+        if (container.getBackend() != ContainerBackend.PODMAN) {
+            throw new IllegalArgumentException("Container '" + container.getName() + "' is not a pod");
+        }
+        if (container.getState() != ContainerState.STOPPED && container.getState() != ContainerState.ERROR) {
+            throw new IllegalStateException("Pod must be stopped (or in ERROR) before its command can be changed");
+        }
+        try {
+            cliExecutor.remove(container.getName(), container.getBackend());
+            filesystemProvisioner.createPodmanContainer(container.getTemplate().getSourcePath(), container.getName(),
+                    command, sudoPasswordOverride);
+            container.setPodCommand(command);
+            // Recreated clean - clear a stale ERROR (and its message) rather than leaving a freshly
+            // recreated, never-yet-started container stuck showing the OLD failure forever. Doesn't
+            // auto-start it either way (same as the STOPPED path) - the admin's own next Start click
+            // is what actually confirms the new command works, rather than silently hiding a second
+            // possible failure behind this call.
+            container.setState(ContainerState.STOPPED);
+            container.setErrorMessage(null);
+            container.touch();
+            containerRepository.save(container);
+        } finally {
+            if (sudoPasswordOverride != null) {
+                Arrays.fill(sudoPasswordOverride, '\0');
+            }
+        }
+    }
+
+    /** Placeholder {@link ContainerCredential#getAccountName()} for a QEMU VM's VNC credential -
+     *  unlike every other credential type, QEMU's hypervisor-level VNC auth has no username concept
+     *  at all (see Container#getQemuVncPort's own javadoc), but the column is NOT NULL. */
+    private static final String QEMU_VNC_ACCOUNT_PLACEHOLDER = "(qemu-console)";
+
+    /**
+     * QEMU equivalent of {@link #provision(Long, char[])}/{@link #provisionPod(Long, char[])} -
+     * from-scratch + ISO only (no Template at all - see {@link #createPendingQemu}). Goes straight
+     * to RUNNING like a pod (the systemd unit launching qemu-system-x86_64 is synchronous), but
+     * unlike a pod's own {@code internalAddress}, doesn't try to resolve one synchronously here -
+     * see {@link QemuAddressPollingService}'s own javadoc for why "not ready yet, possibly for a
+     * long time" is the normal case for a QEMU guest that may not even have an OS installed yet.
+     */
+    public void provisionQemu(Long containerId, char[] sudoPasswordOverride) {
+        Container container = containerRepository.findByIdWithTemplate(containerId)
+                .orElseThrow(() -> new IllegalArgumentException("No such container: " + containerId));
+        try {
+            if (container.getTemplate() != null) {
+                filesystemProvisioner.cloneQemuTemplate(container.getTemplate(), container.getName(), sudoPasswordOverride);
+            } else {
+                filesystemProvisioner.createQemuDisk(container.getName(), container.getQemuDiskSizeGb(), sudoPasswordOverride);
+            }
+
+            int vncPort = allocateQemuVncPort();
+            container.setQemuVncPort(vncPort);
+
+            String isoHostPath = container.getMountedIso() != null ? packageCacheService.hostPath(container.getMountedIso()) : null;
+            filesystemProvisioner.writeQemuUnit(container, isoHostPath);
+
+            cliExecutor.start(container.getName(), container.getBackend());
+
+            String password = generatePassword();
+            cliExecutor.setQemuVncPassword(container.getName(), password);
+            saveCredential(container, CredentialType.VNC_PASSWORD, QEMU_VNC_ACCOUNT_PLACEHOLDER, password, null);
+            String connectionId = guacamoleAdminClient.createVncConnection(container.getName() + "-vnc", QEMU_VNC_HOST, vncPort, password);
+            container.setGuacVncConnectionId(connectionId);
+            container.setVncEnabled(true);
+
+            shareService.grantAccess(container, container.getOwner());
+
+            container.setState(ContainerState.RUNNING);
+            container.touch();
+            containerRepository.save(container);
+        } catch (Exception e) {
+            log.error("QEMU provisioning failed for container '{}': {}", container.getName(), e.getMessage(), e);
+            container.setState(ContainerState.ERROR);
+            container.setErrorMessage(truncateErrorMessage(e.getMessage()));
+            container.touch();
+            containerRepository.save(container);
+            throw e;
+        } finally {
+            if (sudoPasswordOverride != null) {
+                Arrays.fill(sudoPasswordOverride, '\0');
+            }
+        }
+    }
+
+    /** nspawnbr0's own gateway address - every QEMU VM's VNC listener binds here (see
+     *  Container#getQemuVncPort's own javadoc), differentiated by port rather than by address. */
+    private static final String QEMU_VNC_HOST = "10.100.0.1";
+
+    /** Lowest free port in the admin-configured range not already claimed by another QEMU VM's own
+     *  {@code qemuVncPort} - called once per VM, at creation. */
+    private int allocateQemuVncPort() {
+        int start = settingsService.qemuVncPortRangeStart();
+        int end = settingsService.qemuVncPortRangeEnd();
+        List<Integer> taken = containerRepository.findByBackend(ContainerBackend.QEMU).stream()
+                .map(Container::getQemuVncPort)
+                .filter(port -> port != null)
+                .toList();
+        for (int candidate = start; candidate <= end; candidate++) {
+            if (!taken.contains(candidate)) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException("No free QEMU VNC port available in the configured range ("
+                + start + "-" + end + ") - every port is already allocated to another VM");
+    }
+
     private void provisionSsh(Container container, char[] sudoPasswordOverride) {
         String accountName = resolveAccountName(container);
         SshKeyPairGenerator.GeneratedKeyPair keyPair = sshKeyPairGenerator.generate();
@@ -231,11 +449,11 @@ public class ProvisioningService {
         sh(container, "echo '%s' >> /home/%s/.ssh/authorized_keys && chmod 600 /home/%s/.ssh/authorized_keys && chown -R %s:%s /home/%s/.ssh"
                 .formatted(keyPair.publicKeyOpenSsh(), accountName, accountName, accountName, accountName, accountName), sudoPasswordOverride);
         // Skipped entirely when the template's own image already has openssh installed and enabled
-        // (see Template.sshPreinstalled's own comment) - every official "Set up X-minimal" template
+        // (see Template.sshState's own comment) - every official "Set up X-minimal" template
         // does, and re-running this every single container creation was pure waste: a host-side
         // package download/pre-fetch plus an in-container install/enable command, both guaranteed
         // no-ops against an already-installed, already-enabled service.
-        if (!container.getTemplate().isSshPreinstalled()) {
+        if (container.getTemplate().getSshState() != TemplateFeatureState.PREINSTALLED) {
             downloadAndRegister(container, templateService.sshPackagesToPreDownload(container.getTemplate()), sudoPasswordOverride);
             sh(container, templateService.resolveInstallSshCommand(container.getTemplate()), sudoPasswordOverride, PACKAGE_INSTALL_TIMEOUT);
             sh(container, "systemctl enable --now ssh 2>/dev/null || systemctl enable --now sshd", sudoPasswordOverride);
@@ -254,7 +472,7 @@ public class ProvisioningService {
      * connection) for a container this service never itself created - specifically the self-hosted
      * "nspawnmgr" app machine and nspawnmgr's own database machine (see
      * ContainerDiscoveryService.tryProvisionManagedSsh), both of which already have sshd baked in
-     * and running (cloned from debian-minimal, {@code sshPreinstalled=true}) but were never
+     * and running (cloned from debian-minimal, {@code sshState=PREINSTALLED}) but were never
      * provisioned through the normal create flow. {@code container} must already have a non-null
      * {@code template} and be RUNNING - caller's responsibility, same as every other precondition
      * {@link #sh}'s own systemd-run call depends on. Persists the container afterward, matching
@@ -682,7 +900,7 @@ public class ProvisioningService {
      *  genuinely doesn't exist) is a normal, immediate "false", not a failure. */
     private boolean accountExistsInContainer(Container container, String accountName) {
         for (int attempt = 1; attempt <= SH_MAX_ATTEMPTS; attempt++) {
-            CommandResult result = cliExecutor.runInMachine(container.getName(), List.of("id", "-u", accountName), SH_DEFAULT_TIMEOUT, null);
+            CommandResult result = cliExecutor.runInMachine(container.getName(), container.getBackend(), List.of("id", "-u", accountName), SH_DEFAULT_TIMEOUT, null);
             if (result.success()) {
                 return true;
             }
@@ -736,7 +954,7 @@ public class ProvisioningService {
         String processNamePattern = templateService.resolveVncProcessNamePattern(withTemplate.getTemplate());
         String script = "ss -tln 2>/dev/null | grep -q ':" + VNC_PORT + "[[:space:]]' || { "
                 + vncServerStartCommand(accountName, processNamePattern) + " ; }";
-        ScriptRunResult result = cliExecutor.runScript(container.getName(), script, ENSURE_VNC_TIMEOUT);
+        ScriptRunResult result = cliExecutor.runScript(container.getName(), container.getBackend(), script, ENSURE_VNC_TIMEOUT);
         if (!result.success()) {
             log.warn("Failed to ensure VNC server running for container {} (exit {})", container.getName(), result.exitCode());
         }
@@ -771,7 +989,7 @@ public class ProvisioningService {
         String accountName = resolveAccountName(container);
         String script = "loginctl show-user %1$s --property=Linger 2>/dev/null | grep -q '^Linger=yes' || loginctl enable-linger %1$s"
                 .formatted(accountName);
-        ScriptRunResult result = cliExecutor.runScript(container.getName(), script, ENSURE_LINGER_TIMEOUT);
+        ScriptRunResult result = cliExecutor.runScript(container.getName(), container.getBackend(), script, ENSURE_LINGER_TIMEOUT);
         if (!result.success()) {
             log.warn("Failed to ensure linger enabled for container {} (exit {})", container.getName(), result.exitCode());
         }
@@ -834,7 +1052,7 @@ public class ProvisioningService {
      */
     private String resolveInternalAddress(Container container) {
         for (int attempt = 1; attempt <= INTERNAL_ADDRESS_MAX_ATTEMPTS; attempt++) {
-            String address = cliExecutor.getInternalAddress(container.getName());
+            String address = cliExecutor.getInternalAddress(container.getName(), container.getBackend());
             if (!address.isEmpty()) {
                 return address;
             }
@@ -932,7 +1150,7 @@ public class ProvisioningService {
 
     private void sh(Container container, String script, char[] sudoPasswordOverride, Duration timeout) {
         for (int attempt = 1; attempt <= SH_MAX_ATTEMPTS; attempt++) {
-            CommandResult result = cliExecutor.runInMachine(container.getName(), List.of("sh", "-c", script), timeout, sudoPasswordOverride);
+            CommandResult result = cliExecutor.runInMachine(container.getName(), container.getBackend(), List.of("sh", "-c", script), timeout, sudoPasswordOverride);
             if (result.success()) {
                 return;
             }

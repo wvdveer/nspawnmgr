@@ -43,7 +43,7 @@ if (-not $templates -or $templates.Count -eq 0) {
     Write-Host "   None found - creating 'debian-minimal' via the admin API (matches site/templates/nspawn/debian-minimal)..."
     Invoke-RestMethod -Method Post -Uri "$NspawnmgrUrl/api/admin/templates" -WebSession $session `
         -ContentType "application/json" `
-        -Body (@{ name = "debian-minimal"; description = "Minimal Debian/Ubuntu base image (apt)"; sourcePath = "debian-minimal"; backend = "SYSTEMD_NSPAWN"; packageManager = "APT"; rdpCapable = $true; active = $true } | ConvertTo-Json) | Out-Null
+        -Body (@{ name = "debian-minimal"; description = "Minimal Debian/Ubuntu base image (apt)"; sourcePath = "debian-minimal"; backend = "SYSTEMD_NSPAWN"; packageManager = "APT"; rdpState = "CAPABLE"; active = $true } | ConvertTo-Json) | Out-Null
     $templates = Invoke-RestMethod -Uri "$NspawnmgrUrl/api/templates" -WebSession $session
 }
 if (-not $templates -or $templates.Count -eq 0) {

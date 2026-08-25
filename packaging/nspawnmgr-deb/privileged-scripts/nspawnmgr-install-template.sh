@@ -137,13 +137,16 @@ DESCRIPTION_SQL="$(sql_string_or_null "$DESCRIPTION")"
 SOURCE_PATH_SQL="$(sql_escape "$NAME")"
 INSTALL_SSH_COMMAND_SQL="$(sql_string_or_null "$INSTALL_SSH_COMMAND")"
 INSTALL_XRDP_COMMAND_SQL="$(sql_string_or_null "$INSTALL_XRDP_COMMAND")"
-RDP_CAPABLE_SQL="$(printf '%s' "$RDP_CAPABLE" | tr '[:lower:]' '[:upper:]')"
+# --rdp-capable's external true|false shape is unchanged (see usage above) - only the internal
+# column changed, from a boolean to a shared three-state (see domain/TemplateFeatureState.java).
+# There's no CLI-facing way to request PREINSTALLED here, same as before this column existed.
+if [ "$RDP_CAPABLE" = true ]; then RDP_STATE_SQL="CAPABLE"; else RDP_STATE_SQL="NOT_CAPABLE"; fi
 ACTIVE_SQL="$(printf '%s' "$ACTIVE" | tr '[:lower:]' '[:upper:]')"
 
 if [ "$DB_VENDOR" = mysql ]; then
     mysql "$DB_NAME" <<SQL
-INSERT INTO templates (name, description, source_path, backend, package_manager, install_ssh_command, install_xrdp_command, rdp_capable, active)
-VALUES ('$NAME_SQL', $DESCRIPTION_SQL, '$SOURCE_PATH_SQL', '$BACKEND', '$PACKAGE_MANAGER', $INSTALL_SSH_COMMAND_SQL, $INSTALL_XRDP_COMMAND_SQL, $RDP_CAPABLE_SQL, $ACTIVE_SQL)
+INSERT INTO templates (name, description, source_path, backend, package_manager, install_ssh_command, install_xrdp_command, rdp_state, active)
+VALUES ('$NAME_SQL', $DESCRIPTION_SQL, '$SOURCE_PATH_SQL', '$BACKEND', '$PACKAGE_MANAGER', $INSTALL_SSH_COMMAND_SQL, $INSTALL_XRDP_COMMAND_SQL, '$RDP_STATE_SQL', $ACTIVE_SQL)
 ON DUPLICATE KEY UPDATE
     description = VALUES(description),
     source_path = VALUES(source_path),
@@ -151,13 +154,13 @@ ON DUPLICATE KEY UPDATE
     package_manager = VALUES(package_manager),
     install_ssh_command = VALUES(install_ssh_command),
     install_xrdp_command = VALUES(install_xrdp_command),
-    rdp_capable = VALUES(rdp_capable),
+    rdp_state = VALUES(rdp_state),
     active = VALUES(active);
 SQL
 else
     su postgres -c "psql -v ON_ERROR_STOP=1 -d '$DB_NAME'" <<SQL
-INSERT INTO templates (name, description, source_path, backend, package_manager, install_ssh_command, install_xrdp_command, rdp_capable, active)
-VALUES ('$NAME_SQL', $DESCRIPTION_SQL, '$SOURCE_PATH_SQL', '$BACKEND', '$PACKAGE_MANAGER', $INSTALL_SSH_COMMAND_SQL, $INSTALL_XRDP_COMMAND_SQL, $RDP_CAPABLE_SQL, $ACTIVE_SQL)
+INSERT INTO templates (name, description, source_path, backend, package_manager, install_ssh_command, install_xrdp_command, rdp_state, active)
+VALUES ('$NAME_SQL', $DESCRIPTION_SQL, '$SOURCE_PATH_SQL', '$BACKEND', '$PACKAGE_MANAGER', $INSTALL_SSH_COMMAND_SQL, $INSTALL_XRDP_COMMAND_SQL, '$RDP_STATE_SQL', $ACTIVE_SQL)
 ON CONFLICT (name) DO UPDATE SET
     description = EXCLUDED.description,
     source_path = EXCLUDED.source_path,
@@ -165,7 +168,7 @@ ON CONFLICT (name) DO UPDATE SET
     package_manager = EXCLUDED.package_manager,
     install_ssh_command = EXCLUDED.install_ssh_command,
     install_xrdp_command = EXCLUDED.install_xrdp_command,
-    rdp_capable = EXCLUDED.rdp_capable,
+    rdp_state = EXCLUDED.rdp_state,
     active = EXCLUDED.active;
 SQL
 fi

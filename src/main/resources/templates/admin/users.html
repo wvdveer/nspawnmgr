@@ -6,47 +6,39 @@
     <link rel="stylesheet" th:href="@{/css/app.css}"/>
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
-<body th:attr="data-base-path=@{/}">
-<div th:replace="fragments/theme-toggle :: widget"></div>
-<h1>Users</h1>
-<p><a th:href="@{/}">&laquo; Back to containers</a></p>
-<p class="hint" th:unless="${smbAuth}">There's no "add user" button here. To create a new user, add
-    a Linux account to the <code>nspawnmgr</code> container itself, then have that person log in;
-    nspawnmgr creates its own user row automatically on first successful login.</p>
-<p class="hint" th:if="${smbAuth}">There's no "add user" button here. To create a new user, add
-    a user to the <code th:text="${authSmbRequiredShare}">share</code> share on
-    <code th:text="${authSmbServer}">server</code>, then have that person log in; nspawnmgr creates
-    its own user row automatically on first successful login.</p>
+<body th:attr="data-base-path=@{/},data-all-role-names=${allRoleNames}">
+<div th:replace="~{fragments/app-shell :: shell(
+        title='Users', subtitle='Manage user accounts and roles',
+        activeNav='users', currentUser=${currentUser},
+        addMenu=${smbAuth} ? null : ~{::#add-menu-items},
+        content=~{::#page-content})}">
+<div id="add-menu-items" th:unless="${smbAuth}">
+    <a th:if="${nspawnmgrContainerId != null}"
+       th:href="@{/containers/{id}(id=${nspawnmgrContainerId})} + '#container-users-section'">Add user</a>
+    <button th:if="${nspawnmgrContainerId == null}" disabled
+            title="The self-hosted nspawnmgr machine hasn't been discovered yet.">Add user</button>
+</div>
+<div id="page-content">
 <p th:if="${externalManaged}">
     Role is externally managed for this deployment (<code>nspawnmgr.auth.user-is-admin-json</code>
     is configured) — roles are derived from the identity backend on every login and cannot be
     changed here.
 </p>
-<table>
-    <thead>
-    <tr>
-        <th>Username</th>
-        <th>Email</th>
-        <th>Role</th>
-        <th th:unless="${externalManaged}">Actions</th>
-    </tr>
-    </thead>
-    <tbody>
-    <tr th:each="u : ${users}" th:attr="data-user-id=${u.id}">
-        <td th:text="${u.username}">username</td>
-        <td th:text="${u.email}">email</td>
-        <td th:text="${u.role}">role</td>
-        <td th:unless="${externalManaged}">
-            <button th:if="${u.role.name() == 'USER'}" class="btn-promote" th:attr="data-user-id=${u.id}">
-                Promote to admin
-            </button>
-            <button th:if="${u.role.name() == 'ADMIN'}" class="btn-demote btn-primary" th:attr="data-user-id=${u.id}">
-                Remove admin
-            </button>
-        </td>
-    </tr>
-    </tbody>
-</table>
+<div class="machine-grid">
+    <div class="machine-card" th:each="u : ${users}" th:attr="data-user-id=${u.id}">
+        <div class="machine-card-header">
+            <span class="machine-card-name" th:text="${u.username}">username</span>
+            <span class="badge badge-role role-trigger" th:unless="${externalManaged}"
+                  th:classappend="${u.role.name()}" th:text="${u.role}"
+                  th:attr="data-user-id=${u.id},data-role=${u.role.name()}">USER</span>
+            <span class="badge badge-role" th:if="${externalManaged}"
+                  th:classappend="${u.role.name()}" th:text="${u.role}">USER</span>
+        </div>
+        <p class="machine-card-meta" th:if="${u.email != null and u.email != ''}" th:text="${u.email}">email</p>
+    </div>
+</div>
+</div>
+</div>
 <script th:src="@{/js/theme-toggle.js}"></script>
 <script th:src="@{/js/dialog.js}"></script>
 <script th:src="@{/js/admin-users.js}"></script>

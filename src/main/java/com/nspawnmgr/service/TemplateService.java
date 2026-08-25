@@ -8,6 +8,7 @@ import com.nspawnmgr.domain.MinimalTemplateFlavor;
 import com.nspawnmgr.domain.PackageManager;
 import com.nspawnmgr.domain.PrivateUsersMode;
 import com.nspawnmgr.domain.Template;
+import com.nspawnmgr.domain.TemplateFeatureState;
 import com.nspawnmgr.repository.ContainerRepository;
 import com.nspawnmgr.repository.TemplateRepository;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -410,9 +412,9 @@ public class TemplateService {
      */
     public record TemplateFields(
             String name, String description, String sourcePath, ContainerBackend backend, PackageManager packageManager,
-            String installSshCommand, boolean sshPreinstalled, String sshPreDownloadPackages,
-            String installXrdpCommand, boolean rdpCapable, String xrdpPreDownloadPackages,
-            String installVncCommand, boolean vncCapable, String vncPreDownloadPackages, String vncXstartupTemplate,
+            String installSshCommand, TemplateFeatureState sshState, String sshPreDownloadPackages,
+            String installXrdpCommand, TemplateFeatureState rdpState, String xrdpPreDownloadPackages,
+            String installVncCommand, TemplateFeatureState vncState, String vncPreDownloadPackages, String vncXstartupTemplate,
             String vncProcessNamePattern,
             String installGnomeCommand, String gnomePreDownloadPackages,
             String installKdeStandardCommand, String kdeStandardPreDownloadPackages,
@@ -443,13 +445,13 @@ public class TemplateService {
         template.setBackend(fields.backend());
         template.setPackageManager(fields.packageManager());
         template.setInstallSshCommand(fields.installSshCommand());
-        template.setSshPreinstalled(fields.sshPreinstalled());
+        template.setSshState(fields.sshState());
         template.setSshPreDownloadPackages(fields.sshPreDownloadPackages());
         template.setInstallXrdpCommand(fields.installXrdpCommand());
-        template.setRdpCapable(fields.rdpCapable());
+        template.setRdpState(fields.rdpState());
         template.setXrdpPreDownloadPackages(fields.xrdpPreDownloadPackages());
         template.setInstallVncCommand(fields.installVncCommand());
-        template.setVncCapable(fields.vncCapable());
+        template.setVncState(fields.vncState());
         template.setVncPreDownloadPackages(fields.vncPreDownloadPackages());
         template.setVncXstartupTemplate(fields.vncXstartupTemplate());
         template.setVncProcessNamePattern(fields.vncProcessNamePattern());
@@ -504,21 +506,22 @@ public class TemplateService {
         filesystemProvisioner.createMinimalTemplate(flavor, sudoPasswordOverride);
         // Confirmed live: xrdp/xorgxrdp were dropped from Arch's official repos entirely (AUR-only
         // now, which this app has no way to build from) - "target not found" for both, every time.
-        // rdpCapable=false here is what actually disables the "Enable RDP" checkbox on the New
+        // NOT_CAPABLE here is what actually disables the "Enable RDP" checkbox on the New
         // container form (see create.html/create.js) - not a hardcoded PACMAN check there, so an
         // admin can still flip it back on later (e.g. if a future Arch release restores the
         // package, or a template is hand-edited to a different install command) via the template's
-        // own "RDP capable" checkbox on its edit form.
-        boolean rdpCapable = flavor.packageManager() != PackageManager.PACMAN;
-        // true: every nspawnmgr-create-*-template.sh bake script already installs and enables
-        // openssh(-server) as part of baking the image itself (see e.g.
+        // own "RDP" select on its edit form.
+        TemplateFeatureState rdpState = flavor.packageManager() != PackageManager.PACMAN
+                ? TemplateFeatureState.CAPABLE : TemplateFeatureState.NOT_CAPABLE;
+        // PREINSTALLED: every nspawnmgr-create-*-template.sh bake script already installs and
+        // enables openssh(-server) as part of baking the image itself (see e.g.
         // nspawnmgr-create-debian-template.sh's own "systemctl enable ssh" step) - see
-        // Template.sshPreinstalled's own comment for what this skips at provisioning time.
+        // Template.sshState's own comment for what this skips at provisioning time.
         return create(new TemplateFields(flavor.templateName(), flavor.description(), flavor.templateName(),
                 ContainerBackend.SYSTEMD_NSPAWN, flavor.packageManager(),
-                null, true, null,
-                null, rdpCapable, null,
-                null, true, null, null, null,
+                null, TemplateFeatureState.PREINSTALLED, null,
+                null, rdpState, null,
+                null, TemplateFeatureState.CAPABLE, null, null, null,
                 null, null, null, null, null, null,
                 minimalFlavorPrivateUsersMode(flavor), true));
     }
@@ -550,14 +553,15 @@ public class TemplateService {
         if (!filesystemProvisioner.listAvailableSourceFiles(ContainerBackend.SYSTEMD_NSPAWN).contains(flavor.templateName())) {
             return Optional.empty();
         }
-        boolean rdpCapable = flavor.packageManager() != PackageManager.PACMAN;
-        // true: same reasoning as createMinimalDefault's own call to create() - the tarball already
-        // sitting on disk here was produced by the exact same bake script either way.
+        TemplateFeatureState rdpState = flavor.packageManager() != PackageManager.PACMAN
+                ? TemplateFeatureState.CAPABLE : TemplateFeatureState.NOT_CAPABLE;
+        // PREINSTALLED: same reasoning as createMinimalDefault's own call to create() - the tarball
+        // already sitting on disk here was produced by the exact same bake script either way.
         return Optional.of(create(new TemplateFields(flavor.templateName(), flavor.description(), flavor.templateName(),
                 ContainerBackend.SYSTEMD_NSPAWN, flavor.packageManager(),
-                null, true, null,
-                null, rdpCapable, null,
-                null, true, null, null, null,
+                null, TemplateFeatureState.PREINSTALLED, null,
+                null, rdpState, null,
+                null, TemplateFeatureState.CAPABLE, null, null, null,
                 null, null, null, null, null, null,
                 minimalFlavorPrivateUsersMode(flavor), true)));
     }
@@ -580,6 +584,13 @@ public class TemplateService {
      *
      * <p>Caller is responsible for only invoking this while the container is STOPPED - see {@link
      * ContainerFilesystemProvisioner#packMachineAsTemplate}'s own javadoc for why.
+     *
+     * <p>{@code originatingTemplate} is null for a from-scratch QEMU VM (QEMU v1 creation is
+     * from-scratch + ISO only, no Template involved - see {@code ProvisioningService.createPendingQemu}) -
+     * falls back to the container's own {@code backend} and backend-appropriate "not applicable"
+     * defaults for the inherited fields in that case. A QEMU VM that *was* itself created from a
+     * template (see {@code ProvisioningService.provisionQemu}'s template-clone branch) has a
+     * non-null {@code originatingTemplate} same as nspawn/podman, and inherits normally.
      */
     public Template createFromMachine(String templateName, String description, Container container, char[] sudoPasswordOverride) {
         requireNameAvailable(templateName, null);
@@ -593,20 +604,125 @@ public class TemplateService {
         Container freshContainer = containerRepository.findByIdWithTemplate(container.getId())
                 .orElseThrow(() -> new IllegalArgumentException("No such container: " + container.getId()));
         Template originatingTemplate = freshContainer.getTemplate();
-        filesystemProvisioner.packMachineAsTemplate(freshContainer.getName(), originatingTemplate.getBackend(), templateName, sudoPasswordOverride);
-        // sshPreinstalled=true unconditionally (not inherited from originatingTemplate): reaching
-        // STOPPED at all means this container went through the full create+provision flow, which
-        // always runs provisionSsh unconditionally - so the rootfs being packed right now has
-        // openssh installed and enabled regardless of whether the ORIGINATING template already had
-        // it baked in or not.
-        return create(new TemplateFields(templateName, description, templateName,
-                originatingTemplate.getBackend(), originatingTemplate.getPackageManager(),
-                null, true, null,
-                null, originatingTemplate.isRdpCapable(), null,
-                null, originatingTemplate.isVncCapable(), null, originatingTemplate.getVncXstartupTemplate(),
-                originatingTemplate.getVncProcessNamePattern(),
+        ContainerBackend backend = originatingTemplate != null ? originatingTemplate.getBackend() : freshContainer.getBackend();
+        filesystemProvisioner.packMachineAsTemplate(freshContainer.getName(), backend, templateName, sudoPasswordOverride);
+        // sshState=PREINSTALLED unconditionally when there IS an originating template (not inherited
+        // from it): reaching STOPPED at all means this container went through the full
+        // create+provision flow, which always runs provisionSsh unconditionally - so the rootfs
+        // being packed right now has openssh installed and enabled regardless of whether the
+        // ORIGINATING template already had it baked in or not. NOT_CAPABLE (not PREINSTALLED) when
+        // there's no originating template at all (a from-scratch QEMU VM) - nspawnmgr never
+        // provisions anything inside a QEMU guest, so "preinstalled by nspawnmgr" would be false.
+        return create(new TemplateFields(templateName, description, templateName, backend,
+                originatingTemplate != null ? originatingTemplate.getPackageManager() : null,
+                null, originatingTemplate != null ? TemplateFeatureState.PREINSTALLED : TemplateFeatureState.NOT_CAPABLE, null,
+                null, originatingTemplate != null ? originatingTemplate.getRdpState() : TemplateFeatureState.NOT_CAPABLE, null,
+                null, originatingTemplate != null ? originatingTemplate.getVncState() : TemplateFeatureState.NOT_CAPABLE, null,
+                originatingTemplate != null ? originatingTemplate.getVncXstartupTemplate() : null,
+                originatingTemplate != null ? originatingTemplate.getVncProcessNamePattern() : null,
                 null, null, null, null, null, null,
-                originatingTemplate.getPrivateUsersMode(), true));
+                originatingTemplate != null ? originatingTemplate.getPrivateUsersMode() : null, true));
+    }
+
+    /**
+     * Pulls a podman image and registers it as a new podman-backed template - backs the Templates
+     * admin page's "New Pod" button. Deliberately not {@code @Transactional}, same posture as
+     * {@link #createMinimalDefault}: the podman pull is the slow part, not something to hold a DB
+     * transaction open for - the actual row write happens in {@link #create}'s own short
+     * transaction once that's done.
+     *
+     * <p>{@code packageManager} is left {@code null} - an arbitrary pulled image's package manager
+     * (if it even has one nspawnmgr would recognize) is unknown, unlike the curated "Set up
+     * X-minimal" flavors - see {@link Template#getPackageManager()}'s own javadoc. Likewise
+     * {@code sshState}/{@code rdpState}/{@code vncState} all default to NOT_CAPABLE: with no known
+     * package manager there's no way for nspawnmgr to install any of them, and nspawnmgr has no
+     * actual podman container-creation/provisioning path yet to make any of this meaningful anyway
+     * (see {@link com.nspawnmgr.domain.ContainerBackend}'s own javadoc) - an admin can still
+     * hand-edit them later via the normal template edit form once that changes.
+     */
+    public Template createFromPodmanPull(String pullReference, char[] sudoPasswordOverride) {
+        if (pullReference == null || pullReference.isBlank()) {
+            throw new IllegalArgumentException("A podman pull reference is required");
+        }
+        String derivedName = deriveTemplateNameFromPullReference(pullReference);
+        requireNameAvailable(derivedName, null);
+        if (sudoPasswordOverride == null && settingsService.sshApprovalRequired()) {
+            throw new IllegalArgumentException("A sudo password is required — no stored sudo secret is configured (see /admin/settings).");
+        }
+        filesystemProvisioner.pullPodmanTemplate(pullReference, derivedName, sudoPasswordOverride);
+        return create(new TemplateFields(derivedName, "Pulled via podman pull " + pullReference, derivedName,
+                ContainerBackend.PODMAN, null,
+                null, TemplateFeatureState.NOT_CAPABLE, null,
+                null, TemplateFeatureState.NOT_CAPABLE, null,
+                null, TemplateFeatureState.NOT_CAPABLE, null, null,
+                null,
+                null, null, null, null, null, null,
+                null, true));
+    }
+
+    /** Lowercases and replaces every run of non name-safe characters with a single '-' (trimmed
+     *  from both ends) - "docker.io/library/alpine:latest" becomes "docker.io-library-alpine-latest".
+     *  Not required to be unique itself - {@link #requireNameAvailable} is what actually enforces
+     *  that, surfacing a clear error if two pulls would derive the same name. */
+    private static String deriveTemplateNameFromPullReference(String pullReference) {
+        String sanitized = pullReference.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9._-]+", "-")
+                .replaceAll("-{2,}", "-")
+                .replaceAll("^-|-$", "");
+        if (sanitized.isEmpty()) {
+            throw new IllegalArgumentException("Could not derive a template name from '" + pullReference + "'");
+        }
+        return sanitized;
+    }
+
+    /**
+     * Converts an existing systemd-nspawn template's rootfs tarball into a new podman-backed
+     * template (via {@code podman import}) - backs the Templates admin page's per-row "Create
+     * podman template" button. Same non-transactional posture as {@link #createFromPodmanPull}.
+     * Unlike a raw pod pull, this DOES know what's inside (the same rootfs, just repackaged), so
+     * {@code packageManager}/{@code sshState}/RDP+VNC state/PrivateUsers mode are all
+     * inherited from the source template - same reasoning {@link #createFromMachine} already uses.
+     */
+    public Template convertToPodman(Long nspawnTemplateId, String newName, char[] sudoPasswordOverride) {
+        Template source = getById(nspawnTemplateId);
+        if (source.getBackend() != ContainerBackend.SYSTEMD_NSPAWN) {
+            throw new IllegalArgumentException("Template '" + source.getName() + "' is not a systemd-nspawn template");
+        }
+        requireNameAvailable(newName, null);
+        if (sudoPasswordOverride == null && settingsService.sshApprovalRequired()) {
+            throw new IllegalArgumentException("A sudo password is required — no stored sudo secret is configured (see /admin/settings).");
+        }
+        filesystemProvisioner.convertNspawnTemplateToPodman(source.getSourcePath(), newName, sudoPasswordOverride);
+        return create(new TemplateFields(newName, "Converted from nspawn template '" + source.getName() + "'", newName,
+                ContainerBackend.PODMAN, source.getPackageManager(),
+                null, source.getSshState(), null,
+                null, source.getRdpState(), null,
+                null, source.getVncState(), null, source.getVncXstartupTemplate(),
+                source.getVncProcessNamePattern(),
+                null, null, null, null, null, null,
+                source.getPrivateUsersMode(), true));
+    }
+
+    /** As {@link #convertToPodman}, the reverse direction (via {@code podman export}) - backs the
+     *  Templates admin page's per-row "Create nspawn template" button on podman rows. */
+    public Template convertToNspawn(Long podmanTemplateId, String newName, char[] sudoPasswordOverride) {
+        Template source = getById(podmanTemplateId);
+        if (source.getBackend() != ContainerBackend.PODMAN) {
+            throw new IllegalArgumentException("Template '" + source.getName() + "' is not a podman template");
+        }
+        requireNameAvailable(newName, null);
+        if (sudoPasswordOverride == null && settingsService.sshApprovalRequired()) {
+            throw new IllegalArgumentException("A sudo password is required — no stored sudo secret is configured (see /admin/settings).");
+        }
+        filesystemProvisioner.convertPodmanTemplateToNspawn(source.getSourcePath(), newName, sudoPasswordOverride);
+        return create(new TemplateFields(newName, "Converted from podman template '" + source.getName() + "'", newName,
+                ContainerBackend.SYSTEMD_NSPAWN, source.getPackageManager(),
+                null, source.getSshState(), null,
+                null, source.getRdpState(), null,
+                null, source.getVncState(), null, source.getVncXstartupTemplate(),
+                source.getVncProcessNamePattern(),
+                null, null, null, null, null, null,
+                source.getPrivateUsersMode(), true));
     }
 
     private void requireNameAvailable(String name, Long excludingId) {

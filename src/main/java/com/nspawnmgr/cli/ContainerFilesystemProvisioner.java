@@ -169,4 +169,128 @@ public interface ContainerFilesystemProvisioner {
      * suggestion, never something a caller depends on to proceed.
      */
     List<String> listAvailableSourceFiles(ContainerBackend backend);
+
+    /**
+     * Pulls a podman image and saves it as a single portable file at
+     * {@code <templates-dir>/podman/<templateName>.tar} - backs the Templates admin page's
+     * "New Pod" button (see TemplateService.createFromPodmanPull). Creation-time-only, same
+     * sudo-password requirement as {@link #cloneTemplate}. Throws if the target already exists.
+     */
+    void pullPodmanTemplate(String pullReference, String templateName, char[] sudoPasswordOverride);
+
+    /** Convenience overload for stored-secret mode (no per-request override). */
+    default void pullPodmanTemplate(String pullReference, String templateName) {
+        pullPodmanTemplate(pullReference, templateName, null);
+    }
+
+    /**
+     * Converts an existing nspawn template's rootfs tarball into a podman image, saved the same
+     * way {@link #pullPodmanTemplate} saves one - backs the Templates admin page's per-row
+     * "Create podman template" button (see TemplateService.convertToPodman). Creation-time-only,
+     * same sudo-password requirement as {@link #cloneTemplate}. Throws if the target already
+     * exists.
+     */
+    void convertNspawnTemplateToPodman(String nspawnTemplateName, String newTemplateName, char[] sudoPasswordOverride);
+
+    /** Convenience overload for stored-secret mode (no per-request override). */
+    default void convertNspawnTemplateToPodman(String nspawnTemplateName, String newTemplateName) {
+        convertNspawnTemplateToPodman(nspawnTemplateName, newTemplateName, null);
+    }
+
+    /**
+     * Flattens an existing podman template's image back into a plain rootfs tarball - backs the
+     * Templates admin page's per-row "Create nspawn template" button (see
+     * TemplateService.convertToNspawn). Creation-time-only, same sudo-password requirement as
+     * {@link #cloneTemplate}. Throws if the target already exists.
+     */
+    void convertPodmanTemplateToNspawn(String podmanTemplateName, String newTemplateName, char[] sudoPasswordOverride);
+
+    /** Convenience overload for stored-secret mode (no per-request override). */
+    default void convertPodmanTemplateToNspawn(String podmanTemplateName, String newTemplateName) {
+        convertPodmanTemplateToNspawn(podmanTemplateName, newTemplateName, null);
+    }
+
+    /**
+     * Loads a podman template's saved image and creates (does not start) a new container from it,
+     * attached to the shared {@code nspawnbr0} network - backs ProvisioningService's own pod
+     * creation flow. Creation-time-only, same sudo-password requirement as {@link #cloneTemplate}.
+     * Starting the resulting container is a separate {@code ContainerCliExecutor.start} call,
+     * mirroring {@link #cloneTemplate}+{@code start}'s own two-phase shape for SYSTEMD_NSPAWN.
+     *
+     * @param command like a Dockerfile {@code CMD}, run through a shell as the container's own PID 1
+     *                - null/blank trusts whatever CMD is already baked into the loaded image (see
+     *                {@code Container#getPodCommand}'s own javadoc for why that's often a footgun).
+     */
+    void createPodmanContainer(String templateSourcePath, String containerName, String command, char[] sudoPasswordOverride);
+
+    /** Convenience overload for stored-secret mode (no per-request override). */
+    default void createPodmanContainer(String templateSourcePath, String containerName, String command) {
+        createPodmanContainer(templateSourcePath, containerName, command, null);
+    }
+
+    /**
+     * Ensures {@code containerName}'s own rootfs is mounted host-side and returns the resulting
+     * mountpoint - backs the Files page's PODMAN root-path resolution (see
+     * ContainerFileBrowserService), the one thing {@link com.nspawnmgr.cli.ContainerFilesystemBrowser}'s
+     * plain host-path list/download/upload methods need to work unchanged for a podman container,
+     * which (unlike a SYSTEMD_NSPAWN machine's always-there {@code /var/lib/machines/<name>}) has no
+     * host-visible rootfs path by default. {@code podman mount} is idempotent/refcounted - safe to
+     * call before every browse operation; there's no corresponding unmount call in this first pass.
+     * Read-only and always safe, so like {@link #listAvailableSourceFiles}, this needs no sudo
+     * password at all.
+     */
+    String mountPodmanContainer(String containerName);
+
+    /**
+     * Creates a new QEMU VM's {@code qcow2} disk ({@code diskSizeGb} GB, empty). The only QEMU
+     * creation step gated on a sudo password - matches {@link #cloneTemplate}'s own "new persistent
+     * artifact" tier. Actually launching the VM (a NOPASSWD, fixed-shape systemd-run invocation,
+     * reused identically for the very first boot and for every later {@code start} of a VM whose
+     * transient unit has since been collected) lives directly in {@code ContainerCliExecutor.start},
+     * not here - see that method's own QEMU branch.
+     */
+    void createQemuDisk(String containerName, int diskSizeGb, char[] sudoPasswordOverride);
+
+    /** Convenience overload for stored-secret mode (no per-request override). */
+    default void createQemuDisk(String containerName, int diskSizeGb) {
+        createQemuDisk(containerName, diskSizeGb, null);
+    }
+
+    /**
+     * (Re)writes {@code container}'s QEMU systemd unit file (disk path derived from the name, MAC
+     * derived deterministically from the name, VNC listener on {@code 10.100.0.1:<qemuVncPort>},
+     * monitor socket at its own fixed per-VM path, {@code -cdrom}/boot-order set from {@code
+     * isoHostPath}, and CPU model/count, memory, and NIC model read straight off {@code container}'s
+     * own {@code qemuCpuModel}/{@code qemuCpuCount}/{@code qemuMemoryMb}/{@code qemuNicModel} - null
+     * on any of those means "use the previous hardcoded default", see the real implementation and
+     * nspawnmgr-qemu-write-unit.sh) and reloads systemd - called once at creation (right after
+     * {@link #createQemuDisk}) and again every time the mounted ISO changes while the VM is STOPPED
+     * (see ContainerIsoMounter's QEMU branch), so the next plain {@code systemctl start} always
+     * launches with current settings. Takes the whole {@code container} rather than exploding every
+     * field into its own parameter - both real callers already have it in scope, and it already
+     * carries the CPU/memory/NIC fields. Read-only-ish (writes a unit file, not user data) and always
+     * safe, so unlike {@link #createQemuDisk} this needs no sudo password - matches {@link
+     * #writeNspawnSettings}'s own NOPASSWD tier for the identical "rewrite a settings/unit file, take
+     * effect on next (re)start" shape.
+     *
+     * @param isoHostPath null/blank means no boot media (boots straight to disk)
+     */
+    void writeQemuUnit(Container container, String isoHostPath);
+
+    /**
+     * Clones a QEMU template - a plain qcow2 file at {@code <templates-dir>/qemu/<template's own
+     * sourcePath>.qcow2} - into {@code containerName}'s own disk at the fixed {@code
+     * /var/lib/nspawnmgr/qemu-disks/<containerName>.qcow2} convention {@link #createQemuDisk}
+     * already uses. Creation-time only, same sudo-password requirement as {@link #cloneTemplate}:
+     * the sole caller is {@code ProvisioningService.provisionQemu} when the container has an
+     * associated template, in place of {@link #createQemuDisk}'s empty-disk creation. No format
+     * conversion needed (qcow2 -> qcow2), just a copy - unlike {@link #cloneTemplate}'s tar extract.
+     * Throws if the target disk already exists.
+     */
+    void cloneQemuTemplate(Template template, String containerName, char[] sudoPasswordOverride);
+
+    /** Convenience overload for stored-secret mode (no per-request override). */
+    default void cloneQemuTemplate(Template template, String containerName) {
+        cloneQemuTemplate(template, containerName, null);
+    }
 }

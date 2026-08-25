@@ -4,6 +4,7 @@ import com.nspawnmgr.cli.ContainerCliExecutor;
 import com.nspawnmgr.cli.MachineBootSettings;
 import com.nspawnmgr.cli.MachineStatus;
 import com.nspawnmgr.domain.Container;
+import com.nspawnmgr.domain.ContainerBackend;
 import com.nspawnmgr.domain.ContainerKind;
 import com.nspawnmgr.domain.ContainerState;
 import com.nspawnmgr.domain.CredentialType;
@@ -40,6 +41,9 @@ class ContainerDiscoveryServiceTest {
         ContainerAccessService accessService = mock(ContainerAccessService.class);
         TemplateService templateService = mock(TemplateService.class);
         ProvisioningService provisioningService = mock(ProvisioningService.class);
+        NetworkDiagnosticsService networkDiagnosticsService = mock(NetworkDiagnosticsService.class);
+        when(networkDiagnosticsService.isPodmanInstalled()).thenReturn(true);
+        when(networkDiagnosticsService.isQemuInstalled()).thenReturn(true);
 
         Container alreadyKnown = new Container();
         alreadyKnown.setName("already-known");
@@ -48,15 +52,16 @@ class ContainerDiscoveryServiceTest {
         when(templateService.registerExistingMinimal(any())).thenReturn(Optional.empty());
 
         when(cliExecutor.listMachineImageNames()).thenReturn(List.of("already-known", "hand-built-running", "hand-built-stopped"));
-        when(cliExecutor.status("hand-built-running")).thenReturn(MachineStatus.RUNNING);
-        when(cliExecutor.status("hand-built-stopped")).thenReturn(MachineStatus.STOPPED);
-        when(cliExecutor.getInternalAddress("hand-built-running")).thenReturn("10.0.3.5");
+        when(cliExecutor.status("hand-built-running", ContainerBackend.SYSTEMD_NSPAWN)).thenReturn(MachineStatus.RUNNING);
+        when(cliExecutor.status("hand-built-stopped", ContainerBackend.SYSTEMD_NSPAWN)).thenReturn(MachineStatus.STOPPED);
+        when(cliExecutor.getInternalAddress("hand-built-running", ContainerBackend.SYSTEMD_NSPAWN)).thenReturn("10.0.3.5");
 
         User admin = new User("admin-external-id");
         admin.setId(1L);
 
         ContainerDiscoveryService service = new ContainerDiscoveryService(containerRepository, containerCredentialRepository,
-                cliExecutor, accessService, templateService, provisioningService, new SelfHostedBootstrapStatus(), "");
+                cliExecutor, accessService, templateService, provisioningService, new SelfHostedBootstrapStatus(),
+                networkDiagnosticsService, "");
         List<Container> discovered = service.discover(admin);
 
         assertThat(discovered).extracting(Container::getName)
@@ -78,6 +83,43 @@ class ContainerDiscoveryServiceTest {
     }
 
     @Test
+    void alsoRegistersUntrackedPodmanContainersWithTheirOwnBackend() {
+        ContainerRepository containerRepository = mock(ContainerRepository.class);
+        ContainerCredentialRepository containerCredentialRepository = mock(ContainerCredentialRepository.class);
+        ContainerCliExecutor cliExecutor = mock(ContainerCliExecutor.class);
+        ContainerAccessService accessService = mock(ContainerAccessService.class);
+        TemplateService templateService = mock(TemplateService.class);
+        ProvisioningService provisioningService = mock(ProvisioningService.class);
+        NetworkDiagnosticsService networkDiagnosticsService = mock(NetworkDiagnosticsService.class);
+        when(networkDiagnosticsService.isPodmanInstalled()).thenReturn(true);
+        when(networkDiagnosticsService.isQemuInstalled()).thenReturn(true);
+
+        when(containerRepository.findAll()).thenReturn(List.of());
+        when(containerRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(templateService.registerExistingMinimal(any())).thenReturn(Optional.empty());
+
+        when(cliExecutor.listPodmanContainerNames()).thenReturn(List.of("hand-built-pod-1"));
+        when(cliExecutor.status("hand-built-pod-1", ContainerBackend.PODMAN)).thenReturn(MachineStatus.RUNNING);
+        when(cliExecutor.getInternalAddress("hand-built-pod-1", ContainerBackend.PODMAN)).thenReturn("10.100.0.7");
+
+        User admin = new User("admin-external-id");
+        admin.setId(1L);
+
+        ContainerDiscoveryService service = new ContainerDiscoveryService(containerRepository, containerCredentialRepository,
+                cliExecutor, accessService, templateService, provisioningService, new SelfHostedBootstrapStatus(),
+                networkDiagnosticsService, "");
+        List<Container> discovered = service.discover(admin);
+
+        assertThat(discovered).hasSize(1);
+        Container pod = discovered.get(0);
+        assertThat(pod.getName()).isEqualTo("hand-built-pod-1");
+        assertThat(pod.getBackend()).isEqualTo(ContainerBackend.PODMAN);
+        assertThat(pod.getState()).isEqualTo(ContainerState.RUNNING);
+        assertThat(pod.getInternalAddress()).isEqualTo("10.100.0.7");
+        verify(accessService).tryAutoEnable(pod);
+    }
+
+    @Test
     void skipsImagesThatVanishBetweenListingAndStatusCheck() {
         ContainerRepository containerRepository = mock(ContainerRepository.class);
         ContainerCredentialRepository containerCredentialRepository = mock(ContainerCredentialRepository.class);
@@ -85,14 +127,18 @@ class ContainerDiscoveryServiceTest {
         ContainerAccessService accessService = mock(ContainerAccessService.class);
         TemplateService templateService = mock(TemplateService.class);
         ProvisioningService provisioningService = mock(ProvisioningService.class);
+        NetworkDiagnosticsService networkDiagnosticsService = mock(NetworkDiagnosticsService.class);
+        when(networkDiagnosticsService.isPodmanInstalled()).thenReturn(true);
+        when(networkDiagnosticsService.isQemuInstalled()).thenReturn(true);
 
         when(containerRepository.findAll()).thenReturn(List.of());
         when(templateService.registerExistingMinimal(any())).thenReturn(Optional.empty());
         when(cliExecutor.listMachineImageNames()).thenReturn(List.of("gone-already"));
-        when(cliExecutor.status("gone-already")).thenReturn(MachineStatus.NOT_FOUND);
+        when(cliExecutor.status("gone-already", ContainerBackend.SYSTEMD_NSPAWN)).thenReturn(MachineStatus.NOT_FOUND);
 
         ContainerDiscoveryService service = new ContainerDiscoveryService(containerRepository, containerCredentialRepository,
-                cliExecutor, accessService, templateService, provisioningService, new SelfHostedBootstrapStatus(), "");
+                cliExecutor, accessService, templateService, provisioningService, new SelfHostedBootstrapStatus(),
+                networkDiagnosticsService, "");
         List<Container> discovered = service.discover(new User("admin-external-id"));
 
         assertThat(discovered).isEmpty();
@@ -116,6 +162,9 @@ class ContainerDiscoveryServiceTest {
         ContainerAccessService accessService = mock(ContainerAccessService.class);
         TemplateService templateService = mock(TemplateService.class);
         ProvisioningService provisioningService = mock(ProvisioningService.class);
+        NetworkDiagnosticsService networkDiagnosticsService = mock(NetworkDiagnosticsService.class);
+        when(networkDiagnosticsService.isPodmanInstalled()).thenReturn(true);
+        when(networkDiagnosticsService.isQemuInstalled()).thenReturn(true);
 
         Template debianMinimal = new Template();
         debianMinimal.setName("debian-minimal");
@@ -133,7 +182,8 @@ class ContainerDiscoveryServiceTest {
         when(cliExecutor.listMachineImageNames()).thenReturn(List.of("nspawnmgr"));
 
         ContainerDiscoveryService service = new ContainerDiscoveryService(containerRepository, containerCredentialRepository,
-                cliExecutor, accessService, templateService, provisioningService, new SelfHostedBootstrapStatus(), "");
+                cliExecutor, accessService, templateService, provisioningService, new SelfHostedBootstrapStatus(),
+                networkDiagnosticsService, "");
         service.discover(new User("admin-external-id"));
 
         verify(provisioningService).provisionSshForExistingContainer(nspawnmgrMachine, null);
@@ -141,7 +191,7 @@ class ContainerDiscoveryServiceTest {
         // Regression check for a real bug: a plain findAll() here returns containers with a lazy
         // template proxy that throws "could not initialize proxy - no Session" the moment
         // provisionSshForExistingContainer's own separate REQUIRES_NEW sub-transaction tries to
-        // read template.isSshPreinstalled(), since findAll()'s own loading session has already
+        // read template.getSshState(), since findAll()'s own loading session has already
         // closed by then (confirmed live) - the reconciliation pass must fetch template eagerly.
         verify(containerRepository).findAllWithTemplate();
     }
@@ -160,6 +210,9 @@ class ContainerDiscoveryServiceTest {
         ContainerAccessService accessService = mock(ContainerAccessService.class);
         TemplateService templateService = mock(TemplateService.class);
         ProvisioningService provisioningService = mock(ProvisioningService.class);
+        NetworkDiagnosticsService networkDiagnosticsService = mock(NetworkDiagnosticsService.class);
+        when(networkDiagnosticsService.isPodmanInstalled()).thenReturn(true);
+        when(networkDiagnosticsService.isQemuInstalled()).thenReturn(true);
 
         Template debianMinimal = new Template();
         debianMinimal.setName("debian-minimal");
@@ -184,7 +237,7 @@ class ContainerDiscoveryServiceTest {
 
         ContainerDiscoveryService service = new ContainerDiscoveryService(containerRepository, containerCredentialRepository,
                 cliExecutor, accessService, templateService, provisioningService, new SelfHostedBootstrapStatus(),
-                "jdbc:postgresql://10.0.3.9:5432/nspawnmgr");
+                networkDiagnosticsService, "jdbc:postgresql://10.0.3.9:5432/nspawnmgr");
         service.discover(new User("admin-external-id"));
 
         verify(cliExecutor).setAutoStart("nspawnmgr", true);
@@ -207,6 +260,9 @@ class ContainerDiscoveryServiceTest {
         ContainerAccessService accessService = mock(ContainerAccessService.class);
         TemplateService templateService = mock(TemplateService.class);
         ProvisioningService provisioningService = mock(ProvisioningService.class);
+        NetworkDiagnosticsService networkDiagnosticsService = mock(NetworkDiagnosticsService.class);
+        when(networkDiagnosticsService.isPodmanInstalled()).thenReturn(true);
+        when(networkDiagnosticsService.isQemuInstalled()).thenReturn(true);
         SelfHostedBootstrapStatus bootstrapStatus = new SelfHostedBootstrapStatus();
 
         Template debianMinimal = new Template();
@@ -231,7 +287,7 @@ class ContainerDiscoveryServiceTest {
 
         ContainerDiscoveryService service = new ContainerDiscoveryService(containerRepository, containerCredentialRepository,
                 cliExecutor, accessService, templateService, provisioningService, bootstrapStatus,
-                "jdbc:postgresql://10.0.3.9:5432/nspawnmgr");
+                networkDiagnosticsService, "jdbc:postgresql://10.0.3.9:5432/nspawnmgr");
         service.reconcileSelfHostedInfrastructureNow();
 
         assertThat(bootstrapStatus.isDone()).isTrue();
@@ -248,6 +304,9 @@ class ContainerDiscoveryServiceTest {
         ContainerAccessService accessService = mock(ContainerAccessService.class);
         TemplateService templateService = mock(TemplateService.class);
         ProvisioningService provisioningService = mock(ProvisioningService.class);
+        NetworkDiagnosticsService networkDiagnosticsService = mock(NetworkDiagnosticsService.class);
+        when(networkDiagnosticsService.isPodmanInstalled()).thenReturn(true);
+        when(networkDiagnosticsService.isQemuInstalled()).thenReturn(true);
         SelfHostedBootstrapStatus bootstrapStatus = new SelfHostedBootstrapStatus();
 
         Template debianMinimal = new Template();
@@ -264,7 +323,8 @@ class ContainerDiscoveryServiceTest {
         doThrow(new RuntimeException("SSH hiccup")).when(provisioningService).provisionSshForExistingContainer(any(), any());
 
         ContainerDiscoveryService service = new ContainerDiscoveryService(containerRepository, containerCredentialRepository,
-                cliExecutor, accessService, templateService, provisioningService, bootstrapStatus, "");
+                cliExecutor, accessService, templateService, provisioningService, bootstrapStatus,
+                networkDiagnosticsService, "");
         service.reconcileSelfHostedInfrastructureNow();
 
         assertThat(bootstrapStatus.isDone()).isFalse();
@@ -284,16 +344,19 @@ class ContainerDiscoveryServiceTest {
         ContainerAccessService accessService = mock(ContainerAccessService.class);
         TemplateService templateService = mock(TemplateService.class);
         ProvisioningService provisioningService = mock(ProvisioningService.class);
+        NetworkDiagnosticsService networkDiagnosticsService = mock(NetworkDiagnosticsService.class);
+        when(networkDiagnosticsService.isPodmanInstalled()).thenReturn(true);
+        when(networkDiagnosticsService.isQemuInstalled()).thenReturn(true);
 
         when(containerRepository.findAll()).thenReturn(List.of());
         when(containerRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(templateService.registerExistingMinimal(any())).thenReturn(Optional.empty());
         when(cliExecutor.listMachineImageNames()).thenReturn(List.of("nspawnmgr", "postgresdb"));
-        when(cliExecutor.status(any())).thenReturn(MachineStatus.STOPPED);
+        when(cliExecutor.status(any(), any())).thenReturn(MachineStatus.STOPPED);
 
         ContainerDiscoveryService service = new ContainerDiscoveryService(containerRepository, containerCredentialRepository,
                 cliExecutor, accessService, templateService, provisioningService, new SelfHostedBootstrapStatus(),
-                "jdbc:postgresql://10.0.3.9:5432/nspawnmgr");
+                networkDiagnosticsService, "jdbc:postgresql://10.0.3.9:5432/nspawnmgr");
         List<Container> discovered = service.discover(new User("admin-external-id"));
 
         Container nspawnmgrMachine = discovered.stream().filter(c -> c.getName().equals("nspawnmgr")).findFirst().orElseThrow();
@@ -319,6 +382,9 @@ class ContainerDiscoveryServiceTest {
         ContainerAccessService accessService = mock(ContainerAccessService.class);
         TemplateService templateService = mock(TemplateService.class);
         ProvisioningService provisioningService = mock(ProvisioningService.class);
+        NetworkDiagnosticsService networkDiagnosticsService = mock(NetworkDiagnosticsService.class);
+        when(networkDiagnosticsService.isPodmanInstalled()).thenReturn(true);
+        when(networkDiagnosticsService.isQemuInstalled()).thenReturn(true);
 
         Template debianMinimal = new Template();
         debianMinimal.setName("debian-minimal");
@@ -342,7 +408,7 @@ class ContainerDiscoveryServiceTest {
 
         ContainerDiscoveryService service = new ContainerDiscoveryService(containerRepository, containerCredentialRepository,
                 cliExecutor, accessService, templateService, provisioningService, new SelfHostedBootstrapStatus(),
-                "jdbc:postgresql://10.0.3.9:5432/nspawnmgr");
+                networkDiagnosticsService, "jdbc:postgresql://10.0.3.9:5432/nspawnmgr");
         service.reconcileSelfHostedInfrastructureNow();
 
         assertThat(nspawnmgrMachine.getDescription()).isEqualTo("Virtual machine management");

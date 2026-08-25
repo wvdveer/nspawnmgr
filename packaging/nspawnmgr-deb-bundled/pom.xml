@@ -33,7 +33,7 @@
     -->
     <groupId>com.nspawnmgr</groupId>
     <artifactId>nspawnmgr-deb-bundled</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.2.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>nspawnmgr-deb-bundled</name>
     <description>Debian package for production nspawnmgr deployment - bundled debian-minimal variant, no network access needed at install time</description>
@@ -44,7 +44,7 @@
         <!-- See ../nspawnmgr-deb/pom.xml's own comment on deb.output for why this override is
              required - same reasoning, different filename so both variants can be built (and
              published) side by side without colliding. -->
-        <deb.output>${project.build.directory}/nspawnmgr-bundled_0.1.0_all.deb</deb.output>
+        <deb.output>${project.build.directory}/nspawnmgr-bundled_0.2.0_all.deb</deb.output>
         <nspawnmgr.war>${project.basedir}/../../target/nspawnmgr.war</nspawnmgr.war>
         <auth.war>${project.basedir}/../../auth/target/auth.war</auth.war>
         <root.war>${project.basedir}/../../root-wizard/target/ROOT.war</root.war>

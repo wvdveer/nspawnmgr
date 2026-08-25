@@ -53,6 +53,19 @@ done
 [ "$bridge_ready" -eq 1 ] \
     || echo "nspawnmgr: nspawnbr0 didn't come up with 10.100.0.1/24 within 10s — the self-hosted machine bootstrap below may fail; check 'systemctl status systemd-networkd'." >&2
 
+# v0.1.0's per-veth model never ran a host-side DHCP server at all, so a host firewall never needed
+# a rule for it - the switch to one shared bridge with DHCPServer=yes above (see
+# 70-nspawnmgr-bridge.network) introduced a real host-local DHCP server process that a default-deny
+# ufw setup silently drops DHCPDISCOVER packets before they ever reach, confirmed live (acer,
+# 2026-08-22): containers timed out waiting for a lease and self-assigned a 169.254.x.x link-local
+# address instead, stuck in BOOTING forever. Only touches ufw if it's actually installed and active -
+# same tolerance as NetworkDiagnosticsService's own checkUfw(), since running ufw at all is the
+# admin's own choice, not something this package requires.
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
+    ufw allow in on nspawnbr0 to any port 67 proto udp \
+        || echo "nspawnmgr: failed to add a ufw rule allowing DHCP on nspawnbr0 - containers may never get an address; check 'sudo ufw status verbose'." >&2
+fi
+
 # 8. dnsmasq — a real apt dependency (unlike the self-hosted machines' own software below),
 #    configured to let managed containers (the self-hosted nspawnmgr/database machines included)
 #    resolve each other by name. /etc/nspawnmgr/dns-hosts and /etc/dnsmasq.d/nspawnmgr-upstream.conf

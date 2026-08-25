@@ -10,18 +10,27 @@ import com.nspawnmgr.cli.DownloadedPackage;
 import com.nspawnmgr.security.CurrentUserProvider;
 import com.nspawnmgr.service.AuditLogService;
 import com.nspawnmgr.service.PackageCacheService;
+import com.nspawnmgr.service.PackageDownloadService;
 import com.nspawnmgr.web.dto.AutoFetchedPackageResponse;
 import com.nspawnmgr.web.dto.CachedPackageResponse;
+import com.nspawnmgr.web.dto.PackageDownloadHandleResponse;
+import com.nspawnmgr.web.dto.PackageDownloadStatusResponse;
+import com.nspawnmgr.web.dto.StartPackageDownloadRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.validation.Valid;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.List;
 
@@ -35,12 +44,14 @@ import java.util.List;
 public class AdminPackageCacheApiController {
 
     private final PackageCacheService packageCacheService;
+    private final PackageDownloadService packageDownloadService;
     private final AuditLogService auditLogService;
     private final CurrentUserProvider currentUserProvider;
 
-    public AdminPackageCacheApiController(PackageCacheService packageCacheService, AuditLogService auditLogService,
-                                           CurrentUserProvider currentUserProvider) {
+    public AdminPackageCacheApiController(PackageCacheService packageCacheService, PackageDownloadService packageDownloadService,
+                                           AuditLogService auditLogService, CurrentUserProvider currentUserProvider) {
         this.packageCacheService = packageCacheService;
+        this.packageDownloadService = packageDownloadService;
         this.auditLogService = auditLogService;
         this.currentUserProvider = currentUserProvider;
     }
@@ -59,17 +70,41 @@ public class AdminPackageCacheApiController {
                                          @RequestParam("file") MultipartFile file) {
         requireAdmin();
         User admin = currentUserProvider.get();
-        byte[] content;
-        try {
-            content = file.getBytes();
+        CachedPackage saved;
+        try (InputStream in = file.getInputStream()) {
+            saved = packageCacheService.upload(parsePackageManager(packageManager),
+                    file.getOriginalFilename(), in, file.getSize(), description, admin);
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read uploaded file", e);
         }
-        CachedPackage saved = packageCacheService.upload(parsePackageManager(packageManager),
-                file.getOriginalFilename(), content, description, admin);
         auditLogService.log(admin, AuditAction.CREATED, AuditTargetType.PACKAGE, saved.getId(),
                 saved.getOriginalFilename(), "packageManager=" + saved.getPackageManager());
         return toResponse(saved);
+    }
+
+    /** URL-download counterpart to {@link #upload} - see PackageDownloadService's own javadoc for
+     *  why this can't just be a bigger multipart upload. Returns immediately; the browser polls
+     *  {@link #downloadStatus} for progress. */
+    @PostMapping("/api/admin/packages/download")
+    public ResponseEntity<PackageDownloadHandleResponse> startDownload(@Valid @RequestBody StartPackageDownloadRequest request) {
+        requireAdmin();
+        String downloadId = packageDownloadService.start(parsePackageManager(request.packageManager()),
+                request.url(), request.description(), currentUserProvider.get());
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(new PackageDownloadHandleResponse(downloadId));
+    }
+
+    @GetMapping("/api/admin/packages/download/{downloadId}")
+    public PackageDownloadStatusResponse downloadStatus(@PathVariable String downloadId) {
+        requireAdmin();
+        PackageDownloadService.ActiveDownload activeDownload = packageDownloadService.status(downloadId);
+        return new PackageDownloadStatusResponse(downloadId, activeDownload.state().name(), activeDownload.bytesDownloaded(),
+                activeDownload.totalBytes(), activeDownload.errorMessage(), activeDownload.cachedPackageId());
+    }
+
+    @PostMapping("/api/admin/packages/download/{downloadId}/abort")
+    public void abortDownload(@PathVariable String downloadId) {
+        requireAdmin();
+        packageDownloadService.abort(downloadId);
     }
 
     /**

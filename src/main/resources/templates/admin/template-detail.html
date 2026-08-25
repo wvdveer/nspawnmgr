@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="'nspawnmgr — ' + ${template.name}">template</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/},data-template-id=${template.id},data-sudo-approval-required=${sudoApprovalRequired}">
+<div th:replace="~{fragments/app-shell :: shell(
+        title=${template.name}, subtitle=null,
+        activeNav='templates', currentUser=${currentUser}, addMenu=null,
+        content=~{::#page-content})}">
+<div id="page-content"
+     th:with="kindKey=${template.backend.name()}, kindLabel=${template.backend.name() == 'SYSTEMD_NSPAWN'} ? 'NSPAWN' : ${template.backend.name()}">
+<p>
+    <span class="badge badge-backend" th:classappend="${kindKey}" th:text="${kindLabel}">NSPAWN</span>
+    <span class="badge badge-bool" th:classappend="${template.active}" th:text="${template.active} ? 'Active' : 'Inactive'">Active</span>
+</p>
+<p th:if="${template.description != null and template.description != ''}" th:text="${template.description}">description</p>
+<p>Package manager: <span th:text="${template.packageManager}">apt</span></p>
+<p>SSH <span th:text="${template.sshState.label()}">ssh</span> ·
+    RDP <span th:text="${template.rdpState.label()}">rdp</span> ·
+    VNC <span th:text="${template.vncState.label()}">vnc</span></p>
+
+<div class="panel panel-narrow">
+    <h2>Manage</h2>
+    <div class="panel-section">
+        <button th:if="${template.active}" id="btn-deactivate" class="btn-primary">Deactivate</button>
+        <button th:unless="${template.active}" id="btn-reactivate" class="btn-primary">Reactivate</button>
+        <button th:if="${template.backend.name() == 'SYSTEMD_NSPAWN'}" id="btn-convert-to-podman" class="btn-primary">Create podman template</button>
+        <button th:if="${template.backend.name() == 'PODMAN'}" id="btn-convert-to-nspawn" class="btn-primary">Create nspawn template</button>
+        <button id="btn-delete" class="btn-danger">Delete</button>
+    </div>
+    <div th:if="${sudoApprovalRequired and (template.backend.name() == 'SYSTEMD_NSPAWN' or template.backend.name() == 'PODMAN')}" class="panel-section">
+        <div class="field">
+            <label for="convertSudoPassword">Sudo password (needed to create the converted template)</label>
+            <input type="password" id="convertSudoPassword"/>
+        </div>
+    </div>
+    <p id="template-action-status" class="hint"></p>
+</div>
+
+<div th:insert="~{admin/template-form :: formCard}"></div>
+</div>
+</div>
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/admin-template-detail.js}"></script>
+<script th:src="@{/js/admin-template-form.js}"></script>
+</body>
+</html>

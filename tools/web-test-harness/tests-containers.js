@@ -33,8 +33,8 @@ async function runContainerTests(shareTargetUsername) {
                 sourcePath: 'harness-fixture',
                 backend: 'SYSTEMD_NSPAWN',
                 packageManager: 'APT',
-                rdpCapable: false,
-                vncCapable: false,
+                rdpState: 'NOT_CAPABLE',
+                vncState: 'NOT_CAPABLE',
                 active: true,
             }),
         });
@@ -53,7 +53,7 @@ async function runContainerTests(shareTargetUsername) {
     await h.step('create form renders with the fixture template selectable', async () => {
         await h.waitForReload(win);
         await h.waitForSelector(win, '#name', { timeout: 8000 });
-        h.assertContains(h.bodyText(win), 'New container', 'create form heading visible');
+        h.assertContains(h.bodyText(win), 'New nspawn', 'create form heading visible');
         const option = [...win.document.querySelectorAll('#templateId option')]
             .find((o) => o.textContent.trim() === templateName);
         if (!option) throw new Error(`fixture template '${templateName}' not offered in the dropdown`);

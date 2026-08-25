@@ -163,6 +163,18 @@ public class SettingsService {
                 ? snapshot.getProvisioningRdpPasswordLength() : provisioningProperties.rdpPasswordLength();
     }
 
+    /** ProvisioningService#allocateQemuVncPort's own port range (on 10.100.0.1) - no static
+     *  properties fallback needed, a hardcoded default here is enough (5900-5999, the same base
+     *  QEMU/nspawn's own fixed VNC_PORT constant already uses for its display-0-&gt;port-5900
+     *  convention). */
+    public int qemuVncPortRangeStart() {
+        return snapshot.getQemuVncPortRangeStart() != null ? snapshot.getQemuVncPortRangeStart() : 5900;
+    }
+
+    public int qemuVncPortRangeEnd() {
+        return snapshot.getQemuVncPortRangeEnd() != null ? snapshot.getQemuVncPortRangeEnd() : 5999;
+    }
+
     // --- SSH transport (the sudo-capable local account RealContainerCliExecutor/
     // RealContainerFilesystemProvisioner/RealTomcatRestartService SSH into) ---
 
@@ -538,6 +550,23 @@ public class SettingsService {
         }
         validateDnsUpstreamServersIfPresent(update.dnsUpstreamServers(), errors);
         validateSshIfPresent(update, errors);
+        // Both null (use the 5900-5999 default) or both set - a lone start/end makes no sense.
+        // >=5900 required: `-vnc host:display` addresses a display number, not a port directly
+        // (display = port - 5900 - see nspawnmgr-qemu-write-unit.sh), so a port below 5900 would
+        // compute a negative display number.
+        if ((update.qemuVncPortRangeStart() == null) != (update.qemuVncPortRangeEnd() == null)) {
+            errors.add("QEMU VNC port range must set both start and end, or neither");
+        } else if (update.qemuVncPortRangeStart() != null) {
+            if (update.qemuVncPortRangeStart() < 5900 || update.qemuVncPortRangeStart() > 65535) {
+                errors.add("QEMU VNC port range start must be between 5900 and 65535");
+            }
+            if (update.qemuVncPortRangeEnd() < 5900 || update.qemuVncPortRangeEnd() > 65535) {
+                errors.add("QEMU VNC port range end must be between 5900 and 65535");
+            }
+            if (update.qemuVncPortRangeStart() > update.qemuVncPortRangeEnd()) {
+                errors.add("QEMU VNC port range start must not be after end");
+            }
+        }
 
         if (!errors.isEmpty()) {
             throw new IllegalArgumentException(String.join("; ", errors));
@@ -578,6 +607,8 @@ public class SettingsService {
         entity.setNspawnPrivilegedScriptsDir(update.nspawnPrivilegedScriptsDir());
         entity.setAuthHttpTimeoutMs(update.authHttpTimeoutMs());
         entity.setDnsUpstreamServers(update.dnsUpstreamServers());
+        entity.setQemuVncPortRangeStart(update.qemuVncPortRangeStart());
+        entity.setQemuVncPortRangeEnd(update.qemuVncPortRangeEnd());
         entity.setUpdatedAt(Instant.now());
         entity.setUpdatedByUserId(actingAdmin.getId());
 
@@ -776,6 +807,6 @@ public class SettingsService {
             String sshPrivateKeyPath, Long sshConnectTimeoutMs, Boolean sshStrictHostKeyChecking,
             String nspawnTemplatesDir, String nspawnMachinesDir, String nspawnSettingsDir,
             String nspawnPrivilegedScriptsDir, Long authHttpTimeoutMs, String hostExternalHostname,
-            String dnsUpstreamServers) {
+            String dnsUpstreamServers, Integer qemuVncPortRangeStart, Integer qemuVncPortRangeEnd) {
     }
 }

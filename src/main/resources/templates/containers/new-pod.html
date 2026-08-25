@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — New Pod</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/}">
+<div th:replace="~{fragments/app-shell :: shell(
+        title='New Pod', subtitle=null,
+        activeNav='machines', currentUser=${currentUser}, addMenu=null,
+        content=~{::#page-content})}">
+<div id="page-content">
+<form id="create-pod-form" class="card">
+    <div class="field">
+        <label for="name">Name</label>
+        <input type="text" id="name" name="name" pattern="^[a-z0-9][a-z0-9-]{1,62}$" required/>
+    </div>
+    <div class="field">
+        <label for="templateId">Template</label>
+        <select id="templateId" name="templateId">
+            <option th:each="t : ${templates}" th:value="${t.id}" th:text="${t.name}">template</option>
+        </select>
+    </div>
+    <div class="field">
+        <label for="description">Description</label>
+        <input type="text" id="description" name="description" placeholder="What is this pod for?"/>
+    </div>
+    <div class="field">
+        <label for="command">Command</label>
+        <input type="text" id="command" name="command" placeholder="e.g. /sbin/init, sleep infinity"/>
+    </div>
+    <p class="hint">The command run as the pod's main process, like a Dockerfile <code>CMD</code> -
+        left blank, the pod trusts whatever command the template's own image already has built in.
+        <strong>If that's a plain interactive shell (or anything else that doesn't keep running on
+        its own), the pod will exit within moments of starting</strong> - it won't fail to create,
+        but it'll immediately show as stopped again. Editable later from the pod's own page, but
+        only takes effect the next time it's recreated (the pod must be stopped first).</p>
+    <p class="hint">SSH, RDP, and VNC access aren't set up automatically for a pod - enable them
+        from the pod's own page once it's running.</p>
+    <button type="submit" class="btn-primary">Create</button>
+</form>
+<p id="status" class="status-message"></p>
+</div>
+</div>
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/new-pod.js}"></script>
+</body>
+</html>

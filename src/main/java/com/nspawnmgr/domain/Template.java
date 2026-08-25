@@ -36,13 +36,18 @@ public class Template {
     @Column(name = "source_path", nullable = false)
     private String sourcePath;
 
-    /** Which container/VM technology this template boots under — only SYSTEMD_NSPAWN exists today. */
+    /** Which container/VM technology this template boots under - see ContainerBackend's own javadoc
+     *  for what's actually usable today versus just creatable/manageable. */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ContainerBackend backend = ContainerBackend.SYSTEMD_NSPAWN;
 
+    /** Nullable (unlike every other required field here): a podman image - especially a freshly
+     *  "New Pod"-pulled arbitrary one - has no meaningful nspawnmgr-managed package manager concept
+     *  until real podman provisioning exists. Matches Container.packageManager's own already-
+     *  nullable "not applicable" pattern. */
     @Enumerated(EnumType.STRING)
-    @Column(name = "package_manager", nullable = false)
+    @Column(name = "package_manager")
     private PackageManager packageManager;
 
     @Column(name = "install_ssh_command")
@@ -56,15 +61,18 @@ public class Template {
     private String sshPreDownloadPackages;
 
     /**
-     * True when this template's own backing image already has openssh-server/openssh installed and
-     * enabled (see e.g. nspawnmgr-create-debian-template.sh's own "systemctl enable ssh" step) — lets
-     * ProvisioningService.provisionSsh skip the redundant host-side download + in-container install +
-     * enable steps for a container cloned from it, since they'd be a no-op anyway. False by default
-     * for a hand-created template (source image unknown, safest assumption); the three official
-     * "Set up X-minimal" templates always set this true, since all three bake scripts do this.
+     * PREINSTALLED when this template's own backing image already has openssh-server/openssh
+     * installed and enabled (see e.g. nspawnmgr-create-debian-template.sh's own "systemctl enable
+     * ssh" step) — lets ProvisioningService.provisionSsh skip the redundant host-side download +
+     * in-container install + enable steps for a container cloned from it, since they'd be a no-op
+     * anyway. Defaults to CAPABLE for a hand-created template (source image unknown, safest
+     * assumption); the three official "Set up X-minimal" templates always set this PREINSTALLED,
+     * since all three bake scripts do this. NOT_CAPABLE is for a template with no way to install SSH
+     * at all (e.g. no package manager - see {@link #packageManager}).
      */
-    @Column(name = "ssh_preinstalled", nullable = false)
-    private boolean sshPreinstalled = false;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "ssh_state", nullable = false)
+    private TemplateFeatureState sshState = TemplateFeatureState.CAPABLE;
 
     @Column(name = "install_xrdp_command")
     private String installXrdpCommand;
@@ -73,8 +81,12 @@ public class Template {
     @Column(name = "xrdp_pre_download_packages")
     private String xrdpPreDownloadPackages;
 
-    @Column(name = "rdp_capable", nullable = false)
-    private boolean rdpCapable = true;
+    /** As {@link #sshState}, for RDP. NOT_CAPABLE is what actually disables the "Enable RDP" option
+     *  on the New container form (see e.g. arch-minimal, where xrdp/xorgxrdp were dropped from
+     *  Arch's official repos entirely). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "rdp_state", nullable = false)
+    private TemplateFeatureState rdpState = TemplateFeatureState.CAPABLE;
 
     @Column(name = "install_vnc_command")
     private String installVncCommand;
@@ -84,8 +96,10 @@ public class Template {
     @Column(name = "vnc_pre_download_packages")
     private String vncPreDownloadPackages;
 
-    @Column(name = "vnc_capable", nullable = false)
-    private boolean vncCapable = true;
+    /** As {@link #sshState}, for VNC. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "vnc_state", nullable = false)
+    private TemplateFeatureState vncState = TemplateFeatureState.CAPABLE;
 
     /**
      * A shell command template for the VNC xstartup script's own session-launch line - {@code %s}

@@ -4,12 +4,14 @@ import com.nspawnmgr.domain.AuditAction;
 import com.nspawnmgr.domain.AuditTargetType;
 import com.nspawnmgr.domain.ContainerState;
 import com.nspawnmgr.domain.ContainerUserActionRequest;
+import com.nspawnmgr.domain.Role;
 import com.nspawnmgr.domain.User;
 import com.nspawnmgr.security.CurrentUserProvider;
 import com.nspawnmgr.service.AuditLogService;
 import com.nspawnmgr.service.ContainerUserService;
 import com.nspawnmgr.web.dto.ApproveContainerUserActionRequest;
 import com.nspawnmgr.web.dto.PendingContainerUserActionResponse;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,7 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/** Admin-only approval workflow for container-user-management requests (see ContainerUserService for when these are created). */
+/**
+ * Approval workflow for container-user-management requests (see ContainerUserService for when
+ * these are created). Approving (needs the sudo password) is admin-only; denying is open to any
+ * authenticated user but ownership-scoped - see {@link #deny}.
+ */
 @RestController
 public class AdminContainerUserRequestApiController {
 
@@ -49,11 +55,18 @@ public class AdminContainerUserRequestApiController {
                 "container user request: " + resolved.getActionType() + " '" + resolved.getUsername() + "'");
     }
 
-    @PostMapping("/api/admin/container-user-requests/{id}/deny")
+    @PostMapping("/api/requests/container-user-requests/{id}/deny")
     public void deny(@PathVariable Long id) {
-        User admin = currentUserProvider.get();
-        ContainerUserActionRequest resolved = containerUserService.denyRequest(id, admin);
-        auditLogService.log(admin, AuditAction.DENIED, AuditTargetType.CONTAINER,
+        User currentUser = currentUserProvider.get();
+        if (currentUser.getRole() != Role.ADMIN) {
+            boolean owns = containerUserService.listPendingRequests().stream()
+                    .anyMatch(r -> r.getId().equals(id) && r.getRequestedBy().getId().equals(currentUser.getId()));
+            if (!owns) {
+                throw new AccessDeniedException("Not your request");
+            }
+        }
+        ContainerUserActionRequest resolved = containerUserService.denyRequest(id, currentUser);
+        auditLogService.log(currentUser, AuditAction.DENIED, AuditTargetType.CONTAINER,
                 resolved.getContainer().getId(), resolved.getContainer().getName(),
                 "container user request: " + resolved.getActionType() + " '" + resolved.getUsername() + "'");
     }

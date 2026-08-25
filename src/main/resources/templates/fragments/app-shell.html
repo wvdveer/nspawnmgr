@@ -1,0 +1,153 @@
+<!--
+    Shared sidebar + topbar chrome wrapping every page's own content - see
+    C:\Users\wvdve\.claude\plans\frolicking-watching-sunbeam.md for the design this implements.
+
+    Usage (see containers/list.html for a worked example): a page's <body> becomes
+
+        <body th:attr="data-base-path=@{/}">
+        <div th:replace="~{fragments/app-shell :: shell(
+                title='Machines', subtitle='Manage your virtual machines and connections',
+                activeNav='machines', currentUser=${currentUser}, addMenu=null,
+                content=~{::#page-content})}">
+            <div id="page-content">
+                ... this page's own content (unchanged from before the redesign) ...
+            </div>
+        </div>
+        <script th:src="@{/js/theme-toggle.js}"></script>
+        ... this page's own scripts ...
+        </body>
+
+    `addMenu` is an optional fragment expression for the "+" dropdown's contents (a list of
+    <a>/<button> elements) - pass null (or omit) to hide the "+" button entirely on pages that
+    don't have a create action yet. `activeNav` is one of: machines, users, requests, templates,
+    packages, settings, diagnostics, log, profile - matched against each nav-item's own key to
+    decide which one gets the .active class. Every nav item beyond "machines" and "log" is
+    admin-only (mirrors SecurityConfig's own /admin/** -> hasRole("ADMIN") URL-level enforcement -
+    this th:if is cosmetic, not the real access-control boundary).
+-->
+<div xmlns:th="http://www.thymeleaf.org" th:fragment="shell(title, subtitle, activeNav, currentUser, content, addMenu)"
+     class="app-shell">
+    <nav class="sidebar">
+        <a th:href="@{/}" class="sidebar-brand">nspawnmgr</a>
+        <ul class="nav-list">
+            <li>
+                <a th:href="@{/}" class="nav-item" th:classappend="${activeNav == 'machines'} ? 'active'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="8" height="8" rx="1.5"></rect>
+                        <rect x="13" y="3" width="8" height="8" rx="1.5"></rect>
+                        <rect x="3" y="13" width="8" height="8" rx="1.5"></rect>
+                        <rect x="13" y="13" width="8" height="8" rx="1.5"></rect>
+                    </svg>
+                    <span>Machines</span>
+                </a>
+            </li>
+            <li th:if="${currentUser.role.name() == 'ADMIN'}">
+                <a th:href="@{/admin/users}" class="nav-item" th:classappend="${activeNav == 'users'} ? 'active'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="9" cy="8" r="3.5"></circle>
+                        <path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6"></path>
+                        <path d="M16 5.5c1.7 0.3 3 1.9 3 3.5s-1.3 3.2-3 3.5"></path>
+                        <path d="M18 14c1.7 0.5 3 2.1 3 4"></path>
+                    </svg>
+                    <span>Users</span>
+                </a>
+            </li>
+            <!-- Shown to every signed-in user, not just admins, while sshApprovalRequired is true
+                 (no stored sudo secret configured) - see RequestsPageController's own javadoc for
+                 why a non-admin still has something worth looking at here. sshApprovalRequired is
+                 populated on every page's model by GlobalModelAttributes, not threaded through
+                 each controller's own method individually. -->
+            <li th:if="${sshApprovalRequired}">
+                <a th:href="@{/requests}" class="nav-item" th:classappend="${activeNav == 'requests'} ? 'active'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 4h16v10.5l-3 5.5H7l-3-5.5Z"></path>
+                        <path d="M4 14.5h5l1 2h4l1-2h5"></path>
+                    </svg>
+                    <span>Requests</span>
+                </a>
+            </li>
+            <li th:if="${currentUser.role.name() == 'ADMIN'}">
+                <a th:href="@{/admin/templates}" class="nav-item" th:classappend="${activeNav == 'templates'} ? 'active'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="12,3 21,8 12,13 3,8"></polygon>
+                        <polyline points="3,13 12,18 21,13"></polyline>
+                        <polyline points="3,17.5 12,22.5 21,17.5"></polyline>
+                    </svg>
+                    <span>Templates</span>
+                </a>
+            </li>
+            <li th:if="${currentUser.role.name() == 'ADMIN'}">
+                <a th:href="@{/admin/packages}" class="nav-item" th:classappend="${activeNav == 'packages'} ? 'active'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="12,3 21,7.5 21,16.5 12,21 3,16.5 3,7.5"></polygon>
+                        <polyline points="3,7.5 12,12 21,7.5"></polyline>
+                        <line x1="12" y1="12" x2="12" y2="21"></line>
+                    </svg>
+                    <span>Packages</span>
+                </a>
+            </li>
+            <li th:if="${currentUser.role.name() == 'ADMIN'}">
+                <a th:href="@{/admin/settings}" class="nav-item" th:classappend="${activeNav == 'settings'} ? 'active'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="7.5"></circle>
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <rect x="10.6" y="0.8" width="2.8" height="3" rx="0.6" fill="currentColor" stroke="none"></rect>
+                        <rect x="10.6" y="20.2" width="2.8" height="3" rx="0.6" fill="currentColor" stroke="none"></rect>
+                        <rect x="0.8" y="10.6" width="3" height="2.8" rx="0.6" fill="currentColor" stroke="none"></rect>
+                        <rect x="20.2" y="10.6" width="3" height="2.8" rx="0.6" fill="currentColor" stroke="none"></rect>
+                        <rect x="3.3" y="3.3" width="2.8" height="2.8" rx="0.6" fill="currentColor" stroke="none" transform="rotate(45 4.7 4.7)"></rect>
+                        <rect x="17.9" y="3.3" width="2.8" height="2.8" rx="0.6" fill="currentColor" stroke="none" transform="rotate(-45 19.3 4.7)"></rect>
+                        <rect x="3.3" y="17.9" width="2.8" height="2.8" rx="0.6" fill="currentColor" stroke="none" transform="rotate(-45 4.7 19.3)"></rect>
+                        <rect x="17.9" y="17.9" width="2.8" height="2.8" rx="0.6" fill="currentColor" stroke="none" transform="rotate(45 19.3 19.3)"></rect>
+                    </svg>
+                    <span>Settings</span>
+                </a>
+            </li>
+            <li th:if="${currentUser.role.name() == 'ADMIN'}">
+                <a th:href="@{/admin/network-diagnostics}" class="nav-item" th:classappend="${activeNav == 'diagnostics'} ? 'active'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3,12 8,12 10,6 14,18 16,12 21,12"></polyline>
+                    </svg>
+                    <span>Diagnostics</span>
+                </a>
+            </li>
+            <li>
+                <a th:href="@{/logs}" class="nav-item" th:classappend="${activeNav == 'log'} ? 'active'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="4" y="3" width="16" height="18" rx="1.5"></rect>
+                        <line x1="7.5" y1="8" x2="16.5" y2="8"></line>
+                        <line x1="7.5" y1="12" x2="16.5" y2="12"></line>
+                        <line x1="7.5" y1="16" x2="13" y2="16"></line>
+                    </svg>
+                    <span>Log</span>
+                </a>
+            </li>
+        </ul>
+    </nav>
+    <div class="app-main">
+        <header class="topbar">
+            <div class="topbar-heading">
+                <h1 id="shell-title" th:text="${title}">Page title</h1>
+                <p th:if="${subtitle}" th:text="${subtitle}">Page subtitle</p>
+            </div>
+            <div class="topbar-actions">
+                <div th:if="${addMenu != null}" class="add-menu" id="add-menu">
+                    <button type="button" class="add-menu-btn" id="add-menu-btn" aria-haspopup="true" aria-expanded="false" title="Add">+</button>
+                    <div class="add-menu-list" th:insert="${addMenu}"></div>
+                </div>
+                <div th:replace="~{fragments/theme-toggle :: widget}"></div>
+                <a th:href="@{/account}" class="user-pill" th:classappend="${activeNav == 'profile'} ? 'active'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="8" r="3.5"></circle>
+                        <path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"></path>
+                    </svg>
+                    <span th:text="${currentUser.username}">username</span>
+                </a>
+            </div>
+        </header>
+        <main class="app-content" th:insert="${content}">
+            Page content
+        </main>
+    </div>
+    <script th:src="@{/js/app-shell.js}"></script>
+</div>

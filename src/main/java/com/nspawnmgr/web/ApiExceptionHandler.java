@@ -70,14 +70,19 @@ public class ApiExceptionHandler {
     }
 
     /**
-     * Without this, an upload exceeding spring.servlet.multipart.max-file-size/max-request-size
-     * (200MB - see application.yml) reaches the client as a bare 500 with no body, same gap
-     * {@link #handleCliFailure} closes for CLI failures. Surfaces a clear, actionable message
-     * instead - the Files page's client-side size check (see files.js) covers the common case of an
-     * obviously-oversized drop before it's even sent, but this is the real enforcement backstop.
+     * In practice this handler never actually runs for a real multipart upload -
+     * {@link MaxUploadSizeExceededException} is thrown by {@code DispatcherServlet.checkMultipart()}
+     * *before* a handler method is ever dispatched to, which is before any
+     * {@code @ExceptionHandler}/{@code @ControllerAdvice} machinery gets a chance to see it (that
+     * machinery only wraps handler execution). Confirmed live: it instead escapes to Spring Boot's
+     * own {@code ErrorPageFilter}, landing on the generic Whitelabel error page with none of this
+     * method's message. {@link MultipartSizeLimitFilter} is the real fix (a plain servlet filter,
+     * positioned to catch the exception before {@code ErrorPageFilter} does) - this method is kept
+     * anyway as a backstop for the (currently theoretical) case of some other code path throwing
+     * this same exception mid-request, and so both places share one message to update together.
      */
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<String> handleUploadTooLarge(MaxUploadSizeExceededException e) {
-        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body("File exceeds the 200MB upload limit.");
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(MultipartSizeLimitFilter.UPLOAD_TOO_LARGE_MESSAGE);
     }
 }

@@ -107,7 +107,7 @@ done
 echo "5. Seeding the real test template row..."
 db_url="jdbc:h2:file:$tomcat_dir/temp/realtest-db;AUTO_SERVER=TRUE"
 java -cp "$h2_jar" org.h2.tools.Shell -url "$db_url" -user sa -password "" -sql \
-    "INSERT INTO templates (name, description, source_path, package_manager, install_ssh_command, rdp_capable, active) VALUES ('debian-real-nspawn', 'Real systemd-nspawn test image (sshd pre-baked)', 'debian-real', 'APT', 'true', FALSE, TRUE)"
+    "INSERT INTO templates (name, description, source_path, package_manager, install_ssh_command, rdp_state, active) VALUES ('debian-real-nspawn', 'Real systemd-nspawn test image (sshd pre-baked)', 'debian-real', 'APT', 'true', 'NOT_CAPABLE', TRUE)"
 
 echo "6. Logging in as $CI_TEST_USERNAME via auth.war..."
 curl -fsS -c "$cookie_jar" -X POST "$auth_url/login" \

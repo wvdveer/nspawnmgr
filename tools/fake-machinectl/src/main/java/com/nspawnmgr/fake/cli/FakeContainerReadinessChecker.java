@@ -19,6 +19,6 @@ public class FakeContainerReadinessChecker implements ContainerReadinessChecker 
 
     @Override
     public Readiness check(Container container, String privateKeyPem, String accountName, boolean checkRdp) {
-        return new Readiness(true, checkRdp, cliExecutor.getInternalAddress(container.getName()));
+        return new Readiness(true, checkRdp, cliExecutor.getInternalAddress(container.getName(), container.getBackend()));
     }
 }

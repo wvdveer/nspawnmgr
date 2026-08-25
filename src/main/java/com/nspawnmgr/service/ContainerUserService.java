@@ -220,7 +220,7 @@ public class ContainerUserService {
     }
 
     private void executeAddUser(Container container, String username, String password, char[] sudoPasswordOverride) {
-        CommandResult result = cliExecutor.runInMachine(container.getName(),
+        CommandResult result = cliExecutor.runInMachine(container.getName(), container.getBackend(),
                 List.of("useradd", "-m", "-s", "/bin/bash", username), COMMAND_TIMEOUT, sudoPasswordOverride);
         if (!result.success()) {
             throw new ContainerCliException("Failed to add user " + username + " in " + container.getName() + ": " + result.stderr());
@@ -236,7 +236,7 @@ public class ContainerUserService {
 
     /** Password is fed over stdin to chpasswd, never interpolated into a shell string — it's owner-typed, unlike every other value runInMachine has ever handled. */
     private void setPassword(Container container, String username, String password, char[] sudoPasswordOverride) {
-        CommandResult result = cliExecutor.runInMachine(container.getName(), List.of("chpasswd"), COMMAND_TIMEOUT,
+        CommandResult result = cliExecutor.runInMachine(container.getName(), container.getBackend(), List.of("chpasswd"), COMMAND_TIMEOUT,
                 sudoPasswordOverride, username + ":" + password + "\n");
         if (!result.success()) {
             throw new ContainerCliException("Failed to set password for " + username + " in " + container.getName() + ": " + result.stderr());

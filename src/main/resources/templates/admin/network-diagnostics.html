@@ -2,21 +2,24 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"/>
-    <title>nspawnmgr — Admin: Network diagnostics</title>
+    <title>nspawnmgr — Admin: Diagnostics</title>
     <link rel="stylesheet" th:href="@{/css/app.css}"/>
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/},data-ssh-approval-required=${sshApprovalRequired}">
-<div th:replace="fragments/theme-toggle :: widget"></div>
-<h1>Network diagnostics</h1>
-<p><a th:href="@{/}">&laquo; Back to containers</a></p>
-<p class="hint">Checks the host prerequisites most likely to silently break container
-    networking (SSH/RDP never becoming reachable, containers stuck in BOOTING). Some checks have
-    a "Fix" button — applying a fix asks for your sudo password fresh each time.</p>
-<div class="card-wide">
-    <button type="button" id="run-diagnostics" class="btn-primary">Run diagnostics</button>
-    <p id="run-status"></p>
-    <div id="check-list"></div>
+<div th:replace="~{fragments/app-shell :: shell(
+        title='Diagnostics', subtitle='Check host prerequisites for container networking',
+        activeNav='diagnostics', currentUser=${currentUser}, addMenu=null,
+        content=~{::#page-content})}">
+    <div id="page-content">
+        <p class="hint">Checks the host prerequisites most likely to silently break container
+            networking (SSH/RDP never becoming reachable, containers stuck in BOOTING), plus whether
+            optional container/VM backends (podman, QEMU) are installed. Runs automatically every
+            time this page is opened. Some checks have a "Fix" button — applying a fix asks for
+            your sudo password fresh each time.</p>
+        <p id="run-status"></p>
+        <div id="check-list" class="machine-grid"></div>
+    </div>
 </div>
 <script th:src="@{/js/theme-toggle.js}"></script>
 <script th:src="@{/js/dialog.js}"></script>

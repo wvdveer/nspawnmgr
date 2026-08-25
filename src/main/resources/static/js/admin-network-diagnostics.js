@@ -4,33 +4,46 @@ const sshApprovalRequired = document.body.getAttribute('data-ssh-approval-requir
 const FIX_ENDPOINTS = {
     'networkd': 'networkd',
     'host-address': 'host-address',
+    'podman': 'podman',
+    'qemu': 'qemu',
+    'podman-network': 'podman-network',
+    'qemu-bridge': 'qemu-bridge',
 };
 
 function renderChecks(checks) {
     const list = document.getElementById('check-list');
     list.innerHTML = '';
     checks.forEach((check) => {
-        const row = document.createElement('div');
-        row.className = 'diag-check';
-        row.id = `check-${check.id}`;
+        const card = document.createElement('div');
+        card.className = 'machine-card diag-check';
+        card.id = `check-${check.id}`;
 
+        const header = document.createElement('div');
+        header.className = 'machine-card-header';
+        const label = document.createElement('span');
+        label.className = 'machine-card-name';
+        label.textContent = check.label;
+        header.appendChild(label);
         const status = document.createElement('span');
         status.className = `diag-status ${check.status}`;
         status.textContent = check.status;
-        row.appendChild(status);
+        header.appendChild(status);
+        card.appendChild(header);
 
-        const body = document.createElement('div');
-        body.className = 'diag-body';
-        const label = document.createElement('div');
-        label.textContent = check.label;
-        body.appendChild(label);
-        const detail = document.createElement('div');
-        detail.className = 'diag-detail';
+        const detail = document.createElement('p');
+        detail.className = 'machine-card-meta diag-detail';
         detail.textContent = check.detail;
-        body.appendChild(detail);
-        row.appendChild(body);
+        card.appendChild(detail);
+        if (check.log) {
+            const log = document.createElement('pre');
+            log.className = 'diag-log';
+            log.textContent = check.log;
+            card.appendChild(log);
+        }
 
         if (check.fixable) {
+            const footer = document.createElement('div');
+            footer.className = 'machine-card-footer';
             // Only in admin-approval mode does the stored sudo secret not exist, so only then do
             // we need one entered fresh here - otherwise the fix falls back to the stored secret
             // automatically, same as every other privileged action in this app.
@@ -39,33 +52,42 @@ function renderChecks(checks) {
                 passwordInput = document.createElement('input');
                 passwordInput.type = 'password';
                 passwordInput.placeholder = 'sudo password';
-                row.appendChild(passwordInput);
+                footer.appendChild(passwordInput);
             }
 
             const fixButton = document.createElement('button');
             fixButton.type = 'button';
             fixButton.className = 'btn-primary';
             fixButton.textContent = 'Fix';
-            fixButton.addEventListener('click', () => applyFix(check.id, passwordInput));
-            row.appendChild(fixButton);
+            fixButton.addEventListener('click', () => applyFix(check.id, passwordInput, fixButton, card));
+            footer.appendChild(fixButton);
+            card.appendChild(footer);
         }
 
-        list.appendChild(row);
+        list.appendChild(card);
     });
 }
 
-async function applyFix(checkId, passwordInput) {
+async function applyFix(checkId, passwordInput, fixButton, card) {
     const endpoint = FIX_ENDPOINTS[checkId];
     if (!endpoint) {
         return;
     }
-    if (!await window.appDialog.confirm('This changes host configuration (network/firewall). Continue?')) {
+    if (!await window.appDialog.confirm('This changes host configuration (network/firewall/installed packages). Continue?')) {
         return;
     }
     const sudoPassword = passwordInput ? passwordInput.value : null;
     if (passwordInput) {
         passwordInput.value = '';
     }
+    // A fix (e.g. apt-get install) can take real time - show something immediately rather than
+    // leaving the button as the only sign anything's happening for up to several minutes. Replaced
+    // wholesale once the real result (with its own log, if any) comes back and re-renders the row.
+    fixButton.disabled = true;
+    const runningLog = document.createElement('pre');
+    runningLog.className = 'diag-log';
+    runningLog.textContent = 'Running...';
+    card.appendChild(runningLog);
     const response = await fetch(`${basePath}/api/admin/network-diagnostics/fix/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -73,6 +95,8 @@ async function applyFix(checkId, passwordInput) {
     });
     if (!response.ok) {
         await window.appDialog.alert('Fix failed: ' + await response.text());
+        fixButton.disabled = false;
+        runningLog.remove();
         return;
     }
     const updated = await response.json();
@@ -86,7 +110,7 @@ function mergeCheck(updated) {
     return lastChecks;
 }
 
-document.getElementById('run-diagnostics').addEventListener('click', async () => {
+async function runDiagnostics() {
     const runStatus = document.getElementById('run-status');
     runStatus.textContent = 'Running...';
     const response = await fetch(`${basePath}/api/admin/network-diagnostics/run`, { method: 'POST' });
@@ -97,4 +121,6 @@ document.getElementById('run-diagnostics').addEventListener('click', async () =>
     lastChecks = await response.json();
     runStatus.textContent = '';
     renderChecks(lastChecks);
-});
+}
+
+runDiagnostics();

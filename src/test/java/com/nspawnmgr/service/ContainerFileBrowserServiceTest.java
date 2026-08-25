@@ -1,6 +1,7 @@
 package com.nspawnmgr.service;
 
 import com.nspawnmgr.cli.ContainerFilesystemBrowser;
+import com.nspawnmgr.cli.ContainerFilesystemProvisioner;
 import com.nspawnmgr.cli.FileEntry;
 import com.nspawnmgr.domain.Container;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,7 +30,7 @@ class ContainerFileBrowserServiceTest {
         settingsService = mock(SettingsService.class);
         browser = mock(ContainerFilesystemBrowser.class);
         when(settingsService.nspawnMachinesDir()).thenReturn("/var/lib/machines");
-        service = new ContainerFileBrowserService(settingsService, browser);
+        service = new ContainerFileBrowserService(settingsService, browser, mock(ContainerFilesystemProvisioner.class));
     }
 
     private Container container() {

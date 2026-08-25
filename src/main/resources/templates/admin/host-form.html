@@ -7,8 +7,11 @@
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/},data-host-id=${host != null ? host.id : ''}">
-<div th:replace="fragments/theme-toggle :: widget"></div>
-<h1 th:text="${host != null} ? 'Edit host' : 'New host'">Host</h1>
+<div th:replace="~{fragments/app-shell :: shell(
+        title=${host != null ? 'Edit host' : 'New host'}, subtitle=null,
+        activeNav='machines', currentUser=${currentUser}, addMenu=null,
+        content=~{::#page-content})}">
+<div id="page-content">
 <p><a th:href="@{/admin/hosts}">&laquo; Back to hosts</a></p>
 <form id="host-form" class="card">
     <div class="field">
@@ -56,6 +59,8 @@
     <button type="submit" class="btn-primary">Save</button>
 </form>
 <p id="status" class="status-message"></p>
+</div>
+</div>
 <script th:src="@{/js/theme-toggle.js}"></script>
 <script th:src="@{/js/dialog.js}"></script>
 <script th:src="@{/js/admin-host-form.js}"></script>

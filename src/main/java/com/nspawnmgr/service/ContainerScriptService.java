@@ -91,7 +91,7 @@ public class ContainerScriptService {
 
     /** Runs whatever body is currently stored for {@code scriptBody} against the container. */
     public ScriptRunResult run(Container container, String scriptBody) {
-        return cliExecutor.runScript(container.getName(), scriptBody, RUN_TIMEOUT);
+        return cliExecutor.runScript(container.getName(), container.getBackend(), scriptBody, RUN_TIMEOUT);
     }
 
     /**
@@ -102,7 +102,7 @@ public class ContainerScriptService {
      */
     public String startRun(Container container, String scriptBody, User actingUser) {
         String runId = UUID.randomUUID().toString();
-        AbortableScriptRun handle = cliExecutor.startScript(container.getName(), scriptBody, RUN_TIMEOUT);
+        AbortableScriptRun handle = cliExecutor.startScript(container.getName(), container.getBackend(), scriptBody, RUN_TIMEOUT);
         ActiveRun activeRun = new ActiveRun(container.getId(), handle);
         try {
             taskExecutor.execute(() -> {

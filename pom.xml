@@ -19,7 +19,7 @@
 
     <groupId>com.nspawnmgr</groupId>
     <artifactId>nspawnmgr</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.2.0-SNAPSHOT</version>
     <!--
         WAR, not an executable jar: deployed into the same servlet container (Tomcat) as
         Guacamole's own webapp (real or the tools/fake-guacamole-server stand-in), rather than

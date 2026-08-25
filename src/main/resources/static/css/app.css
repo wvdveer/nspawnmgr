@@ -6,23 +6,27 @@
     --input-background-color: #ffffff;
     --muted-color: #64748b;
     --primary-color: #2563eb;
+    --accent-color: #16a34a;
     --success-color: #087f23;
     --surface-color: #f8fafc;
+    --surface-color-raised: #eef2f7;
     --text-color: #1e293b;
 }
 
 @media (prefers-color-scheme: dark) {
     :root {
-        --background-color: #0f172a;
-        --border-color: #334155;
+        --background-color: #0b0f16;
+        --border-color: #262e40;
         --button-text-color: #f1f5f9;
         --error-color: #f87171;
-        --input-background-color: #334155;
-        --muted-color: #94a3b8;
+        --input-background-color: #1a2133;
+        --muted-color: #8994a6;
         --primary-color: #3b82f6;
+        --accent-color: #22c55e;
         --success-color: #4ade80;
-        --surface-color: #1e293b;
-        --text-color: #f1f5f9;
+        --surface-color: #131826;
+        --surface-color-raised: #1a2133;
+        --text-color: #e7ecf3;
     }
 }
 
@@ -37,36 +41,69 @@
     --input-background-color: #ffffff;
     --muted-color: #64748b;
     --primary-color: #2563eb;
+    --accent-color: #16a34a;
     --success-color: #087f23;
     --surface-color: #f8fafc;
+    --surface-color-raised: #eef2f7;
     --text-color: #1e293b;
 }
 
 :root[data-theme="dark"] {
-    --background-color: #0f172a;
-    --border-color: #334155;
+    --background-color: #0b0f16;
+    --border-color: #262e40;
     --button-text-color: #f1f5f9;
     --error-color: #f87171;
-    --input-background-color: #334155;
-    --muted-color: #94a3b8;
+    --input-background-color: #1a2133;
+    --muted-color: #8994a6;
     --primary-color: #3b82f6;
+    --accent-color: #22c55e;
     --success-color: #4ade80;
-    --surface-color: #1e293b;
-    --text-color: #f1f5f9;
+    --surface-color: #131826;
+    --surface-color-raised: #1a2133;
+    --text-color: #e7ecf3;
 }
 
 body {
     font-family: sans-serif;
-    margin: 2rem;
+    margin: 0;
     background: var(--background-color);
     color: var(--text-color);
+}
+
+/* Pages not yet wired into the app-shell (see fragments/app-shell.html) keep the old flat-body
+   spacing - only .app-shell's own children get the new full-viewport layout below. */
+body:not(:has(.app-shell)) {
+    margin: 2rem;
 }
 
 a { color: var(--primary-color); }
 
 table { border-collapse: collapse; width: 100%; margin-bottom: 1.5rem; }
-th, td { border: 1px solid var(--border-color); padding: 0.4rem 0.6rem; text-align: left; }
-th { background: var(--surface-color); }
+th, td { border-bottom: 1px solid var(--border-color); padding: 0.55rem 0.75rem; text-align: left; }
+tr:last-child td { border-bottom: none; }
+th {
+    background: var(--surface-color);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted-color);
+}
+
+/* Wraps a bare <table> that isn't already inside a .card/.panel - gives it the same
+   surface/border/radius treatment as every other content block, replacing the old full-grid
+   cell borders above with row separators only (see th, td) for a less "spreadsheet" look. Not
+   applied to a table already nested inside a .card/.panel (e.g. Packages' transitive-dependency
+   table) - that would double the border. */
+.table-card {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--surface-color);
+    margin-bottom: 1.5rem;
+}
+
+.table-card table { margin-bottom: 0; }
 
 button { margin: 0.2rem; }
 
@@ -94,6 +131,11 @@ button { margin: 0.2rem; }
     margin-bottom: 1rem;
 }
 
+/* admin/settings.html's "Refresh hostname/port/protocol"/"Refresh from Guacamole config" buttons -
+   .field's flex-direction:column stretches children full-width by default (align-items:stretch),
+   which is right for inputs but wrong for a button that only needs to be as wide as its label. */
+.btn-refresh { align-self: flex-start; }
+
 .field label {
     font-weight: 600;
     margin-bottom: 0.3rem;
@@ -103,6 +145,7 @@ button { margin: 0.2rem; }
 .field input[type="text"],
 .field input[type="number"],
 .field input[type="password"],
+.field input[type="url"],
 .field select {
     padding: 0.4rem 0.5rem;
     border: 1px solid var(--border-color);
@@ -122,12 +165,15 @@ button { margin: 0.2rem; }
 
 .btn-primary {
     display: inline-block;
-    padding: 0.5rem 1.2rem;
+    padding: 0.4rem 0.85rem;
     border: none;
     border-radius: 4px;
     background: var(--primary-color);
     color: var(--button-text-color);
-    font-size: 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
     text-decoration: none;
     cursor: pointer;
 }
@@ -140,12 +186,15 @@ button { margin: 0.2rem; }
 input[type="file"]::file-selector-button,
 input[type="file"]::-webkit-file-upload-button {
     display: inline-block;
-    padding: 0.5rem 1.2rem;
+    padding: 0.4rem 0.85rem;
     border: none;
     border-radius: 4px;
     background: var(--primary-color);
     color: var(--button-text-color);
-    font-size: 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
     cursor: pointer;
     margin-right: 0.5rem;
 }
@@ -165,6 +214,11 @@ input[type="file"]::-webkit-file-upload-button:hover {
     background: var(--surface-color);
     margin-bottom: 1.5rem;
 }
+
+/* admin/template-detail.html's Manage panel, sat directly above the (narrower) edit-form .card -
+   matches .card's own max-width so the two stacked cards line up instead of the Manage panel
+   using the same wide default other detail pages' Manage panels need for their own longer content. */
+.panel-narrow { max-width: 28rem; }
 
 .panel h2 { margin-top: 0; }
 
@@ -197,6 +251,17 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .list-plain li:last-child { border-bottom: none; }
 
+/* Container users list (containers/detail.html, built by detail.js) - table-like fixed columns
+   instead of flex's justify-content:space-between, which drifted the password field/buttons left
+   or right per row depending on that row's own username length ("erin" vs "admin (primary)").
+   Scoped by ID since .list-plain is shared with plain 2-child "item + remove button" lists
+   elsewhere (Shared with, Port mappings, ...) that don't want a fixed 4-column grid. */
+#container-user-list li {
+    display: grid;
+    grid-template-columns: 10rem 1fr auto auto;
+    align-items: center;
+}
+
 .inline-controls {
     display: flex;
     flex-wrap: wrap;
@@ -208,12 +273,22 @@ input[type="file"]::-webkit-file-upload-button:hover {
 .inline-controls input[type="number"],
 .inline-controls input[type="password"],
 .inline-controls select,
-.list-plain input[type="password"] {
+.list-plain input[type="password"],
+.list-plain input[type="text"] {
     padding: 0.35rem 0.5rem;
     border: 1px solid var(--border-color);
     border-radius: 4px;
     background: var(--input-background-color);
     color: var(--text-color);
+}
+
+/* Edge (and some other Chromium-based browsers) render their own built-in reveal-password icon
+   inside every password input via this pseudo-element - hidden everywhere so it never doubles up
+   with password-toggle.js's own icon. A CSS rule targeting a nonexistent pseudo-element is simply
+   ignored elsewhere, so this needs no browser/vendor detection at all. */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+    display: none;
 }
 
 /* Wraps a password <input> (see password-toggle.js) so the show/hide button sits inside the
@@ -228,6 +303,20 @@ input[type="file"]::-webkit-file-upload-button:hover {
 .password-field input[type="password"],
 .password-field input[type="text"] {
     padding-right: 2rem;
+}
+
+/* admin/settings.html's sshPassword field sits in a .field (flex-column, stretches its direct
+   children full-width) rather than .inline-controls (row, natural-width inputs) - the wrapper
+   .password-toggle.js inserts becomes the new direct child, so it (and the input inside it) need
+   an explicit full-width here to match how the bare input filled the field before wrapping.
+   Scoped to .field so .inline-controls' own compact/natural-width password fields are untouched. */
+.field .password-field {
+    width: 100%;
+}
+.field .password-field input[type="password"],
+.field .password-field input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .password-toggle {
@@ -247,11 +336,17 @@ input[type="file"]::-webkit-file-upload-button:hover {
 .password-toggle:hover { color: var(--text-color); }
 
 .btn-danger {
-    padding: 0.3rem 0.7rem;
+    display: inline-block;
+    padding: 0.35rem 0.75rem;
     border: 1px solid var(--error-color);
     border-radius: 4px;
     background: transparent;
     color: var(--error-color);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    text-decoration: none;
     cursor: pointer;
 }
 
@@ -268,6 +363,16 @@ input[type="file"]::-webkit-file-upload-button:hover {
     border-radius: 4px;
     overflow: hidden;
     z-index: 1000;
+}
+
+/* Inside the app-shell's topbar, the toggle sits inline among the other topbar-actions controls
+   instead of floating over the page - same widget/behavior (fragments/theme-toggle.html), just a
+   different placement context. */
+.topbar-actions .theme-toggle {
+    position: static;
+    top: auto;
+    right: auto;
+    z-index: auto;
 }
 
 .theme-toggle-btn {
@@ -291,20 +396,24 @@ input[type="file"]::-webkit-file-upload-button:hover {
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.35);
 }
 
+/* One card per check (admin/network-diagnostics.html's #check-list is a .machine-grid) rather
+   than the border-separated flex rows this used to be. */
 .diag-check {
     display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.75rem;
-    padding: 0.75rem 0;
-    border-bottom: 1px solid var(--border-color);
+    flex-direction: column;
+    gap: 0.5rem;
 }
 
-.diag-check:last-child { border-bottom: none; }
+.diag-status { font-weight: 600; flex: 0 0 auto; margin-left: auto; }
 
-.diag-status { font-weight: 600; min-width: 4.5rem; flex: 0 0 auto; }
-
-.diag-body { flex: 1 1 16rem; min-width: 0; }
+/* .machine-card-name's ellipsis-on-one-line truncation is right for a short machine/template
+   name, but check labels here are full sentences ("Shared container bridge (nspawnbr0)") that
+   were getting silently cut off instead - let them wrap onto multiple lines instead. */
+.diag-check .machine-card-name {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+}
 
 .diag-check input[type="password"] { flex: 0 1 12rem; min-width: 6rem; }
 
@@ -313,6 +422,22 @@ input[type="file"]::-webkit-file-upload-button:hover {
 .diag-status.FAIL { color: var(--error-color); }
 
 .diag-detail { color: var(--muted-color); font-size: 0.9rem; }
+
+/* A fix action's captured command output (see admin-network-diagnostics.js) - only shown while
+   the check is still failing after the fix attempt; disappears entirely once resolved. */
+.diag-log {
+    margin: 0.5rem 0 0 0;
+    padding: 0.5rem;
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    max-height: 12rem;
+    overflow-y: auto;
+}
 
 .script-textarea {
     width: 100%;
@@ -381,6 +506,19 @@ input[type="file"]::-webkit-file-upload-button:hover {
     white-space: pre-wrap;
 }
 
+.app-dialog-input {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    margin: 0 0 1.25rem 0;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--input-background-color);
+    color: var(--text-color);
+    font-size: 1rem;
+}
+
 .app-dialog-actions {
     display: flex;
     justify-content: flex-end;
@@ -396,3 +534,396 @@ input[type="file"]::-webkit-file-upload-button:hover {
 #file-tbody tr.file-row-dir { font-weight: 600; }
 #file-tbody tr:hover { background: var(--surface-color); }
 #file-table.drag-over { outline: 2px dashed var(--primary-color); outline-offset: 2px; }
+
+/* ==========================================================================
+   App shell (fragments/app-shell.html) - persistent sidebar + topbar chrome
+   wrapping every page's own content. See that fragment for the markup this
+   styles.
+   ========================================================================== */
+
+.app-shell {
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    flex: 0 0 15rem;
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem 1rem;
+    background: var(--surface-color);
+    border-right: 1px solid var(--border-color);
+    /* Pinned to the viewport while .app-content scrolls independently - confirmed live, a long
+       page (e.g. the container detail page's own many panel-sections) otherwise scrolled the
+       sidebar itself out of view along with the rest of .app-shell, since neither had its own
+       height constraint before this. */
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    height: 100vh;
+    overflow-y: auto;
+}
+
+.sidebar-brand {
+    display: block;
+    margin: 0 0 1.5rem 0.5rem;
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--accent-color);
+    text-decoration: none;
+}
+
+.nav-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 6px;
+    color: var(--muted-color);
+    text-decoration: none;
+    font-size: 0.95rem;
+}
+
+.nav-item:hover { background: var(--surface-color-raised); color: var(--text-color); }
+
+.nav-item.active {
+    background: var(--surface-color-raised);
+    color: var(--text-color);
+    font-weight: 600;
+}
+
+.nav-item svg { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; stroke: currentColor; }
+
+.app-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.topbar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem 2.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.topbar-heading { flex: 1 1 auto; min-width: 0; }
+
+.topbar-heading h1 { margin: 0; font-size: 1.4rem; }
+
+.topbar-heading p { margin: 0.15rem 0 0 0; color: var(--muted-color); font-size: 0.9rem; }
+
+.topbar-actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.user-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.8rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--surface-color);
+    color: var(--text-color);
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.user-pill:hover, .user-pill.active { background: var(--surface-color-raised); }
+
+.user-pill svg { width: 1rem; height: 1rem; stroke: currentColor; flex: 0 0 auto; }
+
+/* The "+" add-machine control - a plain button that toggles .add-menu-open on its wrapper,
+   revealing an absolutely-positioned dropdown of "New X" actions (see list.js). No JS framework
+   in this project, so this is deliberately the same plain show/hide-via-class pattern
+   app-dialog/dialog.js already uses elsewhere. */
+.add-menu { position: relative; }
+
+.add-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent-color);
+    color: #ffffff;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.add-menu-btn:hover { filter: brightness(0.92); }
+
+.add-menu-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.add-menu-list {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.4rem);
+    min-width: 12rem;
+    max-width: 18rem;
+    max-height: 80vh;
+    overflow-y: auto;
+    padding: 0.35rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--surface-color);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    z-index: 100;
+}
+
+/* A few dropdowns (e.g. Templates') hold a small inline field, not just plain link/button
+   menu items - reuses .field's own label/input styling at a size that fits the menu. */
+.add-menu-list .field { margin: 0.3rem 0; }
+.add-menu-list .field label { font-size: 0.8rem; }
+.add-menu-list .field input { width: 100%; box-sizing: border-box; font-size: 0.85rem; }
+
+.add-menu.add-menu-open .add-menu-list { display: block; }
+
+.add-menu-list a, .add-menu-list button {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem 0.6rem;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: var(--text-color);
+    text-align: left;
+    font-size: 0.9rem;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.add-menu-list a:hover, .add-menu-list button:hover:not(:disabled) { background: var(--surface-color-raised); }
+
+.add-menu-list button:disabled { color: var(--muted-color); cursor: not-allowed; }
+
+.add-menu-divider { margin: 0.35rem 0; border: none; border-top: 1px solid var(--border-color); }
+
+/* Generic click-to-open menu, positioned via JS at a trigger element's own screen coordinates
+   (position: fixed, not relative to any particular parent) - e.g. the role-change menu on
+   admin/users.html's cards (see admin-users.js). Same visual language as .add-menu-list, just not
+   tied to one fixed topbar slot. */
+.context-menu {
+    position: fixed;
+    min-width: 10rem;
+    padding: 0.35rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--surface-color);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    z-index: 200;
+}
+
+.context-menu button {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem 0.6rem;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: var(--text-color);
+    text-align: left;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.context-menu button:hover { background: var(--surface-color-raised); }
+
+.app-content {
+    flex: 1 1 auto;
+    padding: 2rem 2.5rem;
+}
+
+/* ==========================================================================
+   Machines grid (containers/list.html) - card-based replacement for the
+   old plain <table>.
+   ========================================================================== */
+
+.machine-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.machine-card {
+    padding: 1.1rem 1.25rem;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--surface-color);
+}
+
+/* Whole-card link (e.g. admin/templates.html) rather than a div holding individually-clickable
+   children (e.g. Machines' name/status) - element-scoped so plain div.machine-card usages
+   elsewhere are unaffected. */
+a.machine-card {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+}
+
+a.machine-card:hover {
+    border-color: var(--accent-color);
+}
+
+.machine-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.machine-card-name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    font-weight: 600;
+    color: var(--text-color);
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.status-dot {
+    flex: 0 0 auto;
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: var(--muted-color);
+}
+
+.status-dot.RUNNING { background: var(--accent-color); }
+.status-dot.PAUSED { background: #d97706; }
+.status-dot.ERROR, .status-dot.DENIED { background: var(--error-color); }
+
+/* The machine's own description - more prominent than .machine-card-meta below it (template
+   name/hostname/QEMU spec), which stays in the smaller muted style this class used to share with
+   the description before the two were split apart. */
+.machine-card-desc {
+    margin: 0.6rem 0 0 0;
+    color: var(--text-color);
+    font-size: 0.9rem;
+}
+
+.machine-card-meta {
+    margin: 0.35rem 0 0 0;
+    color: var(--muted-color);
+    font-size: 0.8rem;
+}
+
+.machine-card-meta + .machine-card-meta { margin-top: 0.15rem; }
+
+.machine-card-name.status-link, .badge-status[href] { cursor: pointer; }
+.badge-status[href]:hover { filter: brightness(1.15); }
+
+.machine-card-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.85rem;
+}
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.55rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #ffffff;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.badge-status.RUNNING { background: var(--accent-color); }
+.badge-status.PAUSED { background: #d97706; }
+.badge-status.STOPPED { background: var(--muted-color); }
+.badge-status.CREATING, .badge-status.BOOTING, .badge-status.DELETING,
+.badge-status.PENDING_APPROVAL { background: var(--primary-color); }
+.badge-status.ERROR, .badge-status.DENIED { background: var(--error-color); }
+
+.badge-backend.SYSTEMD_NSPAWN { background: #a16207; }
+.badge-backend.PODMAN { background: #2563eb; }
+.badge-backend.QEMU { background: #7c3aed; }
+.badge-backend.HOST { background: #16a34a; }
+
+/* Reused outside the Machines grid (admin/templates.html, admin/users.html, container detail
+   pages) for the same "status/kind at a glance" treatment, wherever a table/detail page shows a
+   boolean or role value that today's mockup didn't cover with its own named badge type. */
+.badge-bool.true { background: var(--accent-color); }
+.badge-bool.false { background: var(--muted-color); }
+
+.badge-role.ADMIN { background: #7c3aed; }
+.badge-role.USER { background: var(--muted-color); }
+
+/* Role badge on admin/users.html cards - clicking it opens the .context-menu "Change to X" list. */
+.role-trigger { cursor: pointer; }
+
+.access-pill {
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+    height: 1.12rem;
+    /* Root cause of FILES sitting higher/taller than SSH/RDP/VNC when enabled, found via DevTools
+       inspection: Chrome's UA stylesheet gives <button> a default 3.2px top/bottom margin that a
+       plain <a> doesn't get. As flex items with an explicit (non-auto) height, align-items:center
+       on the parent doesn't apply - Chrome falls back to flex-start, so each pill's margin box is
+       top-aligned within the row: the margin-less <a> sits flush at the row's top, while <button>
+       is pushed down 3.2px by its own margin, and the row's own height grows to fit the tallest
+       margin box (the button's). Reset to zero so every backend/tag combination aligns identically.
+       (The explicit height above is a separate, still-needed fix - it makes .access-pill's own
+       border-box height consistent regardless of tag, which margin alone doesn't affect.) */
+    margin: 0;
+    padding: 0.2rem 0.55rem;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.03em;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    color: #ffffff;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+.access-pill.SSH { background: #0d9488; }
+.access-pill.RDP { background: #9333ea; }
+.access-pill.VNC { background: #ea580c; }
+.access-pill.FILES { background: #a16207; }
+
+.access-pill:disabled, .access-pill.disabled {
+    background: var(--surface-color-raised);
+    color: var(--muted-color);
+    cursor: not-allowed;
+}

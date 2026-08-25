@@ -15,6 +15,8 @@ import com.nspawnmgr.repository.ContainerRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Optional;
 
@@ -76,13 +78,13 @@ class PackageCacheServiceTest {
     @Test
     void uploadSanitizesFilenameAndPersists() {
         CachedPackage saved = service.upload(PackageManager.APT, "../../etc/passwd.deb",
-                "content".getBytes(), "a description", user());
+                new ByteArrayInputStream("content".getBytes()), "content".getBytes().length, "a description", user());
 
         assertThat(saved.getOriginalFilename()).isEqualTo("../../etc/passwd.deb");
         assertThat(saved.getStoredFilename()).endsWith("_passwd.deb");
         assertThat(saved.getStoredFilename()).doesNotContain("/");
         assertThat(saved.getSizeBytes()).isEqualTo("content".getBytes().length);
-        verify(filesystem).upload(anyString(), eq("content".getBytes()));
+        verify(filesystem).upload(anyString(), any(InputStream.class));
     }
 
     @Test
@@ -95,7 +97,7 @@ class PackageCacheServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
 
         verify(filesystem, never()).copyIntoContainer(any(), any());
-        verify(cliExecutor, never()).runInMachine(any(), any(), any(), any());
+        verify(cliExecutor, never()).runInMachine(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -103,14 +105,14 @@ class PackageCacheServiceTest {
         CachedPackage cachedPackage = new CachedPackage(PackageManager.APT, "foo.deb", "1_foo.deb", null, user(), 10);
         when(repository.findById(5L)).thenReturn(Optional.of(cachedPackage));
         Container container = containerWithPackageManager(PackageManager.APT);
-        when(cliExecutor.runInMachine(eq("my-container"), any(), any(), any()))
+        when(cliExecutor.runInMachine(eq("my-container"), any(), any(), any(), any()))
                 .thenReturn(new CommandResult(0, "installed", ""));
 
         CommandResult result = service.installOnContainer(container, 5L, null);
 
         assertThat(result.exitCode()).isEqualTo(0);
         verify(filesystem).copyIntoContainer(anyString(), anyString());
-        verify(cliExecutor).runInMachine(eq("my-container"),
+        verify(cliExecutor).runInMachine(eq("my-container"), any(),
                 eq(List.of("sh", "-c", "DEBIAN_FRONTEND=noninteractive apt-get install -y /root/nspawnmgr-packages/1_foo.deb")),
                 any(), any());
     }
@@ -120,7 +122,7 @@ class PackageCacheServiceTest {
         CachedPackage cachedPackage = new CachedPackage(PackageManager.APT, "foo.deb", "1_foo.deb", null, user(), 10);
         when(repository.findById(5L)).thenReturn(Optional.of(cachedPackage));
         Container container = containerWithPackageManager(PackageManager.APT);
-        when(cliExecutor.runInMachine(any(), any(), any(), any())).thenReturn(new CommandResult(0, "installed", ""));
+        when(cliExecutor.runInMachine(any(), any(), any(), any(), any())).thenReturn(new CommandResult(0, "installed", ""));
 
         service.installOnContainer(container, 5L, null);
 
@@ -139,7 +141,7 @@ class PackageCacheServiceTest {
         when(filesystemProvisioner.downloadPackagesIntoContainer(eq(PackageManager.APT), eq("my-container"), eq(List.of("libfoo1", "libbar2")), any()))
                 .thenReturn(List.of(new DownloadedPackage("libfoo1_1.0_amd64.deb", 100L),
                         new DownloadedPackage("libbar2_2.0_amd64.deb", 200L)));
-        when(cliExecutor.runInMachine(any(), any(), any(), any())).thenReturn(new CommandResult(0, "installed", ""));
+        when(cliExecutor.runInMachine(any(), any(), any(), any(), any())).thenReturn(new CommandResult(0, "installed", ""));
 
         service.installOnContainer(container, 5L, null);
 
@@ -157,12 +159,12 @@ class PackageCacheServiceTest {
                 .thenReturn(List.of("libfoo-devel"));
         when(filesystemProvisioner.downloadPackagesIntoContainer(eq(PackageManager.DNF), eq("my-container"), eq(List.of("libfoo-devel")), any()))
                 .thenReturn(List.of(new DownloadedPackage("libfoo-devel-1.0.x86_64.rpm", 300L)));
-        when(cliExecutor.runInMachine(any(), any(), any(), any())).thenReturn(new CommandResult(0, "installed", ""));
+        when(cliExecutor.runInMachine(any(), any(), any(), any(), any())).thenReturn(new CommandResult(0, "installed", ""));
 
         service.installOnContainer(container, 5L, null);
 
         verify(repository).existsByPackageManagerAndStoredFilename(PackageManager.DNF, "auto-libfoo-devel-1.0.x86_64.rpm");
-        verify(cliExecutor).runInMachine(eq("my-container"),
+        verify(cliExecutor).runInMachine(eq("my-container"), any(),
                 eq(List.of("sh", "-c", "dnf install -y /root/nspawnmgr-packages/1_foo.rpm $(ls /var/cache/dnf/*.rpm 2>/dev/null)")), any(), any());
     }
 
@@ -171,7 +173,7 @@ class PackageCacheServiceTest {
         CachedPackage cachedPackage = new CachedPackage(PackageManager.APK, "foo.apk", "1_foo.apk", null, user(), 10);
         when(repository.findById(5L)).thenReturn(Optional.of(cachedPackage));
         Container container = containerWithPackageManager(PackageManager.APK);
-        when(cliExecutor.runInMachine(any(), any(), any(), any())).thenReturn(new CommandResult(0, "installed", ""));
+        when(cliExecutor.runInMachine(any(), any(), any(), any(), any())).thenReturn(new CommandResult(0, "installed", ""));
 
         service.installOnContainer(container, 5L, null);
 
@@ -189,12 +191,12 @@ class PackageCacheServiceTest {
                 .thenReturn(List.of("libfoo"));
         when(filesystemProvisioner.downloadPackagesIntoContainer(eq(PackageManager.PACMAN), eq("my-container"), eq(List.of("libfoo")), any()))
                 .thenReturn(List.of(new DownloadedPackage("libfoo-1.0-1-x86_64.pkg.tar.zst", 400L)));
-        when(cliExecutor.runInMachine(any(), any(), any(), any())).thenReturn(new CommandResult(0, "installed", ""));
+        when(cliExecutor.runInMachine(any(), any(), any(), any(), any())).thenReturn(new CommandResult(0, "installed", ""));
 
         service.installOnContainer(container, 5L, null);
 
         verify(repository).existsByPackageManagerAndStoredFilename(PackageManager.PACMAN, "auto-libfoo-1.0-1-x86_64.pkg.tar.zst");
-        verify(cliExecutor).runInMachine(eq("my-container"),
+        verify(cliExecutor).runInMachine(eq("my-container"), any(),
                 eq(List.of("sh", "-c", "pacman -U --noconfirm /root/nspawnmgr-packages/1_foo.pkg.tar.zst")), any(), any());
     }
 

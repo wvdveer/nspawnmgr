@@ -5,8 +5,10 @@ import com.nspawnmgr.cli.ContainerFilesystemProvisioner;
 import com.nspawnmgr.cli.ContainerIsoMounter;
 import com.nspawnmgr.cli.ContainerOutboundAccessManager;
 import com.nspawnmgr.cli.MachineStatus;
+import com.nspawnmgr.crypto.SecretEncryptionService;
 import com.nspawnmgr.domain.CachedPackage;
 import com.nspawnmgr.domain.Container;
+import com.nspawnmgr.domain.ContainerBackend;
 import com.nspawnmgr.domain.ContainerKind;
 import com.nspawnmgr.domain.ContainerState;
 import com.nspawnmgr.domain.PackageManager;
@@ -68,7 +70,8 @@ class ContainerLifecycleServiceTest {
                 isoMounter,
                 packageCacheService,
                 guacamoleAdminClient,
-                shareService);
+                shareService,
+                mock(SecretEncryptionService.class));
     }
 
     private Container managedContainer(ContainerState state) {
@@ -97,7 +100,7 @@ class ContainerLifecycleServiceTest {
 
         service.mountIso(container, iso);
 
-        verify(isoMounter).mount("b1", "/var/cache/nspawnmgr/packages/iso/uploaded/1_image.iso");
+        verify(isoMounter).mount("b1", ContainerBackend.SYSTEMD_NSPAWN, "/var/cache/nspawnmgr/packages/iso/uploaded/1_image.iso");
         assertThat(container.getMountedIso()).isEqualTo(iso);
         verify(filesystemProvisioner).writeNspawnSettings(eq(container), any());
     }
@@ -111,8 +114,8 @@ class ContainerLifecycleServiceTest {
 
         service.mountIso(container, newIso);
 
-        verify(isoMounter).unmount("b1");
-        verify(isoMounter).mount(eq("b1"), anyString());
+        verify(isoMounter).unmount("b1", ContainerBackend.SYSTEMD_NSPAWN);
+        verify(isoMounter).mount(eq("b1"), eq(ContainerBackend.SYSTEMD_NSPAWN), anyString());
         assertThat(container.getMountedIso()).isEqualTo(newIso);
     }
 
@@ -122,7 +125,7 @@ class ContainerLifecycleServiceTest {
 
         service.ejectIso(container);
 
-        verify(isoMounter, never()).unmount(anyString());
+        verify(isoMounter, never()).unmount(anyString(), any());
         verify(filesystemProvisioner, never()).writeNspawnSettings(any(), any());
     }
 
@@ -133,7 +136,7 @@ class ContainerLifecycleServiceTest {
 
         service.ejectIso(container);
 
-        verify(isoMounter).unmount("b1");
+        verify(isoMounter).unmount("b1", ContainerBackend.SYSTEMD_NSPAWN);
         assertThat(container.getMountedIso()).isNull();
         verify(filesystemProvisioner).writeNspawnSettings(eq(container), any());
     }
@@ -147,7 +150,7 @@ class ContainerLifecycleServiceTest {
         container.setGuacSshConnectionId("ssh-conn");
         container.setGuacRdpConnectionId("rdp-conn");
         container.setGuacVncConnectionId("vnc-conn");
-        when(cliExecutor.status("b1")).thenReturn(MachineStatus.NOT_FOUND);
+        when(cliExecutor.status("b1", ContainerBackend.SYSTEMD_NSPAWN)).thenReturn(MachineStatus.NOT_FOUND);
 
         service.delete(container);
 
@@ -168,14 +171,14 @@ class ContainerLifecycleServiceTest {
         // behind looking untouched. Locks in the fix: everything that can still fail runs first.
         Container container = managedContainer(ContainerState.STOPPED);
         container.setGuacSshConnectionId("ssh-conn");
-        when(cliExecutor.status("b1")).thenReturn(MachineStatus.STOPPED);
+        when(cliExecutor.status("b1", ContainerBackend.SYSTEMD_NSPAWN)).thenReturn(MachineStatus.STOPPED);
 
         service.delete(container);
 
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(guacamoleAdminClient, shareService, cliExecutor, filesystemProvisioner, containerRepository);
         order.verify(shareService).revokeAllForContainer(container);
         order.verify(guacamoleAdminClient).deleteConnection("ssh-conn");
-        order.verify(cliExecutor).remove("b1");
+        order.verify(cliExecutor).remove("b1", ContainerBackend.SYSTEMD_NSPAWN);
         order.verify(filesystemProvisioner).deleteMachineFiles("b1");
         order.verify(containerRepository).delete(container);
     }
@@ -192,12 +195,12 @@ class ContainerLifecycleServiceTest {
         // time. NOT_FOUND means nothing left to remove; deleteMachineFiles (rm -rf-based, already
         // idempotent) still runs to clean up any leftover files.
         Container container = managedContainer(ContainerState.STOPPED);
-        when(cliExecutor.status("b1")).thenReturn(MachineStatus.NOT_FOUND);
+        when(cliExecutor.status("b1", ContainerBackend.SYSTEMD_NSPAWN)).thenReturn(MachineStatus.NOT_FOUND);
 
         service.delete(container);
 
-        verify(cliExecutor, never()).remove(any());
-        verify(cliExecutor, never()).stopForce(any());
+        verify(cliExecutor, never()).remove(any(), any());
+        verify(cliExecutor, never()).stopForce(any(), any());
         verify(filesystemProvisioner).deleteMachineFiles("b1");
         verify(containerRepository).delete(container);
     }
@@ -211,7 +214,7 @@ class ContainerLifecycleServiceTest {
 
         assertThatThrownBy(() -> service.delete(container)).isInstanceOf(RuntimeException.class);
 
-        verify(cliExecutor, never()).remove(any());
+        verify(cliExecutor, never()).remove(any(), any());
         verify(filesystemProvisioner, never()).deleteMachineFiles(any());
         verify(containerRepository, never()).delete(any());
     }
@@ -222,7 +225,7 @@ class ContainerLifecycleServiceTest {
 
         service.pause(container);
 
-        verify(cliExecutor).pause("b1");
+        verify(cliExecutor).pause("b1", ContainerBackend.SYSTEMD_NSPAWN);
         assertThat(container.getState()).isEqualTo(ContainerState.PAUSED);
     }
 
@@ -232,7 +235,7 @@ class ContainerLifecycleServiceTest {
 
         assertThatThrownBy(() -> service.pause(container)).isInstanceOf(IllegalStateException.class);
 
-        verify(cliExecutor, never()).pause(any());
+        verify(cliExecutor, never()).pause(any(), any());
     }
 
     @Test
@@ -241,7 +244,7 @@ class ContainerLifecycleServiceTest {
 
         service.resume(container);
 
-        verify(cliExecutor).resume("b1");
+        verify(cliExecutor).resume("b1", ContainerBackend.SYSTEMD_NSPAWN);
         assertThat(container.getState()).isEqualTo(ContainerState.RUNNING);
     }
 
@@ -251,7 +254,7 @@ class ContainerLifecycleServiceTest {
 
         assertThatThrownBy(() -> service.resume(container)).isInstanceOf(IllegalStateException.class);
 
-        verify(cliExecutor, never()).resume(any());
+        verify(cliExecutor, never()).resume(any(), any());
     }
 
     @Test
@@ -260,7 +263,7 @@ class ContainerLifecycleServiceTest {
 
         service.restart(container);
 
-        verify(cliExecutor).restart("b1");
+        verify(cliExecutor).restart("b1", ContainerBackend.SYSTEMD_NSPAWN);
         assertThat(container.getState()).isEqualTo(ContainerState.BOOTING);
     }
 
@@ -270,7 +273,7 @@ class ContainerLifecycleServiceTest {
 
         assertThatThrownBy(() -> service.restart(container)).isInstanceOf(IllegalStateException.class);
 
-        verify(cliExecutor, never()).restart(any());
+        verify(cliExecutor, never()).restart(any(), any());
     }
 
     @Test
@@ -281,7 +284,7 @@ class ContainerLifecycleServiceTest {
 
         service.stopGraceful(container);
 
-        verify(isoMounter, never()).unmount(anyString());
+        verify(isoMounter, never()).unmount(anyString(), any());
         assertThat(container.getMountedIso()).isEqualTo(iso);
         assertThat(container.getState()).isEqualTo(ContainerState.STOPPED);
     }

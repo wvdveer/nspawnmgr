@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — Requests</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/}">
+<div th:replace="~{fragments/app-shell :: shell(
+        title='Requests', subtitle=${isAdmin} ? 'Pending approvals awaiting an admin' : 'Your pending requests',
+        activeNav='requests', currentUser=${currentUser}, addMenu=null,
+        content=~{::#page-content})}">
+<div id="page-content">
+
+<section id="container-requests-section">
+    <h2>Container requests</h2>
+    <p>No stored sudo secret is configured, so new containers need an admin to approve them and supply
+        the sudo password for this one creation run.</p>
+    <p th:unless="${isAdmin}" class="hint">You can deny your own pending requests below, but only an
+        admin can approve one (approving needs the sudo password).</p>
+    <p th:if="${#lists.isEmpty(pendingContainers)}" class="hint">Nothing pending.</p>
+    <div class="machine-grid" th:unless="${#lists.isEmpty(pendingContainers)}">
+        <div class="machine-card" th:each="c : ${pendingContainers}" th:attr="data-container-id=${c.id}">
+            <div class="machine-card-header">
+                <span class="machine-card-name" th:text="${c.name}">name</span>
+            </div>
+            <p class="machine-card-desc" th:if="${c.description != null and c.description != ''}" th:text="${c.description}">description</p>
+            <p class="machine-card-meta" th:if="${isAdmin}">Requested by <span th:text="${c.owner.username}">owner</span></p>
+            <p class="machine-card-meta">Template: <span th:text="${c.template.name}">template</span></p>
+            <p class="machine-card-meta" th:text="${c.createdAt}">requested-at</p>
+            <div class="field" th:if="${isAdmin}">
+                <input type="password" class="approval-password" placeholder="Sudo password" th:attr="data-container-id=${c.id}"/>
+            </div>
+            <div class="machine-card-footer">
+                <button th:if="${isAdmin}" class="btn-approve btn-primary" th:attr="data-container-id=${c.id}">Approve</button>
+                <button class="btn-deny btn-danger" th:attr="data-container-id=${c.id}">Deny</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="user-requests-section" class="panel-section">
+    <h2>User requests</h2>
+    <p>Requests to add a container user, change a password, or switch which account SSH/RDP/VNC
+        connect as, that couldn't run immediately — either no stored sudo secret is configured, or
+        the container wasn't running at request time. Approving still needs the container running
+        right now, regardless of why it originally needed approval.</p>
+    <p th:unless="${isAdmin}" class="hint">You can deny your own pending requests below, but only an
+        admin can approve one (approving needs the sudo password).</p>
+    <p th:if="${#lists.isEmpty(pendingUserRequests)}" class="hint">Nothing pending.</p>
+    <div class="machine-grid" th:unless="${#lists.isEmpty(pendingUserRequests)}">
+        <div class="machine-card" th:each="r : ${pendingUserRequests}" th:attr="data-request-id=${r.id}">
+            <div class="machine-card-header">
+                <a class="machine-card-name" th:href="@{/containers/{id}(id=${r.container.id})}" th:text="${r.container.name}">container</a>
+                <span class="badge badge-status" th:classappend="${r.container.state.name()}" th:text="${r.container.state}">RUNNING</span>
+            </div>
+            <p class="machine-card-meta"><span th:text="${r.actionType}">action</span> — <span th:text="${r.username}">username</span></p>
+            <p class="machine-card-meta" th:if="${isAdmin}">Requested by <span th:text="${r.requestedBy.username}">requested-by</span></p>
+            <p class="machine-card-meta" th:text="${r.createdAt}">requested-at</p>
+            <div class="field" th:if="${isAdmin and sshApprovalRequired}">
+                <input type="password" class="approval-password" placeholder="Sudo password" th:attr="data-request-id=${r.id}"/>
+            </div>
+            <div class="machine-card-footer">
+                <button th:if="${isAdmin}" class="btn-approve btn-primary" th:attr="data-request-id=${r.id}" th:disabled="${r.container.state.name() != 'RUNNING'}">Approve</button>
+                <button class="btn-deny btn-danger" th:attr="data-request-id=${r.id}">Deny</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+</div>
+</div>
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/requests.js}"></script>
+</body>
+</html>

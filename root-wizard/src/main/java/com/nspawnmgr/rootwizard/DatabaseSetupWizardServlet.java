@@ -20,6 +20,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -88,10 +89,17 @@ public class DatabaseSetupWizardServlet extends HttpServlet {
     private static String provisionStatus = "idle";
     private static String provisionErrorMessage;
 
+    /** How many trailing lines of catalina.out {@link #respondTomcatLogTail} returns per poll. */
+    private static final int TOMCAT_LOG_TAIL_LINES = 40;
+
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         if ("/provision-log".equals(req.getPathInfo())) {
             respondProvisionLog(resp);
+            return;
+        }
+        if ("/tomcat-log-tail".equals(req.getPathInfo())) {
+            respondTomcatLogTail(resp);
             return;
         }
         if (DbConnectionSettings.resolve().isReachable()) {
@@ -465,6 +473,52 @@ public class DatabaseSetupWizardServlet extends HttpServlet {
         resp.getWriter().print(log);
     }
 
+    /**
+     * Polled by the progress page's own inline script while it's waiting on Tomcat itself (context
+     * redeploy after {@link #touchContextXml}, then nspawnmgr's own self-hosted-infra bootstrap) -
+     * both stretches where {@link #provisionLog} has nothing new to show, since the wizard's own
+     * step log is already finished by that point ("Success." is its last line). Unlike almost every
+     * other operation in this class, this needs no SSH: this servlet's own JVM *is* the Tomcat
+     * process whose stdout/stderr {@code catalina.sh start} redirects to this same file, so it's a
+     * plain local read.
+     */
+    private void respondTomcatLogTail(HttpServletResponse resp) throws IOException {
+        resp.setContentType("text/plain;charset=UTF-8");
+        Path logPath = tomcatLogPath();
+        String tail = "";
+        try {
+            if (Files.isReadable(logPath)) {
+                List<String> lines = Files.readAllLines(logPath, StandardCharsets.UTF_8);
+                int from = Math.max(0, lines.size() - TOMCAT_LOG_TAIL_LINES);
+                tail = String.join("\n", lines.subList(from, lines.size()));
+            }
+        } catch (IOException e) {
+            // Transient - e.g. a partial multi-byte UTF-8 sequence at EOF from Tomcat writing to
+            // this same file concurrently. Self-heals on the next poll a second later.
+        }
+        resp.getWriter().print(tail);
+    }
+
+    /**
+     * Same catalina.base/catalina.home convention {@link #contextXmlPath} already uses. Prefers
+     * today's rotatelogs output over the plain, unrotated filename - confirmed live (2026-08-23),
+     * this panel always came back empty on a real self-hosted install even though Tomcat itself was
+     * logging normally: the bundled {@code tomcat9.service} runs {@code catalina.sh run} piped
+     * through {@code rotatelogs} (see that unit file's own comment for why - {@code catalina.sh}'s
+     * plain {@code catalina.out} redirection only exists in its {@code start} branch, never
+     * {@code run}), which writes {@code catalina.out.<yyyy-MM-dd>.log} instead and never produces a
+     * plain {@code catalina.out} at all. The dev-stack/CI environment this panel was originally
+     * verified against (see {@code tools/scripts/start-dev-stack.sh}) starts Tomcat via
+     * {@code startup.sh} instead, which does use the plain name - kept as the fallback so that path
+     * keeps working unchanged.
+     */
+    private static Path tomcatLogPath() {
+        String catalinaBase = System.getProperty("catalina.base", System.getProperty("catalina.home"));
+        Path logsDir = Path.of(catalinaBase, "logs");
+        Path rotated = logsDir.resolve("catalina.out." + LocalDate.now() + ".log");
+        return Files.isReadable(rotated) ? rotated : logsDir.resolve("catalina.out");
+    }
+
     private void renderProgress(HttpServletResponse resp) throws IOException {
         resp.setContentType("text/html;charset=UTF-8");
         resp.getWriter().print(SetupWizardHtml.render("nspawnmgr — Setting up", SetupWizardHtml.TONE_NEUTRAL, """
@@ -473,9 +527,44 @@ public class DatabaseSetupWizardServlet extends HttpServlet {
                 scratch.</p>
                 <pre id="log" class="log"></pre>
                 <p id="status-line">Starting…</p>
+                <p id="tomcat-log-label" style="display:none;">Tomcat log (live):</p>
+                <pre id="tomcat-log" class="log" style="display:none;"></pre>
                 <script>
                     var logEl = document.getElementById('log');
                     var statusEl = document.getElementById('status-line');
+                    var tomcatLogEl = document.getElementById('tomcat-log');
+                    var tomcatLogLabelEl = document.getElementById('tomcat-log-label');
+                    var tomcatLogPollHandle = null;
+                    // Started once the wizard's own step log is done ("Success." was its last line)
+                    // and stopped right before the final redirect - covers both stretches where
+                    // nothing else on this page has anything new to show (Tomcat's own context
+                    // redeploy, then nspawnmgr's self-hosted-infra bootstrap), so the admin sees real
+                    // progress instead of a static "Waiting..." line the whole time.
+                    function startTomcatLogPolling() {
+                        if (tomcatLogPollHandle) {
+                            return;
+                        }
+                        tomcatLogEl.style.display = '';
+                        tomcatLogLabelEl.style.display = '';
+                        pollTomcatLog();
+                        tomcatLogPollHandle = setInterval(pollTomcatLog, 1000);
+                    }
+                    function stopTomcatLogPolling() {
+                        if (tomcatLogPollHandle) {
+                            clearInterval(tomcatLogPollHandle);
+                            tomcatLogPollHandle = null;
+                        }
+                    }
+                    function pollTomcatLog() {
+                        fetch('tomcat-log-tail').then(function (r) {
+                            return r.text();
+                        }).then(function (text) {
+                            tomcatLogEl.textContent = text;
+                            tomcatLogEl.scrollTop = tomcatLogEl.scrollHeight;
+                        }).catch(function () {
+                            // Ignore - next tick retries.
+                        });
+                    }
                     function poll() {
                         fetch('provision-log').then(function (r) {
                             var status = r.headers.get('X-Provision-Status');
@@ -493,6 +582,7 @@ public class DatabaseSetupWizardServlet extends HttpServlet {
                                 }
                                 if (status === 'success') {
                                     statusEl.textContent = 'Waiting for nspawnmgr to come up...';
+                                    startTomcatLogPolling();
                                     waitForApp();
                                     return;
                                 }
@@ -512,6 +602,7 @@ public class DatabaseSetupWizardServlet extends HttpServlet {
                                     if (probe.ok) {
                                         statusEl.textContent = 'Finishing self-hosted machine setup...';
                                         await waitForBootstrap();
+                                        stopTomcatLogPolling();
                                         window.location.href = '/nspawnmgr/';
                                         return;
                                     }

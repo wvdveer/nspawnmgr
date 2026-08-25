@@ -24,6 +24,10 @@
 #   - /var/cache/nspawnmgr/packages (the host-side package cache - both nspawnmgr's own automatic
 #     RDP/VNC/desktop-manager download cache and the admin-uploaded package cache). Safely
 #     re-creatable/re-downloadable, same category as the templates dir above, not user data.
+#   - /var/lib/nspawnmgr/qemu-sockets (each QEMU VM's HMP monitor Unix socket - transient, QEMU
+#     itself recreates it on every start, same "not user data" category as the templates dir
+#     above). QEMU VM DISKS (/var/lib/nspawnmgr/qemu-disks) are real user data instead - see the
+#     REMOVE_BACKEND_TOOLING section below, not removed unconditionally here.
 #   - Any nspawnmgr-managed machine boot settings (auto-start-on-host-boot unit enablement, and the
 #     requires-another-machine systemd drop-in - see nspawnmgr-set-machine-autostart.sh/
 #     nspawnmgr-set-machine-requires.sh). Left behind by everything else above (this is pure
@@ -33,7 +37,7 @@
 #     job for systemd-nspawn@nspawnmgr.service failed." because the unit it required no longer
 #     existed.
 #
-# Two more destructive steps are each offered separately, gated by their own y/n prompt (never
+# Three more destructive steps are each offered separately, gated by their own y/n prompt (never
 # implied by --yes below, and skipped entirely if --yes is given - only ever done interactively):
 #   - Dropping the nspawnmgr/guacamole databases (and their DB users) - only supported when
 #     DB_URL (read from /etc/nspawnmgr/db-config/db.properties, falling back to
@@ -44,6 +48,19 @@
 #   - Removing every container image machinectl knows about, running or not (terminate + remove
 #     each, plus its /var/lib/machines rootfs and .nspawn settings file) - this is real container
 #     data, not just nspawnmgr's own management layer around it.
+#   - Removing podman/QEMU (apt purge) if either is installed - these may have been installed via
+#     nspawnmgr's own Diagnostics page ("Fix" button on the podman/QEMU checks, see
+#     nspawnmgr-install-podman.sh/nspawnmgr-install-qemu.sh), but this script has no way to tell
+#     that apart from an install an admin set up themselves for something unrelated to nspawnmgr -
+#     the prompt says so explicitly. If confirmed: every podman container ("pod" - see
+#     ProvisioningService.provisionPod) is force-removed first, and every QEMU VM too (libvirt
+#     domains via virsh if present, undefined with their storage; otherwise stopping/disabling/
+#     removing each of nspawnmgr's own per-VM systemd units - /etc/systemd/system/
+#     nspawnmgr-qemu-<name>.service, see nspawnmgr-qemu-write-unit.sh - and deleting its own disk
+#     under qemu-disks/, falling back to killing any stray qemu-system-x86_64 process for anything
+#     not managed that way) - same reasoning as the "remove every container" step above for
+#     machinectl: purging the package itself doesn't stop or clean up anything it was managing, and
+#     there's nothing else that ever will once the package itself is gone.
 #
 # Does NOT touch: /var/lib/machines or the databases unless you explicitly confirm one of the two
 # prompts above - by default this script still only removes the management layer, same as before.
@@ -100,10 +117,10 @@ if [ -z "$CONFIRMED" ]; then
         "and any machine boot settings (auto-start, requires-another-machine) nspawnmgr configured" \
         "on your behalf." \
         "" \
-        "It does NOT touch nspawnmgr's own database, Guacamole's own database, or" \
-        "/var/lib/machines (your actual containers) by default - only the management layer" \
-        "around them (plus the templates used to create them) is removed. You'll be asked" \
-        "separately below about those two." \
+        "It does NOT touch nspawnmgr's own database, Guacamole's own database," \
+        "/var/lib/machines (your actual containers), or podman/QEMU (if installed) by default -" \
+        "only the management layer around them (plus the templates used to create them) is" \
+        "removed. You'll be asked separately below about those three." \
         ""
     printf 'Continue? [y/N] '
     read -r reply
@@ -132,6 +149,20 @@ if [ -z "$CONFIRMED" ] && command -v machinectl >/dev/null 2>&1; then
     read -r reply
     case "$reply" in
         y | Y | yes | YES) REMOVE_CONTAINERS="1" ;;
+    esac
+fi
+
+REMOVE_BACKEND_TOOLING=""
+if [ -z "$CONFIRMED" ] && { command -v podman >/dev/null 2>&1 || command -v qemu-system-x86_64 >/dev/null 2>&1; }; then
+    printf '%s\n' \
+        "podman and/or QEMU are installed on this host - possibly via nspawnmgr's own Diagnostics" \
+        "page, but this script has no way to tell that apart from an install you set up yourself" \
+        "for something unrelated to nspawnmgr. Confirming will also force-remove every podman" \
+        "container (pod) and every QEMU machine first - this cannot be undone."
+    printf 'Also remove podman and QEMU (apt purge)? [y/N] '
+    read -r reply
+    case "$reply" in
+        y | Y | yes | YES) REMOVE_BACKEND_TOOLING="1" ;;
     esac
 fi
 
@@ -185,8 +216,75 @@ if [ -n "$REMOVE_CONTAINERS" ]; then
     done
 fi
 
-echo "uninstall-nspawnmgr.sh: removing /opt/tomcat9, /etc/nspawnmgr, /etc/guacamole, /var/lib/nspawnmgr/templates, /var/cache/nspawnmgr/packages..."
-rm -rf /opt/tomcat9 /etc/nspawnmgr /etc/guacamole /var/lib/nspawnmgr/templates /var/cache/nspawnmgr/packages
+if [ -n "$REMOVE_BACKEND_TOOLING" ] && command -v podman >/dev/null 2>&1; then
+    echo "uninstall-nspawnmgr.sh: removing all podman containers (pods)..."
+    # -f: force-removes a running container too (stop + remove in one step) - unlike the machinectl
+    # branch above, there's no separate "terminate, then retry remove on Busy" dance needed here,
+    # podman's own -f already does both. Purging the podman package itself doesn't stop or clean up
+    # anything it was managing, and once podman is gone nothing else ever will either.
+    podman ps -a --format '{{.Names}}' 2>/dev/null | while read -r pod; do
+        [ -n "$pod" ] || continue
+        echo "  - $pod"
+        podman rm -f "$pod" 2>/dev/null || true
+    done
+fi
+
+if [ -n "$REMOVE_BACKEND_TOOLING" ] && command -v qemu-system-x86_64 >/dev/null 2>&1; then
+    echo "uninstall-nspawnmgr.sh: removing QEMU machines..."
+    if command -v virsh >/dev/null 2>&1; then
+        # libvirt-managed VMs, if that's how they were created - list every domain (defined, not
+        # just currently running), same "registered, not just running" posture as the
+        # machinectl/podman branches above. --remove-all-storage: same "this is real data loss, you
+        # already confirmed it" posture as machinectl's own rootfs rm -rf and podman rm -f's own
+        # discarded writable layer above - undefine alone would leave disk images behind forever,
+        # the same kind of leftover this whole script exists to actually clean up.
+        virsh list --all --name 2>/dev/null | while read -r domain; do
+            [ -n "$domain" ] || continue
+            echo "  - $domain"
+            virsh destroy "$domain" 2>/dev/null || true
+            virsh undefine "$domain" --remove-all-storage 2>/dev/null || true
+        done
+    else
+        # No libvirt - nspawnmgr's own QEMU VMs are real per-VM systemd units
+        # (/etc/systemd/system/nspawnmgr-qemu-<name>.service - see nspawnmgr-qemu-write-unit.sh),
+        # not transient/bare processes, so THIS is the actual registry to enumerate from. Stop,
+        # disable, and remove each one, then delete its own disk under qemu-disks/ - real VM data,
+        # same "you already confirmed this" posture as machinectl's own rootfs rm -rf and podman
+        # rm -f's own discarded writable layer above. pkill stays as a fallback for anything not
+        # managed this way (e.g. a QEMU VM someone launched by hand outside nspawnmgr entirely).
+        systemctl list-unit-files 'nspawnmgr-qemu-*.service' --no-legend 2>/dev/null | while read -r unit _; do
+            [ -n "$unit" ] || continue
+            echo "  - $unit"
+            systemctl stop "$unit" 2>/dev/null || true
+            systemctl disable "$unit" 2>/dev/null || true
+            rm -f "/etc/systemd/system/$unit"
+        done
+        systemctl daemon-reload 2>/dev/null || true
+        rm -rf /var/lib/nspawnmgr/qemu-disks
+        pkill -f qemu-system-x86_64 2>/dev/null || true
+    fi
+fi
+
+if [ -n "$REMOVE_BACKEND_TOOLING" ]; then
+    echo "uninstall-nspawnmgr.sh: removing podman and QEMU..."
+    # Same host-package-manager detection as nspawnmgr-install-podman.sh/nspawnmgr-install-qemu.sh -
+    # whichever one actually installed them is whichever this host has.
+    if command -v apt-get >/dev/null 2>&1; then
+        apt purge -y podman qemu-system-x86 qemu-utils 2>&1 \
+            || echo "uninstall-nspawnmgr.sh: apt purge of podman/QEMU reported an error (continuing - one or both may not have been installed)." >&2
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf remove -y podman qemu-kvm 2>&1 \
+            || echo "uninstall-nspawnmgr.sh: dnf remove of podman/QEMU reported an error (continuing - one or both may not have been installed)." >&2
+    elif command -v pacman >/dev/null 2>&1; then
+        pacman -Rns --noconfirm podman qemu-system-x86 2>&1 \
+            || echo "uninstall-nspawnmgr.sh: pacman -R of podman/QEMU reported an error (continuing - one or both may not have been installed)." >&2
+    else
+        echo "uninstall-nspawnmgr.sh: no supported package manager found (looked for apt-get, dnf, pacman) - skipping." >&2
+    fi
+fi
+
+echo "uninstall-nspawnmgr.sh: removing /opt/tomcat9, /etc/nspawnmgr, /etc/guacamole, /var/lib/nspawnmgr/templates, /var/lib/nspawnmgr/qemu-sockets, /var/cache/nspawnmgr/packages..."
+rm -rf /opt/tomcat9 /etc/nspawnmgr /etc/guacamole /var/lib/nspawnmgr/templates /var/lib/nspawnmgr/qemu-sockets /var/cache/nspawnmgr/packages
 
 echo "uninstall-nspawnmgr.sh: removing any leftover systemd units..."
 rm -f /etc/systemd/system/tomcat9.service /etc/systemd/system/guacd.service

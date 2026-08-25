@@ -21,8 +21,8 @@ async function runScriptTests() {
                 sourcePath: 'harness-fixture',
                 backend: 'SYSTEMD_NSPAWN',
                 packageManager: 'APT',
-                rdpCapable: false,
-                vncCapable: false,
+                rdpState: 'NOT_CAPABLE',
+                vncState: 'NOT_CAPABLE',
                 active: true,
             }),
         });

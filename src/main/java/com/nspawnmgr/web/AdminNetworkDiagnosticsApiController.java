@@ -36,6 +36,26 @@ public class AdminNetworkDiagnosticsApiController {
         return diagnosticsService.fixHostAddress(currentUserProvider.get(), toCharArray(request));
     }
 
+    @PostMapping("/api/admin/network-diagnostics/fix/podman")
+    public NetworkDiagnosticsService.DiagnosticCheck fixPodman(@RequestBody SudoPasswordRequest request) {
+        return diagnosticsService.fixPodman(currentUserProvider.get(), toCharArray(request));
+    }
+
+    @PostMapping("/api/admin/network-diagnostics/fix/qemu")
+    public NetworkDiagnosticsService.DiagnosticCheck fixQemu(@RequestBody SudoPasswordRequest request) {
+        return diagnosticsService.fixQemu(currentUserProvider.get(), toCharArray(request));
+    }
+
+    @PostMapping("/api/admin/network-diagnostics/fix/podman-network")
+    public NetworkDiagnosticsService.DiagnosticCheck fixPodmanNetwork(@RequestBody SudoPasswordRequest request) {
+        return diagnosticsService.fixPodmanNetwork(currentUserProvider.get(), toCharArray(request));
+    }
+
+    @PostMapping("/api/admin/network-diagnostics/fix/qemu-bridge")
+    public NetworkDiagnosticsService.DiagnosticCheck fixQemuBridge(@RequestBody SudoPasswordRequest request) {
+        return diagnosticsService.fixQemuBridge(currentUserProvider.get(), toCharArray(request));
+    }
+
     /** null outside admin-approval mode - the page only sends/renders a password field then. */
     private static char[] toCharArray(SudoPasswordRequest request) {
         return request.sudoPassword() != null ? request.sudoPassword().toCharArray() : null;

@@ -7,6 +7,17 @@
 # ConfigureWithoutCarrier=yes: a bridge with no container attached yet still has no "carrier" in the
 # usual sense - without this, systemd-networkd would never bring the address up until something
 # else was plugged into it.
+#
+# PoolOffset=/PoolSize= restrict this DHCP server to 10.100.0.2-10.100.0.191, reserving
+# 10.100.0.192-10.100.0.254 exclusively for podman's own host-local IPAM pool (see
+# nspawnmgr-configure-podman-network.sh) - two independent, uncoordinated allocators sharing one
+# subnet need a hard split like this or they can eventually hand the same address to both an
+# nspawn container and a pod. Not DHCP-related: podman containers were never able to use this
+# DHCP server at all (see containers/netavark#1416 - a kernel TX/RX bridge-isolation limitation
+# that makes a DHCP server bound to the bridge master itself unreachable from netavark's own
+# host-netns DHCP proxy, confirmed live on yoga 2026-08-16), so this split isn't about protecting
+# in-flight DHCP leases from a competing DHCP client - it's just two static/DHCP pools coexisting
+# on the same subnet.
 [Match]
 Name=nspawnbr0
 
@@ -18,3 +29,5 @@ ConfigureWithoutCarrier=yes
 
 [DHCPServer]
 DNS=10.100.0.1
+PoolOffset=2
+PoolSize=190

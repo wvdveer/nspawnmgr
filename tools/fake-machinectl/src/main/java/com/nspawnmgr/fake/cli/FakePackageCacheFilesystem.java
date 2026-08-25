@@ -3,10 +3,12 @@ package com.nspawnmgr.fake.cli;
 import com.nspawnmgr.cli.ContainerCliException;
 import com.nspawnmgr.cli.DownloadedPackage;
 import com.nspawnmgr.cli.PackageCacheFilesystem;
+import com.nspawnmgr.config.NspawnProperties;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -18,12 +20,18 @@ import java.util.List;
 @Profile("dev")
 public class FakePackageCacheFilesystem implements PackageCacheFilesystem {
 
+    private final NspawnProperties properties;
+
+    public FakePackageCacheFilesystem(NspawnProperties properties) {
+        this.properties = properties;
+    }
+
     @Override
-    public void upload(String targetPath, byte[] content) {
+    public void upload(String targetPath, InputStream content) {
         try {
             Path target = Path.of(targetPath);
             Files.createDirectories(target.getParent());
-            Files.write(target, content);
+            Files.copy(content, target, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             throw new ContainerCliException("Failed to upload package to " + targetPath, e);
         }
@@ -49,6 +57,23 @@ public class FakePackageCacheFilesystem implements PackageCacheFilesystem {
             }
         } catch (IOException e) {
             throw new ContainerCliException("Failed to copy " + sourcePath + " into " + destDir, e);
+        }
+    }
+
+    @Override
+    public void copyIntoPodmanContainer(String sourcePath, String containerName, String destPathInContainer) {
+        // No real podman/`podman cp` path in dev mode - writes into the same dev-mode stub
+        // directory convention FakeContainerFilesystemProvisioner's own methods already use
+        // (properties.machinesDir()/<containerName>/...), just proving the caller's own wiring.
+        try {
+            Path source = Path.of(sourcePath);
+            Path dest = Path.of(properties.machinesDir(), containerName, destPathInContainer);
+            Files.createDirectories(dest.getParent());
+            if (Files.exists(source)) {
+                Files.copy(source, dest, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            throw new ContainerCliException("Failed to copy " + sourcePath + " into " + containerName + ":" + destPathInContainer, e);
         }
     }
 

@@ -125,6 +125,15 @@ public class AppSettings {
     @Column(name = "dns_upstream_servers")
     private String dnsUpstreamServers;
 
+    /** SettingsService.qemuVncPortRangeStart()/End() - the TCP port range (on 10.100.0.1) QEMU VM
+     *  VNC listeners are allocated from. Both null means "use the 5900-5999 default". Must be >=5900
+     *  if set - see that accessor's own validation. */
+    @Column(name = "qemu_vnc_port_range_start")
+    private Integer qemuVncPortRangeStart;
+
+    @Column(name = "qemu_vnc_port_range_end")
+    private Integer qemuVncPortRangeEnd;
+
     @Column(name = "updated_at")
     private Instant updatedAt;
 

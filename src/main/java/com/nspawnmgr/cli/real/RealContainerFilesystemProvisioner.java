@@ -109,6 +109,20 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
     @Override
     public void packMachineAsTemplate(String machineName, ContainerBackend backend, String templateName, char[] sudoPasswordOverride) {
         char[] password = sudoPasswordOverride != null ? sudoPasswordOverride : settingsService.sshPassword().toCharArray();
+        if (backend == ContainerBackend.QEMU) {
+            // No rootfs to tar - a QEMU "template" is a plain qcow2 file, copied from the fixed
+            // /var/lib/nspawnmgr/qemu-disks/<machineName>.qcow2 convention the script itself
+            // resolves (same reason createQemuDisk only ever passes a bare name, not a full path).
+            Path target = Path.of(settingsService.nspawnTemplatesDir(), backend.templateSubdirectory(), templateName + ".qcow2");
+            CommandResult result = ssh.execWithSudoPassword(Duration.ofMinutes(10),
+                    List.of(wrapperScript("nspawnmgr-qemu-pack-disk-as-template.sh"), machineName, target.toString()),
+                    null, password);
+            if (!result.success()) {
+                throw new ContainerCliException("Failed to pack " + machineName + " as template " + templateName
+                        + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+            }
+            return;
+        }
         Path rootfs = Path.of(settingsService.nspawnMachinesDir(), machineName);
         Path target = Path.of(settingsService.nspawnTemplatesDir(), backend.templateSubdirectory(), templateName + ".tar.gz");
         // 10 minutes: this is genuinely just tar -cz over the rootfs (no package manager, no
@@ -120,6 +134,98 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
         if (!result.success()) {
             throw new ContainerCliException("Failed to pack " + machineName + " as template " + templateName
                     + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+        }
+    }
+
+    @Override
+    public void cloneQemuTemplate(Template template, String containerName, char[] sudoPasswordOverride) {
+        char[] password = sudoPasswordOverride != null ? sudoPasswordOverride : settingsService.sshPassword().toCharArray();
+        Path source = Path.of(settingsService.nspawnTemplatesDir(), template.getBackend().templateSubdirectory(),
+                template.getSourcePath() + ".qcow2");
+        CommandResult result = ssh.execWithSudoPassword(Duration.ofMinutes(10),
+                List.of(wrapperScript("nspawnmgr-qemu-clone-template.sh"), source.toString(), containerName),
+                null, password);
+        if (!result.success()) {
+            throw new ContainerCliException("Failed to clone QEMU template " + template.getName() + " to " + containerName
+                    + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+        }
+    }
+
+    // podman pull/import/export/save/load are all real network/filesystem operations with no
+    // measured timing on a real host yet - reusing the same 10-minute budget
+    // packMachineAsTemplate/createMinimalTemplate already settled on for "slow, no better number
+    // available" template-producing operations, rather than inventing an untested one.
+    private static final Duration PODMAN_TEMPLATE_TIMEOUT = Duration.ofMinutes(10);
+
+    @Override
+    public void pullPodmanTemplate(String pullReference, String templateName, char[] sudoPasswordOverride) {
+        char[] password = sudoPasswordOverride != null ? sudoPasswordOverride : settingsService.sshPassword().toCharArray();
+        Path target = Path.of(settingsService.nspawnTemplatesDir(),
+                ContainerBackend.PODMAN.templateSubdirectory(), templateName + ".tar");
+        CommandResult result = ssh.execWithSudoPassword(PODMAN_TEMPLATE_TIMEOUT,
+                List.of(wrapperScript("nspawnmgr-podman-pull-template.sh"), pullReference, target.toString()),
+                null, password);
+        if (!result.success()) {
+            throw new ContainerCliException("Failed to pull '" + pullReference + "' as template " + templateName
+                    + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+        }
+    }
+
+    @Override
+    public void convertNspawnTemplateToPodman(String nspawnTemplateName, String newTemplateName, char[] sudoPasswordOverride) {
+        char[] password = sudoPasswordOverride != null ? sudoPasswordOverride : settingsService.sshPassword().toCharArray();
+        Path source = Path.of(settingsService.nspawnTemplatesDir(),
+                ContainerBackend.SYSTEMD_NSPAWN.templateSubdirectory(), nspawnTemplateName + ".tar.gz");
+        Path target = Path.of(settingsService.nspawnTemplatesDir(),
+                ContainerBackend.PODMAN.templateSubdirectory(), newTemplateName + ".tar");
+        // The image tag podman imports the rootfs as - only ever referenced internally by the
+        // conversion script itself (immediately re-saved to target as a plain file), so its exact
+        // form doesn't matter beyond being a valid tag; reusing newTemplateName keeps it readable
+        // if an admin ever inspects `podman images` mid-operation.
+        CommandResult result = ssh.execWithSudoPassword(PODMAN_TEMPLATE_TIMEOUT,
+                List.of(wrapperScript("nspawnmgr-podman-convert-nspawn-to-podman.sh"),
+                        source.toString(), "nspawnmgr-template-" + newTemplateName, target.toString()),
+                null, password);
+        if (!result.success()) {
+            throw new ContainerCliException("Failed to convert " + nspawnTemplateName + " to podman template " + newTemplateName
+                    + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+        }
+    }
+
+    @Override
+    public void convertPodmanTemplateToNspawn(String podmanTemplateName, String newTemplateName, char[] sudoPasswordOverride) {
+        char[] password = sudoPasswordOverride != null ? sudoPasswordOverride : settingsService.sshPassword().toCharArray();
+        Path source = Path.of(settingsService.nspawnTemplatesDir(),
+                ContainerBackend.PODMAN.templateSubdirectory(), podmanTemplateName + ".tar");
+        Path target = Path.of(settingsService.nspawnTemplatesDir(),
+                ContainerBackend.SYSTEMD_NSPAWN.templateSubdirectory(), newTemplateName + ".tar.gz");
+        CommandResult result = ssh.execWithSudoPassword(PODMAN_TEMPLATE_TIMEOUT,
+                List.of(wrapperScript("nspawnmgr-podman-convert-podman-to-nspawn.sh"),
+                        source.toString(), target.toString()),
+                null, password);
+        if (!result.success()) {
+            throw new ContainerCliException("Failed to convert " + podmanTemplateName + " to nspawn template " + newTemplateName
+                    + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+        }
+    }
+
+    @Override
+    public void createPodmanContainer(String templateSourcePath, String containerName, String command, char[] sudoPasswordOverride) {
+        char[] password = sudoPasswordOverride != null ? sudoPasswordOverride : settingsService.sshPassword().toCharArray();
+        Path source = Path.of(settingsService.nspawnTemplatesDir(), ContainerBackend.PODMAN.templateSubdirectory(),
+                templateSourcePath + ".tar");
+        // Always passed as its own argv element (never interpolated into a shell string here or in
+        // the script itself, which hands it straight to `sh -c` as a single argument) - safe
+        // regardless of what an admin types into it, same posture as every other privileged-script
+        // caller in this codebase. Blank/null becomes "" - the script's own [ -n ] check treats that
+        // as "no override, trust the image's own CMD".
+        String commandArg = command != null ? command : "";
+        CommandResult result = ssh.execWithSudoPassword(PODMAN_TEMPLATE_TIMEOUT,
+                List.of(wrapperScript("nspawnmgr-podman-create-container.sh"), source.toString(), containerName, commandArg),
+                null, password);
+        if (!result.success()) {
+            throw new ContainerCliException("Failed to create podman container '" + containerName + "' from template "
+                    + templateSourcePath + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
         }
     }
 
@@ -229,6 +335,46 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
         if (!result.success()) {
             throw new ContainerCliException("Failed to delete files for machine " + machineName
                     + ": " + result.stderr());
+        }
+    }
+
+    @Override
+    public String mountPodmanContainer(String containerName) {
+        CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15), List.of("podman", "mount", containerName));
+        if (!result.success()) {
+            throw new ContainerCliException("Failed to mount podman container '" + containerName + "': " + result.stderr());
+        }
+        return result.stdout().trim();
+    }
+
+    @Override
+    public void createQemuDisk(String containerName, int diskSizeGb, char[] sudoPasswordOverride) {
+        char[] password = sudoPasswordOverride != null ? sudoPasswordOverride : settingsService.sshPassword().toCharArray();
+        CommandResult result = ssh.execWithSudoPassword(Duration.ofMinutes(2),
+                List.of(wrapperScript("nspawnmgr-qemu-create-disk.sh"), containerName, String.valueOf(diskSizeGb)),
+                null, password);
+        if (!result.success()) {
+            throw new ContainerCliException("Failed to create QEMU disk for '" + containerName + "' (exit "
+                    + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+        }
+    }
+
+    @Override
+    public void writeQemuUnit(Container container, String isoHostPath) {
+        String containerName = container.getName();
+        List<String> command = List.of(wrapperScript("nspawnmgr-qemu-write-unit.sh"),
+                containerName,
+                String.valueOf(container.getQemuVncPort()),
+                isoHostPath != null ? isoHostPath : "",
+                container.getQemuCpuModel() != null ? container.getQemuCpuModel().qemuArg() : "",
+                container.getQemuCpuCount() != null ? String.valueOf(container.getQemuCpuCount()) : "",
+                container.getQemuMemoryMb() != null ? String.valueOf(container.getQemuMemoryMb()) : "",
+                container.getQemuNicModel() != null ? container.getQemuNicModel().qemuArg() : "",
+                container.getQemuPointerDevice() != null ? container.getQemuPointerDevice().qemuArg() : "");
+        CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15), command);
+        if (!result.success()) {
+            throw new ContainerCliException("Failed to write QEMU unit for '" + containerName + "' (exit "
+                    + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
         }
     }
 

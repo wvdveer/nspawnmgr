@@ -1,4 +1,6 @@
 package com.nspawnmgr.web.dto;
 
-public record TemplateSummaryResponse(Long id, String name, boolean rdpCapable) {
+import com.nspawnmgr.domain.TemplateFeatureState;
+
+public record TemplateSummaryResponse(Long id, String name, TemplateFeatureState rdpState) {
 }

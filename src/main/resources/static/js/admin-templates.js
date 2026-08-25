@@ -26,41 +26,34 @@ document.querySelectorAll('.btn-create-minimal').forEach((button) => {
     });
 });
 
-document.querySelectorAll('.btn-deactivate').forEach((button) => {
-    button.addEventListener('click', async () => {
-        const templateId = button.getAttribute('data-template-id');
-        const response = await fetch(`${basePath}/api/admin/templates/${templateId}/deactivate`, { method: 'POST' });
-        if (!response.ok) {
-            await window.appDialog.alert('Failed: ' + await response.text());
-            return;
-        }
-        window.location.reload();
+const podmanSudoApprovalRequired = document.body.getAttribute('data-sudo-approval-required') === 'true';
+
+function podmanSudoPassword() {
+    const field = document.getElementById('podmanSudoPassword');
+    return field ? field.value : null;
+}
+
+const podmanActionStatus = document.getElementById('podman-action-status');
+
+document.getElementById('btn-new-pod')?.addEventListener('click', async () => {
+    const pullReference = await window.appDialog.prompt('Image to pull (e.g. docker.io/library/alpine:latest):');
+    if (!pullReference) {
+        return;
+    }
+    if (podmanSudoApprovalRequired && !podmanSudoPassword()) {
+        podmanActionStatus.textContent = 'Enter the sudo password above first.';
+        return;
+    }
+    podmanActionStatus.textContent = `Pulling ${pullReference}...`;
+    const response = await fetch(`${basePath}/api/admin/templates/create-podman-pull`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pullReference, sudoPassword: podmanSudoPassword() }),
     });
+    if (!response.ok) {
+        podmanActionStatus.textContent = 'Failed: ' + await response.text();
+        return;
+    }
+    window.location.reload();
 });
 
-document.querySelectorAll('.btn-reactivate').forEach((button) => {
-    button.addEventListener('click', async () => {
-        const templateId = button.getAttribute('data-template-id');
-        const response = await fetch(`${basePath}/api/admin/templates/${templateId}/reactivate`, { method: 'POST' });
-        if (!response.ok) {
-            await window.appDialog.alert('Failed: ' + await response.text());
-            return;
-        }
-        window.location.reload();
-    });
-});
-
-document.querySelectorAll('.btn-delete').forEach((button) => {
-    button.addEventListener('click', async () => {
-        const templateId = button.getAttribute('data-template-id');
-        if (!await window.appDialog.confirm('Delete this template? This cannot be undone.')) {
-            return;
-        }
-        const response = await fetch(`${basePath}/api/admin/templates/${templateId}`, { method: 'DELETE' });
-        if (!response.ok) {
-            await window.appDialog.alert('Failed: ' + await response.text());
-            return;
-        }
-        window.location.reload();
-    });
-});

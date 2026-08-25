@@ -3,6 +3,7 @@ package com.nspawnmgr.service;
 import com.nspawnmgr.cli.ContainerCliExecutor;
 import com.nspawnmgr.cli.MachineStatus;
 import com.nspawnmgr.domain.Container;
+import com.nspawnmgr.domain.ContainerBackend;
 import com.nspawnmgr.domain.ContainerState;
 import com.nspawnmgr.domain.CredentialType;
 import com.nspawnmgr.domain.MinimalTemplateFlavor;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -59,6 +61,7 @@ public class ContainerDiscoveryService {
     private final TemplateService templateService;
     private final ProvisioningService provisioningService;
     private final SelfHostedBootstrapStatus bootstrapStatus;
+    private final NetworkDiagnosticsService networkDiagnosticsService;
     private final String datasourceUrl;
 
     public ContainerDiscoveryService(ContainerRepository containerRepository,
@@ -66,6 +69,7 @@ public class ContainerDiscoveryService {
                                       ContainerCliExecutor cliExecutor, ContainerAccessService accessService,
                                       TemplateService templateService, ProvisioningService provisioningService,
                                       SelfHostedBootstrapStatus bootstrapStatus,
+                                      NetworkDiagnosticsService networkDiagnosticsService,
                                       @Value("${spring.datasource.url:}") String datasourceUrl) {
         this.containerRepository = containerRepository;
         this.containerCredentialRepository = containerCredentialRepository;
@@ -74,6 +78,7 @@ public class ContainerDiscoveryService {
         this.templateService = templateService;
         this.provisioningService = provisioningService;
         this.bootstrapStatus = bootstrapStatus;
+        this.networkDiagnosticsService = networkDiagnosticsService;
         this.datasourceUrl = datasourceUrl;
     }
 
@@ -92,22 +97,22 @@ public class ContainerDiscoveryService {
     public List<Container> discover(User actingAdmin) {
         Set<String> known = containerRepository.findAll().stream()
                 .map(Container::getName)
-                .collect(Collectors.toSet());
+                .collect(Collectors.toCollection(HashSet::new));
         Template debianMinimal = templateService.registerExistingMinimal(MinimalTemplateFlavor.DEBIAN).orElse(null);
         String dbHost = resolveDbHost();
 
         List<Container> discovered = new ArrayList<>();
         for (String name : cliExecutor.listMachineImageNames()) {
-            if (known.contains(name)) {
+            if (!known.add(name)) {
                 continue;
             }
-            MachineStatus status = cliExecutor.status(name);
+            MachineStatus status = cliExecutor.status(name, ContainerBackend.SYSTEMD_NSPAWN);
             if (status == MachineStatus.NOT_FOUND) {
                 // Listed a moment ago, gone now (e.g. someone removed it concurrently) - skip rather
                 // than register a container for an image that no longer exists.
                 continue;
             }
-            Container container = registerContainer(name, status, actingAdmin, debianMinimal, dbHost);
+            Container container = registerContainer(name, ContainerBackend.SYSTEMD_NSPAWN, status, actingAdmin, debianMinimal, dbHost);
             if (container.getTemplate() == null) {
                 // Self-hosted infrastructure (template already linked by registerContainer above)
                 // is handled uniformly by reconcileSelfHostedInfrastructure below instead - see its
@@ -115,6 +120,47 @@ public class ContainerDiscoveryService {
                 accessService.tryAutoEnable(container);
             }
             discovered.add(container);
+        }
+        // PODMAN pass: same shape as the machinectl one above, minus the self-hosted-infrastructure
+        // special-casing (the app/db machines are always SYSTEMD_NSPAWN debian-minimal clones,
+        // never podman - see registerContainer's own backend guard on that check). Skipped entirely
+        // when podman isn't installed - confirmed live (CI runner acer, 2026-08-22), an install with
+        // no podman at all still paid for a real `sudo podman ps -a` round-trip on every first-admin
+        // login/"Discover machines" click, which can only ever fail there and just adds sudo-failure
+        // noise to the log for no benefit.
+        if (networkDiagnosticsService.isPodmanInstalled()) {
+            for (String name : cliExecutor.listPodmanContainerNames()) {
+                if (!known.add(name)) {
+                    continue;
+                }
+                MachineStatus status = cliExecutor.status(name, ContainerBackend.PODMAN);
+                if (status == MachineStatus.NOT_FOUND) {
+                    continue;
+                }
+                Container container = registerContainer(name, ContainerBackend.PODMAN, status, actingAdmin, debianMinimal, dbHost);
+                accessService.tryAutoEnable(container);
+                discovered.add(container);
+            }
+        }
+        // QEMU pass: same shape again, same "skip if not installed" reasoning as the PODMAN pass
+        // above. tryAutoEnable's own VNC leg is a harmless no-op here (its fixed VNC_PORT=5900
+        // constant doesn't apply to QEMU's own per-VM allocated port - see Container#getQemuVncPort's
+        // own javadoc - and a discovered VM nspawnmgr never itself provisioned has no such port known
+        // anyway); SSH/RDP still auto-enable correctly if the guest OS already has them reachable,
+        // exactly as for any other discovered machine.
+        if (networkDiagnosticsService.isQemuInstalled()) {
+            for (String name : cliExecutor.listQemuVmNames()) {
+                if (!known.add(name)) {
+                    continue;
+                }
+                MachineStatus status = cliExecutor.status(name, ContainerBackend.QEMU);
+                if (status == MachineStatus.NOT_FOUND) {
+                    continue;
+                }
+                Container container = registerContainer(name, ContainerBackend.QEMU, status, actingAdmin, debianMinimal, dbHost);
+                accessService.tryAutoEnable(container);
+                discovered.add(container);
+            }
         }
         reconcileSelfHostedInfrastructure(debianMinimal, dbHost);
         return discovered;
@@ -152,19 +198,22 @@ public class ContainerDiscoveryService {
      * (a real, cross-bean call, not self-invocation) and commits immediately when nothing else is
      * already open on this thread - exactly the durable-before-return guarantee this needs.
      */
-    private Container registerContainer(String name, MachineStatus status, User actingAdmin, Template debianMinimal, String dbHost) {
-        Container container = Container.discovered(name, actingAdmin);
+    private Container registerContainer(String name, ContainerBackend backend, MachineStatus status,
+                                         User actingAdmin, Template debianMinimal, String dbHost) {
+        Container container = Container.discovered(name, actingAdmin, backend);
         String address = null;
         if (status == MachineStatus.RUNNING) {
             container.setState(ContainerState.RUNNING);
-            address = cliExecutor.getInternalAddress(name);
+            address = cliExecutor.getInternalAddress(name, backend);
             if (!address.isEmpty()) {
                 container.setInternalAddress(address);
             }
         } else {
             container.setState(ContainerState.STOPPED);
         }
-        if (isSelfHostedInfrastructure(name, address, dbHost)) {
+        // Self-hosted infrastructure (the app/db machines) is always a SYSTEMD_NSPAWN debian-minimal
+        // clone - never worth even checking for a freshly-discovered PODMAN container.
+        if (backend == ContainerBackend.SYSTEMD_NSPAWN && isSelfHostedInfrastructure(name, address, dbHost)) {
             container.setDescription(selfHostedDescription(name));
             if (debianMinimal != null) {
                 container.setTemplate(debianMinimal);

@@ -7,22 +7,29 @@
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/}" th:data-is-admin="${currentUser.role.name() == 'ADMIN'}">
-<div th:replace="fragments/theme-toggle :: widget"></div>
-<h1 id="log-title">Full log</h1>
-<p><a th:href="@{/logs}">&laquo; Back to last 100 lines</a></p>
-<p><a id="btn-download" href="#">Download</a></p>
-<pre id="log-content">Loading...</pre>
+<div th:replace="~{fragments/app-shell :: shell(
+        title='Full log', subtitle='Everything currently in the application log, plus any rotated files',
+        activeNav='log', currentUser=${currentUser}, addMenu=null,
+        content=~{::#page-content})}">
+    <div id="page-content">
+        <p><a th:href="@{/logs}">&laquo; Back to last 100 lines</a></p>
+        <p><a id="btn-download" href="#">Download</a></p>
+        <pre id="log-content">Loading...</pre>
 
-<h2>Rotated logs</h2>
-<table>
-    <thead>
-    <tr>
-        <th>Filename</th>
-        <th>Actions</th>
-    </tr>
-    </thead>
-    <tbody id="rotated-log-list"></tbody>
-</table>
+        <h2>Rotated logs</h2>
+        <div class="table-card">
+        <table>
+            <thead>
+            <tr>
+                <th>Filename</th>
+                <th>Actions</th>
+            </tr>
+            </thead>
+            <tbody id="rotated-log-list"></tbody>
+        </table>
+        </div>
+    </div>
+</div>
 
 <script th:src="@{/js/theme-toggle.js}"></script>
 <script th:src="@{/js/dialog.js}"></script>

@@ -15,5 +15,6 @@ public record SettingsResponse(
         long sshConnectTimeoutMs, boolean sshStrictHostKeyChecking,
         String nspawnTemplatesDir, String nspawnMachinesDir, String nspawnSettingsDir, String nspawnPrivilegedScriptsDir,
         long authHttpTimeoutMs, String hostExternalHostname, String dnsUpstreamServers,
+        int qemuVncPortRangeStart, int qemuVncPortRangeEnd,
         Instant updatedAt, Long updatedByUserId) {
 }

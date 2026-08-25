@@ -7,11 +7,15 @@
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/}">
-<div th:replace="fragments/theme-toggle :: widget"></div>
-<h1>Log (last 100 lines)</h1>
-<p><a th:href="@{/}">&laquo; Back to containers</a></p>
-<p><button id="btn-show-full" class="btn-primary">Show full log</button></p>
-<pre id="log-content">Loading...</pre>
+<div th:replace="~{fragments/app-shell :: shell(
+        title='Log', subtitle='Last 100 lines of the application log',
+        activeNav='log', currentUser=${currentUser}, addMenu=null,
+        content=~{::#page-content})}">
+    <div id="page-content">
+        <p><button id="btn-show-full" class="btn-primary">Show full log</button></p>
+        <pre id="log-content">Loading...</pre>
+    </div>
+</div>
 <script th:src="@{/js/theme-toggle.js}"></script>
 <script th:src="@{/js/logs.js}"></script>
 </body>

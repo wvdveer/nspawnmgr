@@ -7,8 +7,11 @@
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/},data-container-id=${container.id},data-script-id=${script != null ? script.id : ''}">
-<div th:replace="fragments/theme-toggle :: widget"></div>
-<h1 th:text="${script != null} ? 'Edit script' : 'New script'">Script</h1>
+<div th:replace="~{fragments/app-shell :: shell(
+        title=${script != null ? 'Edit script' : 'New script'}, subtitle=null,
+        activeNav='machines', currentUser=${currentUser}, addMenu=null,
+        content=~{::#page-content})}">
+<div id="page-content">
 <p><a th:href="@{/containers/{id}(id=${container.id})}">&laquo; Back to <span th:text="${container.name}">container</span></a></p>
 
 <form id="script-form" class="card card-wide" onsubmit="return false;">
@@ -33,6 +36,8 @@
         <h3>Output</h3>
         <div id="output-lines" class="output-lines"></div>
     </div>
+</div>
+</div>
 </div>
 
 <script th:src="@{/js/theme-toggle.js}"></script>

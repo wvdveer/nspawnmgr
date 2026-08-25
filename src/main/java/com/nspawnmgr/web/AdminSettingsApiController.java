@@ -68,7 +68,7 @@ public class AdminSettingsApiController {
                 request.sshPrivateKeyPath(), request.sshConnectTimeoutMs(), request.sshStrictHostKeyChecking(),
                 request.nspawnTemplatesDir(), request.nspawnMachinesDir(), request.nspawnSettingsDir(),
                 request.nspawnPrivilegedScriptsDir(), request.authHttpTimeoutMs(), request.hostExternalHostname(),
-                request.dnsUpstreamServers()), actingAdmin);
+                request.dnsUpstreamServers(), request.qemuVncPortRangeStart(), request.qemuVncPortRangeEnd()), actingAdmin);
         SettingsResponse after = toResponse();
         auditLogService.logSettingsChange(actingAdmin, before, after, SETTINGS_DIFF_IGNORED_FIELDS);
         return after;
@@ -144,6 +144,7 @@ public class AdminSettingsApiController {
                 settingsService.nspawnTemplatesDir(), settingsService.nspawnMachinesDir(), settingsService.nspawnSettingsDir(),
                 settingsService.nspawnPrivilegedScriptsDir(), settingsService.authHttpTimeoutMs(),
                 settingsService.hostExternalHostname(), settingsService.dnsUpstreamServers(),
+                settingsService.qemuVncPortRangeStart(), settingsService.qemuVncPortRangeEnd(),
                 current.getUpdatedAt(), current.getUpdatedByUserId());
     }
 }

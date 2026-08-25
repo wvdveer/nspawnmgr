@@ -10,6 +10,13 @@ site/env/.env
 # nspawnmgr.war exploded outside webapps/ by start-dev-stack.sh, with fake-machinectl injected —
 # regenerated on every dev-stack run, never committed.
 /site/tomcat-apps/
+# Fake-mode QEMU template artifacts (FakeContainerFilesystemProvisioner's stub .qcow2 files),
+# written here by local template-pack testing — the directory itself stays tracked (see
+# site/templates/qemu/.gitkeep, matching dev_env/certs/.gitkeep's own convention) so
+# TEMPLATES_DIR's real, production per-backend layout exists on a fresh checkout, but nothing
+# generated inside it should be.
+/site/templates/qemu/*
+!/site/templates/qemu/.gitkeep
 
 # ---> Maven
 target/
@@ -34,5 +41,3 @@ buildNumber.properties
 /.idea/
 /.claude/
 /CLAUDE.md
-/packaging/nspawnmgr-deb/vendor/debian-minimal.tar.gz
-/packaging/nspawnmgr-deb/vendor/postgresql-minimal.tar.gz

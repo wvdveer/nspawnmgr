@@ -52,6 +52,17 @@ public class CookiePreAuthFilter extends OncePerRequestFilter {
                         return resolved;
                     });
             identity.ifPresent(this::authenticate);
+        } else {
+            // Without this, logging out only ever cleared auth.war's own cookie/session -
+            // nspawnmgr's own session (Spring Security's default HttpSessionSecurityContextRepository,
+            // no explicit sessionManagement() here) still had the Authentication this filter set on
+            // some earlier request, and SecurityContextPersistenceFilter reloads that into
+            // SecurityContextHolder before this filter ever runs - confirmed live, the topbar kept
+            // showing the logged-out user indefinitely. Clearing here (only reached when the upstream
+            // cookie is genuinely gone - logout, or the cookie itself expiring) makes the next
+            // protected request fail authentication for real, so anyRequest().authenticated()'s own
+            // entry point sends the browser back to login instead of trusting stale state forever.
+            SecurityContextHolder.clearContext();
         }
         filterChain.doFilter(request, response);
     }

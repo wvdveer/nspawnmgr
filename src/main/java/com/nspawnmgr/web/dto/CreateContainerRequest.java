@@ -11,6 +11,9 @@ public record CreateContainerRequest(
         boolean rdpEnabled,
         boolean vncEnabled,
         String desktopManager,
-        @Size(max = 500) String description
+        @Size(max = 500) String description,
+        /** PODMAN only - like a Dockerfile CMD, see Container#getPodCommand's own javadoc. Ignored
+         *  for SYSTEMD_NSPAWN. */
+        @Size(max = 1000) String command
 ) {
 }

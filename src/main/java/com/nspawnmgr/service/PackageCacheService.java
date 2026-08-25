@@ -7,6 +7,7 @@ import com.nspawnmgr.cli.DownloadedPackage;
 import com.nspawnmgr.cli.PackageCacheFilesystem;
 import com.nspawnmgr.domain.CachedPackage;
 import com.nspawnmgr.domain.Container;
+import com.nspawnmgr.domain.ContainerBackend;
 import com.nspawnmgr.domain.PackageManager;
 import com.nspawnmgr.domain.User;
 import com.nspawnmgr.repository.CachedPackageRepository;
@@ -14,6 +15,7 @@ import com.nspawnmgr.repository.ContainerRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -91,12 +93,12 @@ public class PackageCacheService {
     }
 
     @Transactional
-    public CachedPackage upload(PackageManager packageManager, String originalFilename, byte[] content,
-                                 String description, User admin) {
+    public CachedPackage upload(PackageManager packageManager, String originalFilename, InputStream content,
+                                 long sizeBytes, String description, User admin) {
         String storedFilename = UUID.randomUUID() + "_" + sanitizeFilename(originalFilename);
         filesystem.upload(uploadedDir(packageManager) + "/" + storedFilename, content);
         CachedPackage cachedPackage = new CachedPackage(packageManager, originalFilename, storedFilename,
-                description, admin, content.length);
+                description, admin, sizeBytes);
         return repository.save(cachedPackage);
     }
 
@@ -196,24 +198,35 @@ public class PackageCacheService {
                     + cachedPackage.getPackageManager() + ", but " + freshContainer.getName() + " uses " + containerPackageManager);
         }
         String sourcePath = uploadedDir(cachedPackage.getPackageManager()) + "/" + cachedPackage.getStoredFilename();
-        String hostSideDestDir = Path.of(settingsService.nspawnMachinesDir(), freshContainer.getName(), "root", IN_CONTAINER_SUBDIR).toString();
-        filesystem.copyIntoContainer(sourcePath, hostSideDestDir);
+        String inContainerPath = "/root/" + IN_CONTAINER_SUBDIR + "/" + cachedPackage.getStoredFilename();
 
-        if (DEPENDENCY_PRE_FETCH_MANAGERS.contains(containerPackageManager)) {
-            List<String> missingDependencies = filesystemProvisioner.missingDependenciesFor(
-                    containerPackageManager, freshContainer.getName(), sourcePath, sudoPasswordOverride);
-            if (!missingDependencies.isEmpty()) {
-                List<DownloadedPackage> downloaded = filesystemProvisioner.downloadPackagesIntoContainer(
-                        containerPackageManager, freshContainer.getName(), missingDependencies, sudoPasswordOverride);
-                for (DownloadedPackage p : downloaded) {
-                    registerAutoFetchedIfAbsent(containerPackageManager, p.filename(), p.sizeBytes(), cachedPackage.getUploadedBy());
+        if (freshContainer.getBackend() == ContainerBackend.PODMAN) {
+            // PODMAN: podman cp addresses the container directly (no host-visible rootfs path to
+            // copy into or chroot a dependency simulation against - see PackageCacheFilesystem
+            // .copyIntoPodmanContainer's own javadoc) - and, unlike SYSTEMD_NSPAWN, a podman
+            // container has real network access of its own (it's on the shared nspawnbr0 bridge),
+            // so the local install command below can resolve dependencies itself; no host-side
+            // pre-fetch step for podman containers in this first pass.
+            filesystem.copyIntoPodmanContainer(sourcePath, freshContainer.getName(), inContainerPath);
+        } else {
+            String hostSideDestDir = Path.of(settingsService.nspawnMachinesDir(), freshContainer.getName(), "root", IN_CONTAINER_SUBDIR).toString();
+            filesystem.copyIntoContainer(sourcePath, hostSideDestDir);
+
+            if (DEPENDENCY_PRE_FETCH_MANAGERS.contains(containerPackageManager)) {
+                List<String> missingDependencies = filesystemProvisioner.missingDependenciesFor(
+                        containerPackageManager, freshContainer.getName(), sourcePath, sudoPasswordOverride);
+                if (!missingDependencies.isEmpty()) {
+                    List<DownloadedPackage> downloaded = filesystemProvisioner.downloadPackagesIntoContainer(
+                            containerPackageManager, freshContainer.getName(), missingDependencies, sudoPasswordOverride);
+                    for (DownloadedPackage p : downloaded) {
+                        registerAutoFetchedIfAbsent(containerPackageManager, p.filename(), p.sizeBytes(), cachedPackage.getUploadedBy());
+                    }
                 }
             }
         }
 
-        String inContainerPath = "/root/" + IN_CONTAINER_SUBDIR + "/" + cachedPackage.getStoredFilename();
         String command = LOCAL_INSTALL_COMMAND.get(cachedPackage.getPackageManager()).formatted(inContainerPath);
-        return cliExecutor.runInMachine(freshContainer.getName(), List.of("sh", "-c", command), INSTALL_TIMEOUT, sudoPasswordOverride);
+        return cliExecutor.runInMachine(freshContainer.getName(), freshContainer.getBackend(), List.of("sh", "-c", command), INSTALL_TIMEOUT, sudoPasswordOverride);
     }
 
     /**
@@ -241,14 +254,33 @@ public class PackageCacheService {
         return uploadedDir(cachedPackage.getPackageManager()) + "/" + cachedPackage.getStoredFilename();
     }
 
-    private String uploadedDir(PackageManager packageManager) {
+    /** Package-private (not private) so {@link PackageDownloadService} can compute the identical
+     *  final on-disk path convention for a host-side URL download, which writes directly to its
+     *  final resting place rather than going through {@link #upload}. */
+    String uploadedDir(PackageManager packageManager) {
         return CACHE_ROOT + "/" + packageManager.name().toLowerCase() + "/uploaded";
     }
 
-    /** Strips path separators and leading dots so an admin-supplied filename can never escape the
-     *  intended cache directory - belt-and-braces, since the actual on-disk name is
-     *  {@code <uuid>_<sanitized>}, already collision-free on its own. */
-    private static String sanitizeFilename(String originalFilename) {
+    /**
+     * Registers a package a host-side download (not a browser upload) already placed at its final
+     * path under {@link #uploadedDir} - {@link PackageDownloadService}'s own equivalent of
+     * {@link #registerAutoFetchedIfAbsent}, but for an admin-initiated URL download, which (unlike
+     * an auto-fetched dependency) always gets its own row, keyed by a caller-supplied
+     * {@code storedFilename} (see that service's own {@code <downloadId>_<sanitized>} convention -
+     * deliberately decided up front so the download can write straight to its final path, no
+     * separate stage-then-move step).
+     */
+    @Transactional
+    public CachedPackage registerDownloaded(PackageManager packageManager, String originalFilename, String storedFilename,
+                                             String description, User admin, long sizeBytes) {
+        CachedPackage cachedPackage = new CachedPackage(packageManager, originalFilename, storedFilename,
+                description, admin, sizeBytes);
+        return repository.save(cachedPackage);
+    }
+
+    /** Package-private (not private) - see {@link #uploadedDir}'s own comment for why
+     *  {@link PackageDownloadService} needs this too. */
+    static String sanitizeFilename(String originalFilename) {
         String base = Path.of(originalFilename).getFileName().toString();
         String stripped = base.replaceAll("[/\\\\]", "_");
         while (stripped.startsWith(".")) {

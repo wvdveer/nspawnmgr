@@ -1,5 +1,6 @@
 package com.nspawnmgr.cli;
 
+import java.io.InputStream;
 import java.util.List;
 
 /**
@@ -11,13 +12,29 @@ import java.util.List;
  */
 public interface PackageCacheFilesystem {
 
-    /** Writes arbitrary binary content (a .deb/.rpm/etc.) to {@code targetPath}. */
-    void upload(String targetPath, byte[] content);
+    /**
+     * Streams arbitrary binary content (a .deb/.rpm/.iso/etc., possibly several GB) to {@code
+     * targetPath} - takes an already-open {@code InputStream} rather than a {@code byte[]}
+     * deliberately: a file this large must never be fully buffered in memory anywhere along the
+     * way (confirmed live: the previous byte[]-based signature caused a real OutOfMemoryError on a
+     * large real upload). The caller owns opening and closing {@code content}.
+     */
+    void upload(String targetPath, InputStream content);
 
     void delete(String path);
 
-    /** Copies the file at {@code sourcePath} into {@code destDir} (created if missing), keeping its filename. */
+    /** Copies the file at {@code sourcePath} into {@code destDir} (created if missing), keeping its
+     *  filename. SYSTEMD_NSPAWN only - a plain host-side copy onto the machine's own host-visible
+     *  rootfs directory. See {@link #copyIntoPodmanContainer} for the PODMAN equivalent, which
+     *  needs the container name instead (podman's own storage has no equivalent host-visible path
+     *  to copy into directly). */
     void copyIntoContainer(String sourcePath, String destDir);
+
+    /** As {@link #copyIntoContainer}, for PODMAN - {@code podman cp}'s target addressing is
+     *  {@code <container>:<path>}, not a plain host directory, so this takes the container name
+     *  and the full destination path inside it (not just a directory - {@code podman cp} doesn't
+     *  preserve the source filename the way the host-side copy does). */
+    void copyIntoPodmanContainer(String sourcePath, String containerName, String destPathInContainer);
 
     /**
      * Lists every file already present in {@code dir} - read-only, used by

@@ -1,8 +1,10 @@
 package com.nspawnmgr.service;
 
 import com.nspawnmgr.cli.ContainerFilesystemBrowser;
+import com.nspawnmgr.cli.ContainerFilesystemProvisioner;
 import com.nspawnmgr.cli.FileEntry;
 import com.nspawnmgr.domain.Container;
+import com.nspawnmgr.domain.ContainerBackend;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Path;
@@ -25,10 +27,13 @@ public class ContainerFileBrowserService {
 
     private final SettingsService settingsService;
     private final ContainerFilesystemBrowser browser;
+    private final ContainerFilesystemProvisioner filesystemProvisioner;
 
-    public ContainerFileBrowserService(SettingsService settingsService, ContainerFilesystemBrowser browser) {
+    public ContainerFileBrowserService(SettingsService settingsService, ContainerFilesystemBrowser browser,
+                                        ContainerFilesystemProvisioner filesystemProvisioner) {
         this.settingsService = settingsService;
         this.browser = browser;
+        this.filesystemProvisioner = filesystemProvisioner;
     }
 
     /** Directories sorted first, then alphabetically within each group. */
@@ -60,6 +65,9 @@ public class ContainerFileBrowserService {
     }
 
     private Path rootfsRoot(Container container) {
+        if (container.getBackend() == ContainerBackend.PODMAN) {
+            return Path.of(filesystemProvisioner.mountPodmanContainer(container.getName()));
+        }
         return Path.of(settingsService.nspawnMachinesDir(), container.getName());
     }
 

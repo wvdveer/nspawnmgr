@@ -11,5 +11,6 @@ public record UpdateSettingsRequest(
         String sshHost, Integer sshPort, String sshUsername, String sshPassword, String sshPrivateKeyPath,
         Long sshConnectTimeoutMs, Boolean sshStrictHostKeyChecking,
         String nspawnTemplatesDir, String nspawnMachinesDir, String nspawnSettingsDir, String nspawnPrivilegedScriptsDir,
-        Long authHttpTimeoutMs, String hostExternalHostname, String dnsUpstreamServers) {
+        Long authHttpTimeoutMs, String hostExternalHostname, String dnsUpstreamServers,
+        Integer qemuVncPortRangeStart, Integer qemuVncPortRangeEnd) {
 }

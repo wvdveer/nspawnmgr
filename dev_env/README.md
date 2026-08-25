@@ -15,7 +15,7 @@ that already exists on the runner (or create one yourself, outside of CI, since 
 `.gitea/workflows/build.yml`'s integration-test job sources this file to log into `auth/` for a
 genuine end-to-end test of the PAM-based auth path.
 
-The `real-container-lifecycle` job needs three more things set up once, out-of-band, on the runner:
+The `real-container-lifecycle` job needs four more things set up once, out-of-band, on the runner:
 
 1. **`sshpass`** installed (e.g. `apt install sshpass`) — `tools/scripts/lib/ssh-sudo.sh` needs it
    to drive the sudo-capable account non-interactively from a shell script (the app itself doesn't
@@ -33,6 +33,28 @@ The `real-container-lifecycle` job needs three more things set up once, out-of-b
    never needs the container itself to reach the network — see the script's own comments for why).
    The CI job's checkout step preserves the result across runs, so this is a one-time cost per
    runner, not a per-run one.
+4. **The sudo account's grants, the privileged scripts, and dnsmasq's own scoping config** — since
+   `real-container-lifecycle` runs the app directly (`start-real-stack.sh`), not via a real `.deb`
+   install, none of `packaging/nspawnmgr-deb/debian/nspawnmgr.sudoers` (sudo grants),
+   `packaging/nspawnmgr-deb/privileged-scripts/*.sh` (copied to `/usr/lib/nspawnmgr/privileged/`),
+   or `packaging/nspawnmgr-deb/dnsmasq-nspawnmgr.conf` (copied to
+   `/etc/dnsmasq.d/nspawnmgr.conf`) get installed automatically the way a real `.deb`'s postinst
+   would. All three need to be placed by hand once, and **kept manually in sync whenever their
+   source changes** — confirmed live (2026-08-21), all three had silently drifted for weeks (missing
+   sudoers grants → "sudo: a password is required"; missing scripts → "command not found"; the
+   dnsmasq scoping config was never installed at all → dnsmasq failing to start, colliding with
+   `systemd-resolved` on port 53). Diff/recopy all three from source if `real-container-lifecycle`
+   ever reports a permissions or "command not found" error that looks environmental rather than a
+   real code bug.
+5. **A ufw rule allowing DHCP on `nspawnbr0`, if the runner runs ufw at all** — same reasoning as
+   item 4: postinst's own `ufw allow in on nspawnbr0 to any port 67 proto udp` (added after the
+   2026-08-22 incident below) never runs here either. Without it, a default-deny ufw setup silently
+   drops every container's DHCPDISCOVER, and it never leaves BOOTING - confirmed live (acer,
+   2026-08-22): `sudo ufw status verbose` showed `Default: reject (incoming)` with no rule for port
+   67, despite `70-nspawnmgr-bridge.network`'s `DHCPServer=yes` and `systemd-networkd` itself both
+   being correctly configured. Run the `ufw allow` command above by hand once if
+   `real-container-lifecycle` ever gets stuck polling `BOOTING` forever with an otherwise-correct
+   bridge/networkd setup.
 
 ## Setup
 

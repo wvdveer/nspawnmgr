@@ -7,6 +7,7 @@ import com.nspawnmgr.cli.ContainerCliExecutor;
 import com.nspawnmgr.cli.MachineBootSettings;
 import com.nspawnmgr.cli.MachineStatus;
 import com.nspawnmgr.config.SshProperties;
+import com.nspawnmgr.domain.ContainerBackend;
 import com.nspawnmgr.service.SettingsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,27 +39,66 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
     }
 
     @Override
-    public void start(String machineName) {
-        run(Duration.ofSeconds(30), "machinectl", "start", machineName);
+    public void start(String machineName, ContainerBackend backend) {
+        if (backend == ContainerBackend.PODMAN) {
+            run(Duration.ofSeconds(30), "podman", "start", machineName);
+        } else if (backend == ContainerBackend.QEMU) {
+            // The VM's own unit file was already fully written (disk/ISO/MAC/VNC-port baked in) by
+            // ContainerFilesystemProvisioner.writeQemuUnit at creation time, and rewritten on every
+            // ISO mount/eject while stopped - a plain start needs nothing beyond the unit name,
+            // exactly like podman/machinectl start.
+            run(Duration.ofSeconds(30), "systemctl", "start", qemuUnit(machineName));
+        } else {
+            run(Duration.ofSeconds(30), "machinectl", "start", machineName);
+        }
     }
 
     @Override
-    public void stopGraceful(String machineName) {
-        run(Duration.ofSeconds(30), "machinectl", "poweroff", machineName);
+    public void stopGraceful(String machineName, ContainerBackend backend) {
+        if (backend == ContainerBackend.PODMAN) {
+            run(Duration.ofSeconds(30), "podman", "stop", machineName);
+        } else if (backend == ContainerBackend.QEMU) {
+            // HMP system_powerdown - an ACPI request the guest OS itself must answer. Does nothing
+            // during the from-scratch ISO-installer phase (no OS yet to handle it) - a real,
+            // accepted caveat, not a bug; Force stop is the only thing that works at that stage.
+            qemuMonitorCommand(machineName, "system_powerdown");
+        } else {
+            run(Duration.ofSeconds(30), "machinectl", "poweroff", machineName);
+        }
     }
 
     @Override
-    public void stopForce(String machineName) {
-        run(Duration.ofSeconds(15), "machinectl", "terminate", machineName);
+    public void stopForce(String machineName, ContainerBackend backend) {
+        if (backend == ContainerBackend.PODMAN) {
+            run(Duration.ofSeconds(15), "podman", "kill", machineName);
+        } else if (backend == ContainerBackend.QEMU) {
+            run(Duration.ofSeconds(15), "systemctl", "stop", qemuUnit(machineName));
+        } else {
+            run(Duration.ofSeconds(15), "machinectl", "terminate", machineName);
+        }
     }
 
     @Override
-    public void restart(String machineName) {
-        run(Duration.ofSeconds(30), "machinectl", "reboot", machineName);
+    public void restart(String machineName, ContainerBackend backend) {
+        if (backend == ContainerBackend.PODMAN) {
+            run(Duration.ofSeconds(30), "podman", "restart", machineName);
+        } else if (backend == ContainerBackend.QEMU) {
+            run(Duration.ofSeconds(30), "systemctl", "restart", qemuUnit(machineName));
+        } else {
+            run(Duration.ofSeconds(30), "machinectl", "reboot", machineName);
+        }
     }
 
     @Override
-    public void pause(String machineName) {
+    public void pause(String machineName, ContainerBackend backend) {
+        if (backend == ContainerBackend.PODMAN) {
+            run(Duration.ofSeconds(15), "podman", "pause", machineName);
+            return;
+        }
+        if (backend == ContainerBackend.QEMU) {
+            qemuMonitorCommand(machineName, "stop");
+            return;
+        }
         // Confirmed live (2026-08-07): a container started via `machinectl start` runs as
         // systemd-nspawn@<name>.service, NOT as a separate machine-<name>.scope - nspawn only
         // creates its own scope when launched outside of a service unit. `systemctl freeze
@@ -69,7 +109,15 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
     }
 
     @Override
-    public void resume(String machineName) {
+    public void resume(String machineName, ContainerBackend backend) {
+        if (backend == ContainerBackend.PODMAN) {
+            run(Duration.ofSeconds(15), "podman", "unpause", machineName);
+            return;
+        }
+        if (backend == ContainerBackend.QEMU) {
+            qemuMonitorCommand(machineName, "cont");
+            return;
+        }
         run(Duration.ofSeconds(15), "systemctl", "thaw", "systemd-nspawn@" + machineName + ".service");
     }
 
@@ -77,10 +125,25 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
      * machinectl terminate returns once teardown is *initiated*, not once systemd has finished
      * releasing the machine's mount/image — an immediate remove can lose that race with
      * "Could not remove image: Device or resource busy". Retry a few times rather than surfacing
-     * a transient race as a hard failure.
+     * a transient race as a hard failure. PODMAN's own `podman rm` doesn't share this race (no
+     * separate retry loop) - confirmed by reasoning about podman's synchronous storage-layer
+     * teardown, not yet exercised against a real podman host with this exact retry path.
      */
     @Override
-    public void remove(String machineName) {
+    public void remove(String machineName, ContainerBackend backend) {
+        if (backend == ContainerBackend.PODMAN) {
+            run(Duration.ofSeconds(15), "podman", "rm", machineName);
+            return;
+        }
+        if (backend == ContainerBackend.QEMU) {
+            // Stops the unit (if running), deletes the unit file, the qcow2 disk, and the monitor
+            // socket - see nspawnmgr-qemu-remove.sh. NOPASSWD: an owner removing their own VM by a
+            // fixed name is a fixed-shape lifecycle operation, matching podman rm/machinectl remove
+            // both being NOPASSWD despite VM/container *creation* needing a password.
+            String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(), "nspawnmgr-qemu-remove.sh").toString();
+            run(Duration.ofSeconds(20), scriptPath, machineName);
+            return;
+        }
         ContainerCliException lastFailure = null;
         for (int attempt = 1; attempt <= 10; attempt++) {
             CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15), List.of("machinectl", "remove", machineName));
@@ -107,7 +170,26 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
     }
 
     @Override
-    public MachineStatus status(String machineName) {
+    public MachineStatus status(String machineName, ContainerBackend backend) {
+        if (backend == ContainerBackend.PODMAN) {
+            CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(10),
+                    List.of("podman", "inspect", machineName, "--format", "{{.State.Status}}"));
+            if (!result.success()) {
+                return MachineStatus.NOT_FOUND;
+            }
+            return "running".equals(result.stdout().trim()) ? MachineStatus.RUNNING : MachineStatus.STOPPED;
+        }
+        if (backend == ContainerBackend.QEMU) {
+            // is-active exits nonzero for "inactive"/"failed" too, not just "unit doesn't exist" -
+            // stdout still distinguishes the two ("unknown" only for a genuinely missing unit).
+            CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(10),
+                    List.of("systemctl", "is-active", qemuUnit(machineName)));
+            String state = result.stdout().trim();
+            if ("unknown".equals(state)) {
+                return MachineStatus.NOT_FOUND;
+            }
+            return "active".equals(state) ? MachineStatus.RUNNING : MachineStatus.STOPPED;
+        }
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(10),
                 List.of("machinectl", "show", machineName, "--property=State"));
         if (!result.success()) {
@@ -121,10 +203,19 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
     }
 
     @Override
-    public CommandResult runInMachine(String machineName, List<String> command, Duration timeout,
+    public CommandResult runInMachine(String machineName, ContainerBackend backend, List<String> command, Duration timeout,
                                         char[] sudoPasswordOverride, String stdinPayload) {
+        if (backend == ContainerBackend.QEMU) {
+            // No guest-exec mechanism exists for QEMU - HMP is hypervisor control, not a way to run
+            // arbitrary commands inside the guest OS. Scripts/package-install are simply absent from
+            // qemu-detail.html (see the UI layer), so this should never actually be reachable; this
+            // exists so a latent caller bug fails loudly instead of silently misbehaving as nspawn.
+            throw new ContainerCliException("QEMU has no in-guest exec mechanism (runInMachine is unsupported for this backend)");
+        }
         char[] password = sudoPasswordOverride != null ? sudoPasswordOverride : sshProperties.password().toCharArray();
-        List<String> full = new ArrayList<>(List.of("systemd-run", "--machine=" + machineName, "--pipe", "--quiet", "--wait"));
+        List<String> full = new ArrayList<>(backend == ContainerBackend.PODMAN
+                ? List.of("podman", "exec", "-i", machineName)
+                : List.of("systemd-run", "--machine=" + machineName, "--pipe", "--quiet", "--wait"));
         full.addAll(command);
         return ssh.execWithSudoPassword(timeout, full, stdinPayload, password);
     }
@@ -141,7 +232,38 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
     // everything else. A nonzero exit means the script itself couldn't even run (machinectl/nsenter
     // failure), which should never happen routinely and is worth surfacing.
     @Override
-    public String getInternalAddress(String machineName) {
+    public String getInternalAddress(String machineName, ContainerBackend backend) {
+        if (backend == ContainerBackend.QEMU) {
+            // A QEMU guest has neither a shared network namespace to nsenter into (unlike nspawn)
+            // nor its own IPAM to ask (unlike podman) - it's genuine DHCP via systemd-networkd's own
+            // [DHCPServer] on nspawnbr0 (see 70-nspawnmgr-bridge.network), so the only way to learn
+            // the address is to look up the lease systemd-networkd itself handed out to this VM's
+            // deterministic MAC (see nspawnmgr-get-qemu-internal-address.sh - NOT yet verified live
+            // against a real systemd-networkd lease-file format).
+            String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(), "nspawnmgr-get-qemu-internal-address.sh").toString();
+            CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15), List.of(scriptPath, machineName));
+            if (!result.success()) {
+                log.warn("nspawnmgr-get-qemu-internal-address.sh failed for '{}' (exit {}): stdout={} stderr={}",
+                        machineName, result.exitCode(), result.stdout(), result.stderr());
+                return "";
+            }
+            return result.stdout().trim();
+        }
+        if (backend == ContainerBackend.PODMAN) {
+            // The shared nspawnbr0 network specifically (see nspawnmgr-configure-podman-network.sh) -
+            // a podman container could in principle be attached to some other network too, but every
+            // one nspawnmgr itself creates uses this one, matching nspawn containers' own address
+            // space so DNS/reachability-probing logic downstream doesn't need to care which backend
+            // it's talking to.
+            CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15), List.of("podman", "inspect", machineName,
+                    "--format", "{{.NetworkSettings.Networks.nspawnbr0.IPAddress}}"));
+            if (!result.success()) {
+                log.warn("podman inspect (address) failed for '{}' (exit {}): stdout={} stderr={}",
+                        machineName, result.exitCode(), result.stdout(), result.stderr());
+                return "";
+            }
+            return result.stdout().trim();
+        }
         String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(), "nspawnmgr-get-internal-address.sh").toString();
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15), List.of(scriptPath, machineName));
         if (!result.success()) {
@@ -162,6 +284,53 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
             return List.of();
         }
         return result.stdout().lines().map(String::trim).filter(s -> !s.isEmpty()).toList();
+    }
+
+    @Override
+    public List<String> listPodmanContainerNames() {
+        CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15),
+                List.of("podman", "ps", "-a", "--format", "{{.Names}}"));
+        if (!result.success()) {
+            log.warn("podman ps -a failed (exit {}): stdout={} stderr={}",
+                    result.exitCode(), result.stdout(), result.stderr());
+            return List.of();
+        }
+        return result.stdout().lines().map(String::trim).filter(s -> !s.isEmpty()).toList();
+    }
+
+    @Override
+    public List<String> listQemuVmNames() {
+        // list-unit-files, not list-units: a VM's unit file is persistent (written once at
+        // creation, rewritten on ISO change) regardless of whether it's currently running, so this
+        // finds STOPPED VMs too - list-units would only show currently-active ones.
+        CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15),
+                List.of("systemctl", "list-unit-files", "nspawnmgr-qemu-*.service", "--no-legend"));
+        if (!result.success()) {
+            log.warn("systemctl list-unit-files (qemu) failed (exit {}): stdout={} stderr={}",
+                    result.exitCode(), result.stdout(), result.stderr());
+            return List.of();
+        }
+        return result.stdout().lines()
+                .map(line -> line.split("\\s+")[0])
+                .filter(unit -> unit.startsWith("nspawnmgr-qemu-") && unit.endsWith(".service"))
+                .map(unit -> unit.substring("nspawnmgr-qemu-".length(), unit.length() - ".service".length()))
+                .filter(name -> !name.isBlank())
+                .toList();
+    }
+
+    @Override
+    public void setQemuVncPassword(String machineName, String password) {
+        qemuMonitorCommand(machineName, "set_password vnc " + password);
+    }
+
+    @Override
+    public void changeQemuCdrom(String machineName, String isoHostPath) {
+        qemuMonitorCommand(machineName, "change ide1-cd0 " + isoHostPath);
+    }
+
+    @Override
+    public void ejectQemuCdrom(String machineName) {
+        qemuMonitorCommand(machineName, "eject ide1-cd0");
     }
 
     @Override
@@ -226,8 +395,28 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
     // /bin/sh -s reading the script body from stdin instead of an inline command. --unit= gives the
     // transient unit a name we control, so an Abort request can target it later via killTransientUnit
     // below - without it, systemd-run picks an unpredictable auto-generated name.
+    //
+    // PODMAN: `podman exec -i <name> sh -s` is the direct equivalent (stdin piped, real exit code
+    // propagated) - but podman exec sessions get no equivalent of a named transient unit, so Abort
+    // has no exact analog. killPodmanExecSession below is a narrower, best-effort substitute: the
+    // script body is prefixed with `echo $$ > <pidfile>` (portable POSIX sh, no bashisms - unlike
+    // `exec -a`, not assumed available in whatever /bin/sh the image provides) so the abort handler
+    // can later `kill -9 -<pid>` (negated = the whole process *group*, not just the shell itself,
+    // approximating systemd's own --kill-who=all for the common case of a shell spawning children)
+    // - documented here as a known-narrower approximation, not a bug, same honest-caveat posture as
+    // this session's other real-podman-mechanics claims.
     @Override
-    public AbortableScriptRun startScript(String machineName, String scriptBody, Duration timeout) {
+    public AbortableScriptRun startScript(String machineName, ContainerBackend backend, String scriptBody, Duration timeout) {
+        if (backend == ContainerBackend.QEMU) {
+            throw new ContainerCliException("QEMU has no in-guest exec mechanism (startScript is unsupported for this backend)");
+        }
+        if (backend == ContainerBackend.PODMAN) {
+            String pidFile = "/tmp/nspawnmgr-script-" + UUID.randomUUID() + ".pid";
+            String markedScriptBody = "echo $$ > " + pidFile + "\n" + scriptBody;
+            List<String> command = List.of("podman", "exec", "-i", machineName, "sh", "-s");
+            return ssh.startNoPasswordSudoCapturingTimestampedOutput(timeout, command, markedScriptBody,
+                    () -> killPodmanExecSession(machineName, pidFile));
+        }
         String unit = "nspawnmgr-script-" + UUID.randomUUID() + ".service";
         List<String> command = List.of("systemd-run", "--machine=" + machineName, "--pipe", "--quiet", "--wait",
                 "--unit=" + unit, "/bin/sh", "-s");
@@ -246,6 +435,40 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
                     List.of("systemctl", "--machine=" + machineName, "kill", "--signal=SIGKILL", "--kill-who=all", unit));
         } catch (ContainerCliException e) {
             log.warn("Best-effort kill of transient unit {} on {} failed: {}", unit, machineName, e.getMessage());
+        }
+    }
+
+    /** As {@link #killTransientUnit}, for PODMAN - see {@link #startScript}'s own comment for why
+     *  this is a narrower approximation (a process-group kill of the recorded PID, not a real
+     *  cgroup-wide unit kill). */
+    private void killPodmanExecSession(String machineName, String pidFile) {
+        try {
+            ssh.execNoPasswordSudo(Duration.ofSeconds(10), List.of("podman", "exec", machineName, "sh", "-c",
+                    "kill -9 -\"$(cat " + pidFile + ")\" 2>/dev/null; rm -f " + pidFile));
+        } catch (ContainerCliException e) {
+            log.warn("Best-effort kill of podman exec session ({}) on {} failed: {}", pidFile, machineName, e.getMessage());
+        }
+    }
+
+    private static String qemuUnit(String machineName) {
+        return "nspawnmgr-qemu-" + machineName + ".service";
+    }
+
+    /**
+     * Sends one HMP command line to machineName's monitor socket via nspawnmgr-qemu-monitor-exec.sh
+     * (see that script's own comment for the socat -T2 relay approach and its "needs live tuning"
+     * caveat) - the command text travels as stdin, never interpolated into the sudoers-matched argv.
+     * Fire-and-forget from this method's own perspective (callers like stopGraceful/pause/resume
+     * don't need the HMP reply text) - logs a warning rather than throwing on failure, since e.g.
+     * system_powerdown against a VM with no OS installed yet legitimately does nothing and that's
+     * not this method's problem to diagnose.
+     */
+    private void qemuMonitorCommand(String machineName, String hmpCommand) {
+        String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(), "nspawnmgr-qemu-monitor-exec.sh").toString();
+        CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(10), List.of(scriptPath, machineName), hmpCommand + "\n");
+        if (!result.success()) {
+            log.warn("QEMU monitor command '{}' failed for '{}' (exit {}): stdout={} stderr={}",
+                    hmpCommand, machineName, result.exitCode(), result.stdout(), result.stderr());
         }
     }
 

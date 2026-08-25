@@ -57,6 +57,17 @@ public class HostService {
         return container;
     }
 
+    /** As {@link #getById}, keyed by name - used by HostPageController's session route, addressed
+     *  by name rather than numeric ID since that URL gets shared/pasted around directly. */
+    public Container getByName(String name) {
+        Container container = containerRepository.findByNameWithTemplate(name)
+                .orElseThrow(() -> new IllegalArgumentException("No such host: " + name));
+        if (container.getKind() != ContainerKind.EXTERNAL) {
+            throw new IllegalArgumentException("No such host: " + name);
+        }
+        return container;
+    }
+
     @Transactional
     public Container create(String name, String hostname, String ownerUsername,
                              boolean sshEnabled, int sshPort, boolean rdpEnabled, int rdpPort,

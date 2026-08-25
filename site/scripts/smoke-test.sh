@@ -30,7 +30,7 @@ if [[ -z "$template_id" ]]; then
     echo "   None found — creating 'debian-minimal' via the admin API (matches site/templates/nspawn/debian-minimal)..."
     curl -fsS -b "$cookie_jar" -X POST "$nspawnmgr_url/api/admin/templates" \
         -H 'Content-Type: application/json' \
-        -d '{"name":"debian-minimal","description":"Minimal Debian/Ubuntu base image (apt)","sourcePath":"debian-minimal","backend":"SYSTEMD_NSPAWN","packageManager":"APT","rdpCapable":true,"active":true}' >/dev/null
+        -d '{"name":"debian-minimal","description":"Minimal Debian/Ubuntu base image (apt)","sourcePath":"debian-minimal","backend":"SYSTEMD_NSPAWN","packageManager":"APT","rdpState":"CAPABLE","active":true}' >/dev/null
     template_id="$(curl -fsS -b "$cookie_jar" "$nspawnmgr_url/api/templates" | grep -oP '"id":\K[0-9]+' | head -1 || true)"
 fi
 if [[ -z "$template_id" ]]; then

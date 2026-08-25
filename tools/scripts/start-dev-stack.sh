@@ -53,10 +53,20 @@ webapp_dir="$root/site/tomcat-apps/nspawnmgr"
 rm -rf "$webapp_dir"
 mkdir -p "$webapp_dir"
 (cd "$webapp_dir" && jar -xf "$root/target/nspawnmgr.war")
-# `|| true`: under set -e + pipefail, a nonexistent target/ dir makes `find` fail, which - since
-# this is a plain assignment - would otherwise abort the script right here with zero output,
+# `|| true`: under set -e + pipefail, a nonexistent target/ dir makes `find`/`ls` fail, which -
+# since this is a plain assignment - would otherwise abort the script right here with zero output,
 # before the -z check below ever gets a chance to print a useful message.
-fake_machinectl_jar="$(find "$root/tools/fake-machinectl/target" -maxdepth 1 -name '*.jar' 2>/dev/null | head -1 || true)"
+#
+# `ls -t` (newest first), not a plain `find | head -1`: confirmed live, a stale jar from a
+# previous build (e.g. left behind by a version bump - target/ is never `mvn clean`ed between
+# runs) sorts ahead of the current one in `find`'s own directory-order listing, silently injecting
+# an out-of-date fake executor into WEB-INF/lib with no error - surfaced as an AbstractMethodError
+# at runtime for whichever new interface method the stale jar doesn't have yet, nothing at
+# build/deploy time to catch it.
+fake_machinectl_jar="$(cd "$root/tools/fake-machinectl/target" 2>/dev/null && ls -t ./*.jar 2>/dev/null | head -1 || true)"
+if [[ -n "$fake_machinectl_jar" ]]; then
+    fake_machinectl_jar="$root/tools/fake-machinectl/target/${fake_machinectl_jar#./}"
+fi
 if [[ -z "$fake_machinectl_jar" ]]; then
     echo "tools/fake-machinectl/target/*.jar not found - build-all.sh should have produced it (did you use --skip-build without building first?)" >&2
     exit 1

@@ -9,6 +9,7 @@ import com.nspawnmgr.cli.MachineStatus;
 import com.nspawnmgr.cli.OutputLine;
 import com.nspawnmgr.cli.OutputSource;
 import com.nspawnmgr.cli.ScriptRunResult;
+import com.nspawnmgr.domain.ContainerBackend;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -28,14 +29,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 /**
- * Stands in for machinectl/systemd-run on Windows dev machines: tracks machine state in memory
- * and appends every invocation to a log file so site/scripts can assert what "would have" run.
+ * Stands in for machinectl/systemd-run (SYSTEMD_NSPAWN), podman (PODMAN), and qemu-system-x86_64 +
+ * systemd units (QEMU) on Windows dev machines: tracks machine/container/VM state in memory (kept
+ * in three separate maps, one per backend, since {@link #listMachineImageNames}/
+ * {@link #listPodmanContainerNames}/{@link #listQemuVmNames} must only ever report their own
+ * backend's names to ContainerDiscoveryService) and appends every invocation to a log file so
+ * site/scripts can assert what "would have" run.
  */
 @Component
 @Profile("dev")
 public class FakeContainerCliExecutor implements ContainerCliExecutor {
 
     private final Map<String, MachineStatus> machines = new ConcurrentHashMap<>();
+    private final Map<String, MachineStatus> podmanContainers = new ConcurrentHashMap<>();
+    private final Map<String, MachineStatus> qemuVms = new ConcurrentHashMap<>();
     /** machine name -> usernames "inside" it — lets the container-users feature be exercised in dev without real SSH. */
     private final Map<String, Set<String>> containerUsers = new ConcurrentHashMap<>();
     /** machine name -> whether it's "enabled" to auto-start on host boot - stands in for real systemctl state. */
@@ -47,64 +54,80 @@ public class FakeContainerCliExecutor implements ContainerCliExecutor {
     /** Never created through the app itself - stands in for a machine an admin built by hand
      *  directly on the host, so the dev stack always has something real for "Discover" to find. */
     private static final String HAND_BUILT_MACHINE = "hand-built-1";
+    /** As {@link #HAND_BUILT_MACHINE}, for the podman discovery pass. */
+    private static final String HAND_BUILT_POD = "hand-built-pod-1";
+    /** As {@link #HAND_BUILT_MACHINE}, for the QEMU discovery pass. */
+    private static final String HAND_BUILT_VM = "hand-built-vm-1";
 
     public FakeContainerCliExecutor() {
         this.logFile = Path.of(System.getProperty("java.io.tmpdir"), "nspawnmgr-dev", "fake-machinectl.log");
         machines.put(HAND_BUILT_MACHINE, MachineStatus.RUNNING);
+        podmanContainers.put(HAND_BUILT_POD, MachineStatus.RUNNING);
+        qemuVms.put(HAND_BUILT_VM, MachineStatus.RUNNING);
+    }
+
+    private Map<String, MachineStatus> mapFor(ContainerBackend backend) {
+        return switch (backend) {
+            case PODMAN -> podmanContainers;
+            case QEMU -> qemuVms;
+            case SYSTEMD_NSPAWN -> machines;
+        };
     }
 
     @Override
-    public void start(String machineName) {
-        machines.put(machineName, MachineStatus.RUNNING);
-        log("start " + machineName);
+    public void start(String machineName, ContainerBackend backend) {
+        mapFor(backend).put(machineName, MachineStatus.RUNNING);
+        log(backend + " start " + machineName);
     }
 
     @Override
-    public void stopGraceful(String machineName) {
-        machines.put(machineName, MachineStatus.STOPPED);
-        log("poweroff " + machineName);
+    public void stopGraceful(String machineName, ContainerBackend backend) {
+        mapFor(backend).put(machineName, MachineStatus.STOPPED);
+        log(backend + " stop " + machineName);
     }
 
     @Override
-    public void stopForce(String machineName) {
-        machines.put(machineName, MachineStatus.STOPPED);
-        log("terminate " + machineName);
+    public void stopForce(String machineName, ContainerBackend backend) {
+        mapFor(backend).put(machineName, MachineStatus.STOPPED);
+        log(backend + " kill/terminate " + machineName);
     }
 
     @Override
-    public void restart(String machineName) {
-        machines.put(machineName, MachineStatus.RUNNING);
-        log("reboot " + machineName);
+    public void restart(String machineName, ContainerBackend backend) {
+        mapFor(backend).put(machineName, MachineStatus.RUNNING);
+        log(backend + " restart/reboot " + machineName);
     }
 
     @Override
-    public void remove(String machineName) {
-        machines.remove(machineName);
-        log("remove " + machineName);
+    public void remove(String machineName, ContainerBackend backend) {
+        mapFor(backend).remove(machineName);
+        log(backend + " remove " + machineName);
     }
 
     @Override
-    public void pause(String machineName) {
-        // No real cgroup freezer to touch in dev mode - MachineStatus itself doesn't change either
-        // way in reality (systemctl freeze suspends processes, it doesn't change machinectl's own
-        // reported status), so this only needs to prove the caller's wiring.
-        log("freeze systemd-nspawn@" + machineName + ".service");
+    public void pause(String machineName, ContainerBackend backend) {
+        // No real cgroup freezer/podman pause to touch in dev mode - MachineStatus itself doesn't
+        // change either way in reality, so this only needs to prove the caller's wiring.
+        log(backend + " pause " + machineName);
     }
 
     @Override
-    public void resume(String machineName) {
-        log("thaw systemd-nspawn@" + machineName + ".service");
+    public void resume(String machineName, ContainerBackend backend) {
+        log(backend + " resume " + machineName);
     }
 
     @Override
-    public MachineStatus status(String machineName) {
-        return machines.getOrDefault(machineName, MachineStatus.NOT_FOUND);
+    public MachineStatus status(String machineName, ContainerBackend backend) {
+        return mapFor(backend).getOrDefault(machineName, MachineStatus.NOT_FOUND);
     }
 
     @Override
-    public CommandResult runInMachine(String machineName, List<String> command, Duration timeout,
+    public CommandResult runInMachine(String machineName, ContainerBackend backend, List<String> command, Duration timeout,
                                         char[] sudoPasswordOverride, String stdinPayload) {
-        log("exec[" + machineName + "] " + String.join(" ", command));
+        if (backend == ContainerBackend.QEMU) {
+            throw new ContainerCliException("QEMU has no in-guest exec mechanism (runInMachine is unsupported for this backend)");
+        }
+        log(backend + " exec[" + machineName + "] " + String.join(" ", command));
         if (!command.isEmpty() && "useradd".equals(command.get(0))) {
             usersOf(machineName).add(command.get(command.size() - 1));
         } else if (!command.isEmpty() && "chpasswd".equals(command.get(0)) && stdinPayload != null) {
@@ -122,8 +145,11 @@ public class FakeContainerCliExecutor implements ContainerCliExecutor {
     // give the completed-run case a >1s gap between lines, for the ">1s gap -> new timestamp
     // heading" UI grouping rule.
     @Override
-    public AbortableScriptRun startScript(String machineName, String scriptBody, Duration timeout) {
-        log("script[" + machineName + "] " + scriptBody.lines().count() + " line(s)");
+    public AbortableScriptRun startScript(String machineName, ContainerBackend backend, String scriptBody, Duration timeout) {
+        if (backend == ContainerBackend.QEMU) {
+            throw new ContainerCliException("QEMU has no in-guest exec mechanism (startScript is unsupported for this backend)");
+        }
+        log(backend + " script[" + machineName + "] " + scriptBody.lines().count() + " line(s)");
         AtomicBoolean aborted = new AtomicBoolean(false);
         CountDownLatch done = new CountDownLatch(1);
         Instant first = Instant.now();
@@ -177,13 +203,38 @@ public class FakeContainerCliExecutor implements ContainerCliExecutor {
     }
 
     @Override
-    public String getInternalAddress(String machineName) {
+    public String getInternalAddress(String machineName, ContainerBackend backend) {
         return "10.0.3." + (Math.floorMod(machineName.hashCode(), 250) + 2);
     }
 
     @Override
     public List<String> listMachineImageNames() {
         return List.copyOf(machines.keySet());
+    }
+
+    @Override
+    public List<String> listPodmanContainerNames() {
+        return List.copyOf(podmanContainers.keySet());
+    }
+
+    @Override
+    public List<String> listQemuVmNames() {
+        return List.copyOf(qemuVms.keySet());
+    }
+
+    @Override
+    public void setQemuVncPassword(String machineName, String password) {
+        log(ContainerBackend.QEMU + " set_password vnc[" + machineName + "]");
+    }
+
+    @Override
+    public void changeQemuCdrom(String machineName, String isoHostPath) {
+        log(ContainerBackend.QEMU + " change ide1-cd0[" + machineName + "] " + isoHostPath);
+    }
+
+    @Override
+    public void ejectQemuCdrom(String machineName) {
+        log(ContainerBackend.QEMU + " eject ide1-cd0[" + machineName + "]");
     }
 
     /** Real DNS resolution via the JVM's own resolver - genuinely works cross-platform on a Windows

@@ -1,7 +1,6 @@
 package com.nspawnmgr.cli.real;
 
 import com.nspawnmgr.cli.CommandResult;
-import com.nspawnmgr.cli.ContainerCliException;
 import com.nspawnmgr.cli.NetworkDiagnosticsExecutor;
 import com.nspawnmgr.service.SettingsService;
 import org.springframework.context.annotation.Profile;
@@ -25,6 +24,12 @@ public class RealNetworkDiagnosticsExecutor implements NetworkDiagnosticsExecuto
 
     private static final Duration CHECK_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration FIX_TIMEOUT = Duration.ofSeconds(20);
+    // installPodman/installQemu are real apt-get install runs (network + package unpacking), not a
+    // config flip like every other fix here - confirmed elsewhere in this app that a plain package
+    // install can genuinely take minutes depending on mirror speed (see
+    // ProvisioningService.PACKAGE_INSTALL_TIMEOUT's own reasoning), so FIX_TIMEOUT's 20s is nowhere
+    // near enough for these two specifically.
+    private static final Duration INSTALL_TIMEOUT = Duration.ofMinutes(5);
 
     private final SettingsService settingsService;
     private final SshRemoteExecutor ssh;
@@ -56,12 +61,9 @@ public class RealNetworkDiagnosticsExecutor implements NetworkDiagnosticsExecuto
     }
 
     @Override
-    public void enableNetworkd(char[] sudoPassword) {
-        CommandResult result = ssh.execWithSudoPassword(FIX_TIMEOUT,
+    public CommandResult enableNetworkd(char[] sudoPassword) {
+        return ssh.execWithSudoPassword(FIX_TIMEOUT,
                 List.of("/usr/bin/systemctl", "enable", "--now", "systemd-networkd"), null, resolvePassword(sudoPassword));
-        if (!result.success()) {
-            throw new ContainerCliException("Failed to enable systemd-networkd: " + result.stderr());
-        }
     }
 
     @Override
@@ -69,6 +71,62 @@ public class RealNetworkDiagnosticsExecutor implements NetworkDiagnosticsExecuto
         String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(),
                 "nspawnmgr-diag-check-bridge.sh").toString();
         return ssh.execNoPasswordSudo(CHECK_TIMEOUT, List.of(scriptPath));
+    }
+
+    @Override
+    public CommandResult checkPodman() {
+        String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(),
+                "nspawnmgr-diag-check-podman.sh").toString();
+        return ssh.execNoPasswordSudo(CHECK_TIMEOUT, List.of(scriptPath));
+    }
+
+    @Override
+    public CommandResult checkQemu() {
+        String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(),
+                "nspawnmgr-diag-check-qemu.sh").toString();
+        return ssh.execNoPasswordSudo(CHECK_TIMEOUT, List.of(scriptPath));
+    }
+
+    @Override
+    public CommandResult installPodman(char[] sudoPassword) {
+        String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(),
+                "nspawnmgr-install-podman.sh").toString();
+        return ssh.execWithSudoPassword(INSTALL_TIMEOUT, List.of(scriptPath), null, resolvePassword(sudoPassword));
+    }
+
+    @Override
+    public CommandResult installQemu(char[] sudoPassword) {
+        String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(),
+                "nspawnmgr-install-qemu.sh").toString();
+        return ssh.execWithSudoPassword(INSTALL_TIMEOUT, List.of(scriptPath), null, resolvePassword(sudoPassword));
+    }
+
+    @Override
+    public CommandResult checkPodmanNetwork() {
+        String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(),
+                "nspawnmgr-diag-check-podman-network.sh").toString();
+        return ssh.execNoPasswordSudo(CHECK_TIMEOUT, List.of(scriptPath));
+    }
+
+    @Override
+    public CommandResult configurePodmanNetwork(char[] sudoPassword) {
+        String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(),
+                "nspawnmgr-configure-podman-network.sh").toString();
+        return ssh.execWithSudoPassword(FIX_TIMEOUT, List.of(scriptPath), null, resolvePassword(sudoPassword));
+    }
+
+    @Override
+    public CommandResult checkQemuBridge() {
+        String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(),
+                "nspawnmgr-diag-check-qemu-bridge.sh").toString();
+        return ssh.execNoPasswordSudo(CHECK_TIMEOUT, List.of(scriptPath));
+    }
+
+    @Override
+    public CommandResult configureQemuBridge(char[] sudoPassword) {
+        String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(),
+                "nspawnmgr-configure-qemu-bridge.sh").toString();
+        return ssh.execWithSudoPassword(FIX_TIMEOUT, List.of(scriptPath), null, resolvePassword(sudoPassword));
     }
 
     private char[] resolvePassword(char[] sudoPassword) {

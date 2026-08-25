@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>nspawnmgr — Add a package</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/}">
+<div th:replace="~{fragments/app-shell :: shell(
+        title='Add a package', subtitle=null,
+        activeNav='packages', currentUser=${currentUser}, addMenu=null,
+        content=~{::#page-content})}">
+<div id="page-content">
+<div class="card">
+    <div class="field">
+        <label><input type="radio" name="add-mode" id="mode-upload" value="upload" checked/> Upload a file</label>
+        <label><input type="radio" name="add-mode" id="mode-download" value="download"/> Download from a URL</label>
+    </div>
+
+    <form id="upload-form" class="card" enctype="multipart/form-data">
+        <div class="field">
+            <label for="packageManager">Package manager</label>
+            <select id="packageManager" name="packageManager">
+                <option th:each="pm : ${packageManagers}" th:value="${pm}" th:text="${pm}">package manager</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="file">File (.deb / .rpm / .iso / etc.)</label>
+            <input type="file" id="file" name="file" required/>
+        </div>
+        <div class="field">
+            <label for="description">Description</label>
+            <input type="text" id="description" name="description" placeholder="What is this package for?"/>
+        </div>
+        <button type="submit" class="btn-primary" id="btn-start-upload">Upload</button>
+    </form>
+    <div id="upload-progress" style="display: none;">
+        <progress id="upload-progress-bar" max="100" value="0"></progress>
+    </div>
+    <p id="upload-status" class="status-message"></p>
+
+    <form id="download-form" class="card" style="display: none;">
+        <div class="field">
+            <label for="download-packageManager">Package manager</label>
+            <select id="download-packageManager">
+                <option th:each="pm : ${packageManagers}" th:value="${pm}" th:text="${pm}">package manager</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="download-url">URL</label>
+            <input type="url" id="download-url" placeholder="https://..." required/>
+        </div>
+        <div class="field">
+            <label for="download-description">Description</label>
+            <input type="text" id="download-description" placeholder="What is this package for?"/>
+        </div>
+        <p class="hint">Downloaded directly by the host in the background - large files (e.g. an
+            install ISO) don't need to pass through your own browser upload at all.</p>
+        <button type="submit" class="btn-primary" id="btn-start-download">Download</button>
+        <button type="button" class="btn-danger" id="btn-abort-download" style="display: none;">Abort</button>
+    </form>
+    <div id="download-progress" style="display: none;">
+        <progress id="download-progress-bar" max="100" value="0"></progress>
+        <p id="download-status" class="status-message"></p>
+    </div>
+</div>
+</div>
+</div>
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/admin-package-form.js}"></script>
+</body>
+</html>

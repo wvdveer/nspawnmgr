@@ -7,6 +7,7 @@ import com.nspawnmgr.domain.DesktopManager;
 import com.nspawnmgr.domain.MinimalTemplateFlavor;
 import com.nspawnmgr.domain.PackageManager;
 import com.nspawnmgr.domain.Template;
+import com.nspawnmgr.domain.TemplateFeatureState;
 import com.nspawnmgr.repository.ContainerRepository;
 import com.nspawnmgr.repository.TemplateRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -378,8 +379,8 @@ class TemplateServiceTest {
     @Test
     void createFromMachinePacksAndRegistersInheritingTheOriginatingTemplatesTraits() {
         Template originating = template(PackageManager.APT);
-        originating.setRdpCapable(true);
-        originating.setVncCapable(true);
+        originating.setRdpState(TemplateFeatureState.CAPABLE);
+        originating.setVncState(TemplateFeatureState.CAPABLE);
         originating.setPrivateUsersMode(com.nspawnmgr.domain.PrivateUsersMode.IDENTITY);
         Container container = containerFrom(originating);
         when(templateRepository.findByName("snapshot-1")).thenReturn(Optional.empty());
@@ -390,8 +391,8 @@ class TemplateServiceTest {
         verify(filesystemProvisioner).packMachineAsTemplate("b1", ContainerBackend.SYSTEMD_NSPAWN, "snapshot-1", null);
         assertThat(result.getName()).isEqualTo("snapshot-1");
         assertThat(result.getPackageManager()).isEqualTo(PackageManager.APT);
-        assertThat(result.isRdpCapable()).isTrue();
-        assertThat(result.isVncCapable()).isTrue();
+        assertThat(result.getRdpState()).isEqualTo(TemplateFeatureState.CAPABLE);
+        assertThat(result.getVncState()).isEqualTo(TemplateFeatureState.CAPABLE);
         assertThat(result.getPrivateUsersMode()).isEqualTo(com.nspawnmgr.domain.PrivateUsersMode.IDENTITY);
     }
 

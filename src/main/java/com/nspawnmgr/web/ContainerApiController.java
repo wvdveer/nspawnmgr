@@ -5,6 +5,7 @@ import com.nspawnmgr.cli.ScriptRunResult;
 import com.nspawnmgr.domain.AuditAction;
 import com.nspawnmgr.domain.AuditTargetType;
 import com.nspawnmgr.domain.Container;
+import com.nspawnmgr.domain.ContainerBackend;
 import com.nspawnmgr.domain.ContainerScript;
 import com.nspawnmgr.domain.ContainerState;
 import com.nspawnmgr.domain.CachedPackage;
@@ -39,9 +40,11 @@ import com.nspawnmgr.web.dto.ChangePrimaryAccountRequest;
 import com.nspawnmgr.web.dto.ContainerStatusResponse;
 import com.nspawnmgr.web.dto.ContainerUserActionResultResponse;
 import com.nspawnmgr.web.dto.CreateContainerRequest;
+import com.nspawnmgr.web.dto.CreateQemuVmRequest;
 import com.nspawnmgr.web.dto.UpdateBootSettingsRequest;
 import com.nspawnmgr.web.dto.CreateOrUpdateScriptRequest;
 import com.nspawnmgr.web.dto.CreateTemplateFromMachineRequest;
+import com.nspawnmgr.web.dto.UpdatePodCommandRequest;
 import com.nspawnmgr.web.dto.CreatedContainerResponse;
 import com.nspawnmgr.web.dto.DiscoveredContainerResponse;
 import com.nspawnmgr.web.dto.OutboundAccessRequest;
@@ -133,7 +136,7 @@ public class ContainerApiController {
         Template template = templateService.getById(request.templateId());
         Container container = provisioningService.createPending(
                 request.name(), template, owner, request.rdpEnabled(), request.vncEnabled(),
-                parseDesktopManager(request.desktopManager()), request.description());
+                parseDesktopManager(request.desktopManager()), request.description(), request.command());
         if (provisioningService.requiresApproval()) {
             provisioningService.markPendingApproval(container.getId());
         } else {
@@ -141,6 +144,39 @@ public class ContainerApiController {
         }
         auditLogService.log(owner, AuditAction.CREATED, AuditTargetType.CONTAINER, container.getId(), container.getName(),
                 "template=" + template.getName());
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(new CreatedContainerResponse(container.getId()));
+    }
+
+    /** QEMU's own creation flow - see CreateQemuVmRequest's own javadoc for why this can't reuse
+     *  {@link #create}. isoPackageId is resolved to a CachedPackage up front (fail fast on a bad id,
+     *  rather than discovering that mid-provisioning), same posture for templateId (also validated
+     *  to actually be QEMU-backed - cloning a nspawn/podman template's tar as if it were a qcow2
+     *  disk would fail confusingly deep inside provisioning otherwise). Exactly one of diskSizeGb/
+     *  templateId is required - CreateQemuVmRequest itself can't express that as bean validation. */
+    @PostMapping("/api/containers/qemu")
+    public ResponseEntity<CreatedContainerResponse> createQemu(@Valid @RequestBody CreateQemuVmRequest request) {
+        User owner = currentUserProvider.get();
+        if ((request.diskSizeGb() == null) == (request.templateId() == null)) {
+            throw new IllegalArgumentException("Specify exactly one of diskSizeGb or templateId");
+        }
+        Template template = null;
+        if (request.templateId() != null) {
+            template = templateService.getById(request.templateId());
+            if (template.getBackend() != ContainerBackend.QEMU) {
+                throw new IllegalArgumentException("Template " + template.getName() + " is not QEMU-backed");
+            }
+        }
+        CachedPackage iso = request.isoPackageId() != null ? packageCacheService.getById(request.isoPackageId()) : null;
+        Container container = provisioningService.createPendingQemu(
+                request.name(), owner, request.description(), request.diskSizeGb(), template, iso,
+                request.cpuModel(), request.cpuCount(), request.memoryMb(), request.nicModel(), request.pointerDevice());
+        if (provisioningService.requiresApproval()) {
+            provisioningService.markPendingApproval(container.getId());
+        } else {
+            provisioningService.provisionAsync(container.getId());
+        }
+        auditLogService.log(owner, AuditAction.CREATED, AuditTargetType.CONTAINER, container.getId(), container.getName(),
+                "backend=QEMU");
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(new CreatedContainerResponse(container.getId()));
     }
 
@@ -231,6 +267,16 @@ public class ContainerApiController {
         Template template = templateService.createFromMachine(request.templateName(), request.description(), container, null);
         auditLogService.log(currentUserProvider.get(), AuditAction.CREATED, AuditTargetType.TEMPLATE,
                 template.getId(), template.getName(), "from container " + container.getName());
+    }
+
+    /** As {@link #createTemplateFromMachine}, no admin-approval sudo-password override support yet
+     *  either - same posture, same reasoning. */
+    @PutMapping("/api/containers/{id}/pod-command")
+    public void updatePodCommand(@PathVariable Long id, @Valid @RequestBody UpdatePodCommandRequest request) {
+        Container container = requireOwned(id);
+        provisioningService.updatePodCommand(id, request.command(), null);
+        auditLogService.log(currentUserProvider.get(), AuditAction.UPDATED, AuditTargetType.CONTAINER,
+                container.getId(), container.getName(), "pod command changed");
     }
 
     @DeleteMapping("/api/containers/{id}")
@@ -656,7 +702,7 @@ public class ContainerApiController {
     @GetMapping("/api/templates")
     public List<TemplateSummaryResponse> listTemplates() {
         return templateService.listActive().stream()
-                .map(t -> new TemplateSummaryResponse(t.getId(), t.getName(), t.isRdpCapable()))
+                .map(t -> new TemplateSummaryResponse(t.getId(), t.getName(), t.getRdpState()))
                 .toList();
     }
 
@@ -728,8 +774,15 @@ public class ContainerApiController {
         throw new AccessDeniedException("This container has not been shared with you.");
     }
 
+    // Eager-fetch owner variant of findOrThrow - takeOwnership reads container.getOwner()
+    // (for the audit log's "transferred from X" message) after this method returns, which a plain
+    // findOrThrow's lazy owner proxy can't survive: this app runs with open-in-view off, so by the
+    // time that line runs the Hibernate session that would have resolved the proxy is already
+    // closed - LazyInitializationException("no Session"), confirmed live (real 500 on a real
+    // take-ownership click, not caught by any of ApiExceptionHandler's typed handlers).
     private Container requireAdmin(Long id) {
-        Container container = findOrThrow(id);
+        Container container = containerRepository.findByIdWithTemplate(id)
+                .orElseThrow(() -> new IllegalArgumentException("No such container: " + id));
         User user = currentUserProvider.get();
         if (user.getRole() != Role.ADMIN) {
             throw new AccessDeniedException("Only an admin may take ownership of a container");

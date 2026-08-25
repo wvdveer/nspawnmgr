@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="'nspawnmgr — ' + ${container.name}">vm</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:data-container-id="${container.id}" th:data-container-name="${container.name}"
+      th:data-is-owner="${container.owner.id == currentUser.id}"
+      th:data-container-state="${container.state}" th:attr="data-base-path=@{/}">
+<div th:replace="~{fragments/app-shell :: shell(
+        title=${container.name}, subtitle='QEMU VM',
+        activeNav='machines', currentUser=${currentUser}, addMenu=null,
+        content=~{::#page-content})}">
+<div id="page-content">
+<p>State: <span class="badge badge-status" th:classappend="${container.state.name()}" th:text="${container.state}">state</span></p>
+<p th:if="${container.errorMessage}" th:text="${container.errorMessage}">error</p>
+<p>Owner: <span th:text="${container.owner.username}">owner</span></p>
+<p th:if="${container.description}" th:text="${container.description}">description</p>
+
+<div th:if="${currentUser.role.name() == 'ADMIN' and container.owner.id != currentUser.id}" class="panel">
+    <h2>Manage</h2>
+    <div class="panel-section">
+        <button id="btn-take-ownership" class="btn-primary">Take ownership</button>
+    </div>
+</div>
+
+<div th:if="${container.owner.id == currentUser.id}" class="panel">
+    <h2>Manage</h2>
+    <div class="panel-section">
+        <button id="btn-start" class="btn-primary" th:disabled="${container.state.name() != 'STOPPED'}">Start</button>
+        <button id="btn-stop" class="btn-primary"
+                th:disabled="${container.state.name() != 'BOOTING' and container.state.name() != 'RUNNING'}">Stop</button>
+        <button id="btn-restart" class="btn-primary" th:disabled="${container.state.name() != 'RUNNING'}">Restart</button>
+        <button id="btn-pause" class="btn-primary" th:disabled="${container.state.name() != 'RUNNING'}">Pause</button>
+        <button id="btn-resume" class="btn-primary" th:disabled="${container.state.name() != 'PAUSED'}">Resume</button>
+        <button id="btn-force-stop" class="btn-primary" th:disabled="${container.state.name() == 'STOPPED'}">Force stop</button>
+        <button id="btn-delete" class="btn-primary">Delete</button>
+    </div>
+    <p class="hint">"Stop" asks the guest OS to shut down (an ACPI request) — it does nothing until an
+        OS is actually installed. "Force stop" always works, no guest cooperation needed.</p>
+
+    <div class="panel-section">
+        <h3>Create template from this machine</h3>
+        <p class="hint">Copies this VM's current disk into a brand-new, independent template
+            (visible on /admin/templates afterwards, and selectable from the New QEMU page's "From
+            template" option) - only while this VM is STOPPED, since copying a live disk risks an
+            inconsistent image as the guest writes to it.</p>
+        <div class="inline-controls">
+            <input type="text" id="create-template-name" placeholder="new template name"/>
+            <input type="text" id="create-template-description" placeholder="description (optional)"/>
+            <button id="btn-create-template" class="btn-primary" th:disabled="${container.state.name() != 'STOPPED'}">Create template</button>
+        </div>
+        <p id="create-template-status" class="status-message"></p>
+    </div>
+
+    <div class="panel-section">
+        <h3>Description</h3>
+        <div class="inline-controls">
+            <input type="text" id="description" placeholder="What is this VM for?" th:value="${container.description}"/>
+            <button id="btn-save-description" class="btn-primary">Save</button>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h3>Shared with</h3>
+        <ul id="share-list" class="list-plain">
+            <li th:each="s : ${shares}" th:if="${s.user.id != container.owner.id}">
+                <span th:text="${s.user.username}">user</span>
+                <button class="btn-remove-share btn-danger" th:attr="data-user-id=${s.user.id}">Remove</button>
+            </li>
+        </ul>
+        <div class="inline-controls">
+            <input type="text" id="share-username" placeholder="username"/>
+            <button id="btn-add-share" class="btn-primary">Add</button>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <h3>Remote access</h3>
+        <p class="hint">VNC connects to this VM's own hypervisor console — the same screen a physical
+            monitor would show, working even before a guest OS is installed. It's configured
+            automatically; there's nothing to enable. SSH and RDP connect to services running
+            <em>inside</em> the guest OS instead — enable them once one is installed and running,
+            same reachability check as any other container.</p>
+        <p>VNC: connected automatically.</p>
+        <div class="inline-controls">
+            <span th:if="${container.guacSshConnectionId == null}">SSH: not connected via nspawnmgr.</span>
+            <button id="btn-enable-ssh" class="btn-primary" th:if="${container.guacSshConnectionId == null}">Enable SSH access</button>
+            <span th:if="${container.guacSshConnectionId != null}">SSH: connected (prompts for credentials).</span>
+            <button id="btn-disable-ssh" class="btn-danger" th:if="${container.guacSshConnectionId != null}">Disable</button>
+        </div>
+        <div class="inline-controls">
+            <span th:if="${container.guacRdpConnectionId == null}">RDP: not connected via nspawnmgr.</span>
+            <button id="btn-enable-rdp" class="btn-primary" th:if="${container.guacRdpConnectionId == null}">Enable RDP access</button>
+            <span th:if="${container.guacRdpConnectionId != null}">RDP: connected (prompts for credentials).</span>
+            <button id="btn-disable-rdp" class="btn-danger" th:if="${container.guacRdpConnectionId != null}">Disable</button>
+        </div>
+        <div class="inline-controls">
+            <label for="rdp-security-select">RDP security</label>
+            <select id="rdp-security-select">
+                <option th:each="mode : ${T(com.nspawnmgr.domain.RdpSecurityMode).values()}" th:value="${mode}" th:text="${mode}"
+                        th:selected="${mode == container.rdpSecurity}">mode</option>
+            </select>
+            <button id="btn-save-rdp-security" class="btn-primary">Save</button>
+        </div>
+    </div>
+
+    <div th:if="${availableIsos != null}" class="panel-section">
+        <h3>Removable media</h3>
+        <p class="hint">The VM's boot CD-ROM device. Swapping it here takes effect immediately if the
+            VM is currently running (no restart needed) and also becomes the default for its next
+            boot — the same "boot device" a physical machine's optical drive would be.</p>
+        <div th:if="${container.mountedIso == null}" class="inline-controls">
+            <p th:if="${#lists.isEmpty(availableIsos)}">No ISOs uploaded yet — see the Packages admin page.</p>
+            <select th:unless="${#lists.isEmpty(availableIsos)}" id="mount-iso-select">
+                <option th:each="i : ${availableIsos}" th:value="${i.id}"
+                        th:text="${i.originalFilename} + (${i.description} != null and ${i.description} != '' ? ' — ' + ${i.description} : '')">iso</option>
+            </select>
+            <button th:unless="${#lists.isEmpty(availableIsos)}" id="btn-mount-iso" class="btn-primary">Mount</button>
+        </div>
+        <div th:if="${container.mountedIso != null}" class="inline-controls">
+            <span th:text="'Configured: ' + ${container.mountedIso.originalFilename}">mounted iso</span>
+            <button id="btn-eject-iso" class="btn-danger">Eject</button>
+        </div>
+    </div>
+</div>
+
+<h2>Connect</h2>
+<p th:if="${container.state.name() != 'RUNNING'}">VM must be running to connect.</p>
+<div>
+    <button id="btn-session-vnc" class="btn-primary"
+            th:disabled="${container.state.name() != 'RUNNING' or container.guacVncConnectionId == null}">VNC</button>
+    <button id="btn-session-ssh" class="btn-primary"
+            th:disabled="${container.state.name() != 'RUNNING' or container.guacSshConnectionId == null}">SSH</button>
+    <button id="btn-session-rdp" class="btn-primary"
+            th:disabled="${container.state.name() != 'RUNNING' or !container.rdpEnabled or container.guacRdpConnectionId == null}">RDP</button>
+</div>
+</div>
+</div>
+
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/password-toggle.js}"></script>
+<script th:src="@{/js/detail.js}"></script>
+</body>
+</html>

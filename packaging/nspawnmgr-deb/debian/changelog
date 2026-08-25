@@ -1,3 +1,17 @@
+nspawnmgr (0.2.0) stable; urgency=medium
+
+  * Substantial accumulation of fixes and features since the initial 0.1.0
+    packaging, including: per-container RDP/VNC provisioning fixes across
+    Fedora, Arch, and Debian; an optional PAM-based local-login bypass
+    (pam_nspawnmgr) for containers whose own /etc/shadow auth is broken; a
+    self-hosted deployment mode (nspawnmgr manages its own Tomcat/guacd
+    inside a container it owns); refined container sharing/ownership and
+    container-user management, including choosing which account SSH/RDP/VNC
+    connect as; and numerous smaller reliability fixes. See the project's
+    git history for the full list.
+
+ -- nspawnmgr packaging <packaging@nspawnmgr.invalid>  Sat, 15 Aug 2026 00:00:00 +1000
+
 nspawnmgr (0.1.0) stable; urgency=medium
 
   * Initial .deb packaging: nspawnmgr.war + auth.war deployed into an
