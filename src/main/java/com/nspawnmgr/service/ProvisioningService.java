@@ -580,6 +580,20 @@ public class ProvisioningService {
                     sudoPasswordOverride);
         }
 
+        // Confirmed live (deb4, real Fedora-host-provisioned Debian container, 2026-08-27): xrdp
+        // couldn't read its own TLS private key ("Cannot read private key file ...: Permission
+        // denied"), even though the real xrdp Debian package's own postinst adds the xrdp system
+        // user to the ssl-cert group as part of installing it (line 544, above) - group membership
+        // changes don't apply to an already-running daemon process without a restart, and
+        // `systemctl enable --now` (line 545, run immediately after install) is a no-op if xrdp's
+        // own postinst already started the service itself. Without TLS, xrdp still falls back to
+        // plain RDP and the connection *looks* like it works (login succeeds, the desktop starts),
+        // but disconnects again within a few seconds - confirmed live this is exactly what breaks
+        // RDP through Guacamole's own connection here. A restart after every config file write
+        // above is settled (not just the group-membership one) - cheap, and guarantees the daemon
+        // that will actually serve real connections reflects the final state either way.
+        sh(container, "systemctl restart xrdp", sudoPasswordOverride);
+
         saveCredential(container, CredentialType.RDP_PASSWORD, accountName, password, null);
 
         // PackageManager.DNF is the only available proxy for "this is a Fedora-family container" -

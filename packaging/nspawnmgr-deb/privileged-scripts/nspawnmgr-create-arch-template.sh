@@ -197,6 +197,13 @@ else
     umount "$ROOTFS/proc"
     umount "$ROOTFS/dev"
     umount "$ROOTFS/run"
+    # The resolv.conf copy above is build-time-only glue for pacman to reach Arch's mirrors from
+    # inside this chroot - it must not survive into the packed template (see
+    # nspawnmgr-create-debian-template.sh's own comment on this exact fix for the full reasoning:
+    # left in place, it freezes every future container's /etc/resolv.conf to whatever this BUILD
+    # host's resolver was at bake time, permanently locking out systemd-resolved's live per-link
+    # management). Restore the standard systemd-resolved-managed symlink before packing.
+    ln -sf ../run/systemd/resolve/stub-resolv.conf "$ROOTFS/etc/resolv.conf"
 fi
 
 # Same two systemd-nspawn-level workarounds nspawnmgr-create-debian-template.sh needed, confirmed

@@ -20,6 +20,7 @@ import com.nspawnmgr.repository.ContainerCredentialRepository;
 import com.nspawnmgr.repository.ContainerRepository;
 import com.nspawnmgr.repository.ContainerShareRepository;
 import com.nspawnmgr.security.CurrentUserProvider;
+import com.nspawnmgr.service.ContainerFileBrowserService;
 import com.nspawnmgr.service.ContainerLifecycleService;
 import com.nspawnmgr.service.ContainerPortMappingService;
 import com.nspawnmgr.service.ContainerScriptService;
@@ -62,6 +63,7 @@ public class ContainerPageController {
     private final SettingsService settingsService;
     private final NetworkDiagnosticsService networkDiagnosticsService;
     private final HostLivenessService hostLivenessService;
+    private final ContainerFileBrowserService fileBrowserService;
 
     public ContainerPageController(ContainerRepository containerRepository, TemplateService templateService,
                                     ShareService shareService, ContainerPortMappingService portMappingService,
@@ -75,7 +77,8 @@ public class ContainerPageController {
                                     PamCredentialAuthService pamCredentialAuthService,
                                     SettingsService settingsService,
                                     NetworkDiagnosticsService networkDiagnosticsService,
-                                    HostLivenessService hostLivenessService) {
+                                    HostLivenessService hostLivenessService,
+                                    ContainerFileBrowserService fileBrowserService) {
         this.containerRepository = containerRepository;
         this.templateService = templateService;
         this.shareService = shareService;
@@ -91,6 +94,7 @@ public class ContainerPageController {
         this.pamCredentialAuthService = pamCredentialAuthService;
         this.settingsService = settingsService;
         this.networkDiagnosticsService = networkDiagnosticsService;
+        this.fileBrowserService = fileBrowserService;
     }
 
     @GetMapping("/")
@@ -234,19 +238,21 @@ public class ContainerPageController {
      *  opaque number. */
     @GetMapping("/containers/{name}/session/{protocol}")
     public String session(@PathVariable String name, @PathVariable String protocol, Model model) {
-        Container container = requireOwnedOrSharedForConnectByName(name);
+        Container container = requireOwnedOrSharedByName(name);
         model.addAttribute("container", container);
         model.addAttribute("protocol", protocol);
         return "containers/session";
     }
 
     /** Works whether or not the container is currently running - see ContainerFileBrowserService's
-     *  own javadoc for why, unlike the machinectl-based SSH/RDP/VNC sessions above. */
-    @GetMapping("/containers/{id}/files")
-    public String files(@PathVariable Long id, Model model) {
-        Container container = requireOwnedOrShared(id);
+     *  own javadoc for why, unlike the machinectl-based SSH/RDP/VNC sessions above. Addressed by
+     *  name, not numeric ID - same reasoning as the session route above. */
+    @GetMapping("/containers/{name}/files")
+    public String files(@PathVariable String name, Model model) {
+        Container container = requireOwnedOrSharedByName(name);
         model.addAttribute("container", container);
         model.addAttribute("currentUser", currentUserProvider.get());
+        model.addAttribute("needsCredentials", fileBrowserService.needsRemoteSftp(container));
         return "containers/files";
     }
 
@@ -287,9 +293,10 @@ public class ContainerPageController {
     }
 
     /** Owner, or a user the container has been shared with - same gate {@link #canManageScripts}
-     *  uses, worded for the connect flow specifically (see ContainerApiController's twin, which
-     *  guards the actual session-minting POST this page's own JS calls). */
-    private Container requireOwnedOrSharedForConnectByName(String name) {
+     *  uses, name-addressed twin of {@link #requireOwnedOrShared(Long)} (see
+     *  ContainerApiController's twin, which guards the actual session-minting POST this page's own
+     *  JS calls). */
+    private Container requireOwnedOrSharedByName(String name) {
         Container container = requireVisibleByName(name);
         User user = currentUserProvider.get();
         if (!canManageScripts(container, user)) {

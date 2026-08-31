@@ -31,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Unlike a script run, nothing here blocks a worker thread waiting on the transfer: {@code curl}
  * runs fully detached in its own systemd unit on the host (started and immediately returned from -
  * see {@link #start}), and {@link #pollActiveDownloads()} periodically checks each active entry's
- * progress and terminal state instead, the same shape {@link PodLivenessPollingService}/
+ * progress and terminal state instead, the same shape {@link ContainerLivenessPollingService}/
  * {@link QemuAddressPollingService} already use for reconciling several rows each tick.
  */
 @Service
@@ -118,7 +118,19 @@ public class PackageDownloadService {
                     activeDownload.originalFilename, "download " + downloadId + " aborted");
             return;
         }
-        if (unitStatus == PackageDownloadUnitStatus.SUCCEEDED) {
+        // A NOT_FOUND unit status doesn't necessarily mean curl failed - confirmed live, a
+        // completely healthy download (curl exits 0, systemd logs "Deactivated successfully", no
+        // error anywhere) can still have its transient unit garbage-collected by systemd before
+        // this poll's own systemctl-show call ever sees a terminal ActiveState, even without
+        // --collect (the assumption a plain, non-collected transient unit stays queryable
+        // indefinitely - see nspawnmgr-download-package-start.sh's own header comment - turned out
+        // to be wrong on a real host: it can vanish within this poll's 2-second interval). The
+        // downloaded file on disk is durable in a way the unit's own transient bookkeeping isn't,
+        // so when a known expected size matches what's actually on disk, that's treated as
+        // completion regardless of what systemctl reports for the unit.
+        boolean sizeConfirmsCompletion = activeDownload.totalBytes != null
+                && activeDownload.bytesDownloaded == activeDownload.totalBytes;
+        if (unitStatus == PackageDownloadUnitStatus.SUCCEEDED || sizeConfirmsCompletion) {
             CachedPackage saved = packageCacheService.registerDownloaded(activeDownload.packageManager,
                     activeDownload.originalFilename, activeDownload.storedFilename, activeDownload.description,
                     activeDownload.admin, activeDownload.bytesDownloaded);
@@ -129,8 +141,9 @@ public class PackageDownloadService {
                     saved.getOriginalFilename(), "packageManager=" + saved.getPackageManager() + " (downloaded)");
             return;
         }
-        // FAILED or NOT_FOUND (the unit vanished before this poll tick ever saw a terminal
-        // ActiveState - treated the same as a failure, not silently ignored).
+        // Genuinely FAILED, or NOT_FOUND with no on-disk evidence the transfer actually finished
+        // (e.g. totalBytes was never known - the source didn't report Content-Length - so a
+        // vanished unit can't be distinguished from a real failure here).
         filesystem.delete(activeDownload.targetPath);
         activeDownload.state = PackageDownloadState.FAILED;
         activeDownload.errorMessage = "Download failed - check the URL is reachable and points directly at a file.";

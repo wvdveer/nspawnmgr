@@ -19,7 +19,7 @@
 
     <groupId>com.nspawnmgr</groupId>
     <artifactId>nspawnmgr</artifactId>
-    <version>0.2.0-SNAPSHOT</version>
+    <version>0.3.0-SNAPSHOT</version>
     <!--
         WAR, not an executable jar: deployed into the same servlet container (Tomcat) as
         Guacamole's own webapp (real or the tools/fake-guacamole-server stand-in), rather than
@@ -30,7 +30,14 @@
     <packaging>war</packaging>
 
     <name>nspawnmgr</name>
-    <description>Web manager for systemd-nspawn containers with Apache Guacamole access</description>
+    <description>Web manager for systemd-nspawn containers, podman pods, and QEMU/KVM virtual machines with Apache Guacamole access</description>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+        </license>
+    </licenses>
 
     <properties>
         <java.version>17</java.version>

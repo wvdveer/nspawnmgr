@@ -70,6 +70,45 @@ class PackageDownloadServiceTest {
     }
 
     @Test
+    void aVanishedUnitStillCompletesWhenTheFileSizeMatchesTheKnownTotal() {
+        // Confirmed live: a transient systemd-run unit can be garbage-collected before a poll tick
+        // ever observes its terminal state, even after curl exited 0 - the unit reports NOT_FOUND
+        // despite the download having genuinely succeeded. The file on disk is the trustworthy
+        // signal here, not the unit's own (unreliable) bookkeeping.
+        when(executor.probeContentLength(anyString())).thenReturn(2048L);
+        String downloadId = service.start(PackageManager.ISO, "https://example.com/debian.iso", "desc", admin);
+        when(executor.currentBytes(anyString())).thenReturn(2048L);
+        when(executor.status(downloadId)).thenReturn(PackageDownloadUnitStatus.NOT_FOUND);
+        CachedPackage saved = new CachedPackage(PackageManager.ISO, "debian.iso", "stored.iso", "desc", admin, 2048L);
+        saved.setId(43L);
+        when(packageCacheService.registerDownloaded(eq(PackageManager.ISO), anyString(), anyString(), eq("desc"), eq(admin), eq(2048L)))
+                .thenReturn(saved);
+
+        service.pollActiveDownloads();
+
+        PackageDownloadService.ActiveDownload status = service.status(downloadId);
+        assertThat(status.state()).isEqualTo(PackageDownloadState.COMPLETED);
+        assertThat(status.cachedPackageId()).isEqualTo(43L);
+        verify(filesystem, never()).delete(anyString());
+    }
+
+    @Test
+    void aVanishedUnitWithNoKnownTotalOrAPartialFileStillReportsFailure() {
+        // Without a known expected size (the source never reported Content-Length), a vanished
+        // unit can't be distinguished from a real failure - stays a failure, same as before.
+        String downloadId = service.start(PackageManager.ISO, "https://example.com/debian.iso", "desc", admin);
+        when(executor.currentBytes(anyString())).thenReturn(100L);
+        when(executor.status(downloadId)).thenReturn(PackageDownloadUnitStatus.NOT_FOUND);
+
+        service.pollActiveDownloads();
+
+        PackageDownloadService.ActiveDownload status = service.status(downloadId);
+        assertThat(status.state()).isEqualTo(PackageDownloadState.FAILED);
+        verify(filesystem).delete(anyString());
+        verify(packageCacheService, never()).registerDownloaded(any(), anyString(), anyString(), any(), any(), anyLong());
+    }
+
+    @Test
     void aFailedDownloadDeletesThePartialFileAndReportsAnError() {
         String downloadId = service.start(PackageManager.ISO, "https://example.com/nope.iso", "desc", admin);
         when(executor.currentBytes(anyString())).thenReturn(100L);

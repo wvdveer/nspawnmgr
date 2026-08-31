@@ -18,6 +18,15 @@ site/env/.env
 /site/templates/qemu/*
 !/site/templates/qemu/.gitkeep
 
+# ---> nspawnmgr packaging vendor artifacts
+# Baked, multi-hundred-MB pre-built rootfs tarballs used by the "bundled" .deb variant plus the
+# Arch/SteamOS/RPM packages - see packaging/nspawnmgr-deb/vendor/README.md. Too large to keep in
+# Git history; tools/scripts/ensure-vendor-templates.sh downloads them from Gitea's package
+# registry (or bakes+publishes them itself if missing) as part of a package build, so they're
+# still built and included in published packages, just not tracked here.
+/packaging/nspawnmgr-deb/vendor/debian-minimal.tar.gz
+/packaging/nspawnmgr-deb/vendor/postgresql-minimal.tar.gz
+
 # ---> Maven
 target/
 tools/*/target/

@@ -6,18 +6,44 @@
     <link rel="stylesheet" th:href="@{/css/app.css}"/>
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
-<body th:attr="data-base-path=@{/},data-container-id=${container.id}">
+<body th:attr="data-base-path=@{/},data-container-id=${container.id},data-needs-credentials=${needsCredentials}">
 <div th:replace="~{fragments/app-shell :: shell(
         title=${container.name + ' — Files'}, subtitle=null,
         activeNav='machines', currentUser=${currentUser}, addMenu=null,
         content=~{::#page-content})}">
 <div id="page-content">
 <p><a th:href="@{/containers/{id}(id=${container.id})}">&laquo; Back to <span th:text="${container.name}">container</span></a></p>
-<p class="hint">Browses this container's filesystem directly - works whether or not the container is
-    running. Click a folder to open it, double-click a file to download it, or drag and drop a file
-    onto the list below to upload it into the current folder (up to 200MB).</p>
 
+<div id="connect-panel" class="panel panel-narrow" th:if="${needsCredentials}">
+    <h2>Connect</h2>
+    <p class="hint">This container has no host-visible filesystem - browsing it goes over SFTP against its
+        own SSH server instead. Enter a credential that can log in over SSH; it's held only for this
+        browser session and is never saved.</p>
+    <div class="panel-section">
+        <div class="inline-controls">
+            <input type="text" id="connect-username" placeholder="Username"/>
+            <input type="password" id="connect-password" placeholder="Password"/>
+            <button id="btn-connect" class="btn-primary">Connect</button>
+        </div>
+        <p id="connect-status" class="status-message"></p>
+    </div>
+</div>
+
+<div id="browse-panel" th:style="${needsCredentials} ? 'display:none' : ''">
+<p class="hint" th:if="${needsCredentials}">Browses over SFTP as the connected account - not capped at
+    its home directory, bounded only by that account's own permissions, same as any real SFTP client.
+    Click a folder to open it, double-click a file to download it, or drag and drop a file onto the
+    list below to upload it into the current folder (up to 200MB).</p>
+<p class="hint" th:unless="${needsCredentials}">Browses this container's filesystem directly - works
+    whether or not the container is running. Click a folder to open it, double-click a file to
+    download it, or drag and drop a file onto the list below to upload it into the current folder
+    (up to 200MB).</p>
+
+<div class="inline-controls">
 <nav id="breadcrumb" class="inline-controls"></nav>
+<span id="connected-username" class="hint" th:if="${needsCredentials}"></span>
+<button id="btn-disconnect" class="btn-primary" th:if="${needsCredentials}">Disconnect</button>
+</div>
 
 <table id="file-table">
     <thead>
@@ -32,9 +58,11 @@
 <p id="files-status" class="status-message"></p>
 </div>
 </div>
+</div>
 
 <script th:src="@{/js/theme-toggle.js}"></script>
 <script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/password-toggle.js}"></script>
 <script th:src="@{/js/files.js}"></script>
 </body>
 </html>

@@ -1,11 +1,12 @@
 #!/bin/sh
-# Fully removes nspawnmgr: apt purge, plus everything purge deliberately leaves behind (see
-# debian/postrm's own comments for why it's conservative by default — this script exists
-# specifically for when you don't want that conservatism, e.g. wiping a test machine clean between
-# install attempts).
+# Fully removes nspawnmgr: the package itself (apt/dnf/pacman, whichever this host uses), plus
+# everything the package's own removal step deliberately leaves behind (see debian/postrm's own
+# comments for why it's conservative by default — this script exists specifically for when you
+# don't want that conservatism, e.g. wiping a test machine clean between install attempts). Shared
+# across the .deb/.rpm/Arch packages, not Debian-specific.
 #
 # Removes:
-#   - The package itself (apt purge -y nspawnmgr)
+#   - The package itself (apt purge / dnf remove / pacman -R, whichever applies)
 #   - /opt/tomcat9 (the whole bundled Tomcat instance, including conf/server.xml edits/logs -
 #     postrm never touches this since a real deployment might hold real customization)
 #   - /etc/nspawnmgr (the sudo/SSH credentials, generated APP_SECRET_KEY, auth-live/db-config) and
@@ -159,7 +160,7 @@ if [ -z "$CONFIRMED" ] && { command -v podman >/dev/null 2>&1 || command -v qemu
         "page, but this script has no way to tell that apart from an install you set up yourself" \
         "for something unrelated to nspawnmgr. Confirming will also force-remove every podman" \
         "container (pod) and every QEMU machine first - this cannot be undone."
-    printf 'Also remove podman and QEMU (apt purge)? [y/N] '
+    printf 'Also remove podman and QEMU? [y/N] '
     read -r reply
     case "$reply" in
         y | Y | yes | YES) REMOVE_BACKEND_TOOLING="1" ;;
@@ -167,7 +168,31 @@ if [ -z "$CONFIRMED" ] && { command -v podman >/dev/null 2>&1 || command -v qemu
 fi
 
 echo "uninstall-nspawnmgr.sh: purging the package..."
-apt purge -y nspawnmgr 2>&1 || echo "uninstall-nspawnmgr.sh: apt purge reported an error (continuing - it may already be removed)." >&2
+# Same per-package-manager branch already used below for the optional podman/QEMU removal - this
+# script is shared across the .deb/.rpm/Arch packages (see setup-sudo-account.sh's matching
+# comment on why these scripts moved out of debian/ specifically so they could be shared), so the
+# package-removal command itself has to branch too, not just the rest of the script.
+if command -v apt-get >/dev/null 2>&1; then
+    apt purge -y nspawnmgr 2>&1 || echo "uninstall-nspawnmgr.sh: apt purge reported an error (continuing - it may already be removed)." >&2
+elif command -v dnf >/dev/null 2>&1; then
+    dnf remove -y nspawnmgr 2>&1 || echo "uninstall-nspawnmgr.sh: dnf remove reported an error (continuing - it may already be removed)." >&2
+elif command -v pacman >/dev/null 2>&1; then
+    # `nspawnmgr` (plain Arch) and `nspawnmgr-steamos` are separate, mutually-exclusive pkgnames
+    # (see packaging/nspawnmgr-steamos/PKGBUILD's own provides/conflicts) - `pacman -R` needs the
+    # exact installed name, it doesn't resolve a provides/conflicts target the way installation
+    # can. Confirmed live: a bare `pacman -R nspawnmgr` on a SteamOS host with nspawnmgr-steamos
+    # actually installed failed with "target not found: nspawnmgr" and silently skipped package
+    # removal entirely (everything else in this script still ran, so it wasn't fatal, but the
+    # package itself was left registered in pacman's own database). Detect which one is actually
+    # installed instead of assuming.
+    if pacman -Qi nspawnmgr-steamos >/dev/null 2>&1; then
+        pacman -Rns --noconfirm nspawnmgr-steamos 2>&1 || echo "uninstall-nspawnmgr.sh: pacman -R reported an error (continuing - it may already be removed)." >&2
+    else
+        pacman -Rns --noconfirm nspawnmgr 2>&1 || echo "uninstall-nspawnmgr.sh: pacman -R reported an error (continuing - it may already be removed)." >&2
+    fi
+else
+    echo "uninstall-nspawnmgr.sh: no supported package manager found (looked for apt-get, dnf, pacman) - skipping package removal." >&2
+fi
 
 if [ -n "$DROP_DATABASES" ]; then
     echo "uninstall-nspawnmgr.sh: dropping the nspawnmgr and guacamole databases and their users..."
@@ -284,7 +309,27 @@ if [ -n "$REMOVE_BACKEND_TOOLING" ]; then
 fi
 
 echo "uninstall-nspawnmgr.sh: removing /opt/tomcat9, /etc/nspawnmgr, /etc/guacamole, /var/lib/nspawnmgr/templates, /var/lib/nspawnmgr/qemu-sockets, /var/cache/nspawnmgr/packages..."
-rm -rf /opt/tomcat9 /etc/nspawnmgr /etc/guacamole /var/lib/nspawnmgr/templates /var/lib/nspawnmgr/qemu-sockets /var/cache/nspawnmgr/packages
+# Confirmed live on SteamOS: `rm -rf` on a path that is itself a SYMLINK only unlinks the symlink
+# - it does not recurse into whatever the symlink points at. packaging/nspawnmgr-steamos/
+# nspawnmgr.install's own _relocate_to_home() makes /etc/nspawnmgr exactly this (a symlink to
+# /home/nspawnmgr/etc-nspawnmgr, for SteamOS's tiny root partition) - a bare `rm -rf /etc/nspawnmgr`
+# left the real directory (and the stale SSH_PASSWORD/credentials inside it) completely untouched
+# on disk, orphaned but still there, and _relocate_to_home() happily re-linked right back to that
+# same stale data on the next install. This script is shared verbatim across all three packages
+# (.deb, nspawnmgr-arch, nspawnmgr-steamos) and has no SteamOS-specific knowledge of which paths
+# might be relocated - resolving symlinks generically here (rather than hardcoding SteamOS's own
+# relocation targets) keeps it correct for any current or future relocation scheme, not just this
+# one. /var/lib/nspawnmgr/templates and friends below are unaffected - those are subpaths reached
+# THROUGH a symlinked parent, which `rm -rf` already follows correctly; only the exact symlinked
+# path itself has this problem.
+for p in /opt/tomcat9 /etc/nspawnmgr /etc/guacamole; do
+    if [ -L "$p" ]; then
+        real_target="$(readlink -f "$p")"
+        [ -n "$real_target" ] && [ -d "$real_target" ] && rm -rf "$real_target"
+    fi
+    rm -rf "$p"
+done
+rm -rf /var/lib/nspawnmgr/templates /var/lib/nspawnmgr/qemu-sockets /var/cache/nspawnmgr/packages
 
 echo "uninstall-nspawnmgr.sh: removing any leftover systemd units..."
 rm -f /etc/systemd/system/tomcat9.service /etc/systemd/system/guacd.service
@@ -314,7 +359,7 @@ systemctl list-unit-files 'systemd-nspawn@*.service' --no-legend 2>/dev/null | a
 done
 systemctl daemon-reload 2>/dev/null || true
 
-echo "uninstall-nspawnmgr.sh: removing dnsmasq config (dnsmasq itself is an apt dependency, left installed)..."
+echo "uninstall-nspawnmgr.sh: removing dnsmasq config (dnsmasq itself is a package dependency, left installed)..."
 rm -f /etc/dnsmasq.d/nspawnmgr.conf
 systemctl restart dnsmasq 2>/dev/null || true
 
@@ -323,9 +368,9 @@ rm -f /etc/systemd/network/70-nspawnmgr-bridge.netdev /etc/systemd/network/70-ns
 systemctl restart systemd-networkd 2>/dev/null || true
 
 echo "uninstall-nspawnmgr.sh: removing system accounts (tomcat, nspawnmgr_exec, nspawnmgr_ci)..."
-deluser --remove-home tomcat 2>/dev/null || true
-deluser --remove-home nspawnmgr_exec 2>/dev/null || true
-deluser --remove-home nspawnmgr_ci 2>/dev/null || true
+userdel --remove tomcat 2>/dev/null || true
+userdel --remove nspawnmgr_exec 2>/dev/null || true
+userdel --remove nspawnmgr_ci 2>/dev/null || true
 rm -f /etc/sudoers.d/nspawnmgr_ci
 
 echo "uninstall-nspawnmgr.sh: done."

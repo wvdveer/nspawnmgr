@@ -1,9 +1,9 @@
 Package: nspawnmgr
-Version: 0.2.0
+Version: 0.3.0
 Section: web
 Priority: optional
 Architecture: all
-Depends: default-jre-headless | openjdk-17-jre-headless, openssh-server, openssl, apache2-utils, dnsmasq, systemd-container
+Depends: openssh-server, openssl, dnsmasq, systemd-container
 Maintainer: nspawnmgr packaging <packaging@nspawnmgr.invalid>
 Description: Web manager for systemd-nspawn containers with Apache Guacamole access
  nspawnmgr provides a web UI for creating, starting, stopping, and accessing

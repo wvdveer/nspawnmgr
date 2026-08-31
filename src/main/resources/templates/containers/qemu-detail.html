@@ -136,6 +136,10 @@
             th:disabled="${container.state.name() != 'RUNNING' or container.guacSshConnectionId == null}">SSH</button>
     <button id="btn-session-rdp" class="btn-primary"
             th:disabled="${container.state.name() != 'RUNNING' or !container.rdpEnabled or container.guacRdpConnectionId == null}">RDP</button>
+    <a th:if="${container.state.name() == 'RUNNING' and container.guacSshConnectionId != null}"
+       th:href="@{/containers/{name}/files(name=${container.name})}" class="btn-primary">Files</a>
+    <button th:if="${container.state.name() != 'RUNNING' or container.guacSshConnectionId == null}"
+            class="btn-primary" disabled>Files</button>
 </div>
 </div>
 </div>

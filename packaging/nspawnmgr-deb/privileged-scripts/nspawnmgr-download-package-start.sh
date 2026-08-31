@@ -2,11 +2,14 @@
 # Launches a detached systemd unit that downloads $2 (a URL) to $3 (a host path) via curl - runs
 # entirely host-side, never proxied through Tomcat's own JVM (see PackageDownloadExecutor's own
 # javadoc for why: a multi-GB ISO can't reasonably be buffered in JVM heap or Base64-encoded over
-# an SSH exec's stdin the way small package uploads already are). Deliberately no --collect:
-# PackageDownloadService's own poll loop needs to read the unit's final
-# ActiveState/ExecMainStatus after curl exits, which --collect's automatic unit removal would race
-# against - the unit is left to expire on its own (or get explicitly stopped), same as QEMU's own
-# lifecycle units before this script existed.
+# an SSH exec's stdin the way small package uploads already are). Deliberately no --collect (would
+# make the race below strictly worse, not fix it): PackageDownloadService's own poll loop needs to
+# read the unit's final ActiveState/ExecMainStatus after curl exits. Confirmed live this doesn't
+# fully avoid the race anyway - a plain, non-collected transient unit isn't guaranteed to stay
+# queryable indefinitely; it can be garbage-collected by systemd within the poll loop's own
+# 2-second interval even after exiting perfectly cleanly. PackageDownloadService.checkOne() treats
+# this as a completed download (not a failure) when the on-disk file size matches the known
+# expected total, so a vanished-but-actually-successful unit doesn't get reported as a failure.
 # $1 = download id (used only to name the unit - NOT interpolated into anything shell-parsed),
 # $2 = source URL, $3 = destination host path (its parent directory is created if missing).
 set -e

@@ -1,0 +1,122 @@
+# Maintainer: nspawnmgr packaging <packaging@nspawnmgr.invalid>
+#
+# SteamOS variant of ../nspawnmgr-arch - same package otherwise, but relocates every
+# storage-heavy nspawnmgr path (and machinectl/systemd-nspawn's own genuinely fixed
+# /var/lib/machines and /etc/systemd/nspawn - see nspawnmgr.install's own comment on why those
+# specifically can't be redirected via nspawnmgr's config) under /home/nspawnmgr via symlinks.
+#
+# Why a separate package rather than an install-time prompt in the plain nspawnmgr-arch package:
+# SteamOS's root partition is a small, fixed size by Valve's own design (confirmed live: 5GB
+# total, already >80% full with base SteamOS alone before nspawnmgr touches anything) with the
+# real storage budget on /home instead - this isn't a "some Arch users might want this" option,
+# it's a hard requirement for nspawnmgr to work AT ALL on real SteamOS/Steam Deck hardware.
+# Confirmed live: installing the plain nspawnmgr-arch package on real SteamOS (QEMU, NVMe target
+# disk, real Deck kernel) ran clean up through creating the sudo account/bridge/sudoers, then
+# failed with "No space left on device" partway through baking the self-hosted app machine's
+# debian-minimal template - the root partition simply can't hold it.
+#
+# `provides`/`conflicts` against `nspawnmgr` (../nspawnmgr-arch's own pkgname) - the two are
+# mutually exclusive variants of the same thing, never meant to coexist on one system, same
+# convention any other Arch "-variant" package pair uses.
+#
+# Future direction (not yet done, deliberately deferred): this may become a Flatpak instead of
+# an AUR package some day - Valve's own recommended way to add software to SteamOS - but that's
+# a much bigger redesign (Flatpak's sandbox model doesn't naturally support what this package
+# does: creating a system account, a network bridge, sudoers grants, systemd units). Staying
+# AUR-style for now, deliberately.
+#
+# See ../nspawnmgr-arch/PKGBUILD's own header comment for everything else this package shares
+# unchanged: no Maven-native packaging plugin for Arch, ships prebuilt artifacts only (nothing
+# for source=()/sha256sums() to track), reuses ../nspawnmgr-deb/'s privileged-scripts/vendor/
+# sudoers files by reference.
+#
+# BUILD verified live (2026-08-26): a real `makepkg -f` against this exact file, on the same
+# arch-runner systemd-nspawn container as ../nspawnmgr-arch/ (see packaging/ci/arch-runner/),
+# produces a real nspawnmgr-steamos-0.3.0-1-any.pkg.tar.zst via .gitea/workflows/build.yml's
+# `arch-package` job (SteamOS half). `provides`/`conflicts` against `nspawnmgr` mean pacman
+# already treats this as a distinct, mutually-exclusive package from the plain Arch one.
+#
+# INSTALL still unverified: this package (with the /home relocation) has not been installed on
+# real SteamOS/Steam Deck hardware - only the build side is proven so far. The disk-space failure
+# described above was hit by the plain nspawnmgr-arch package on real SteamOS, which is what
+# motivated this variant; this package itself hasn't had its own real install/verify pass yet.
+
+pkgname=nspawnmgr-steamos
+pkgver=0.3.0
+pkgrel=1
+pkgdesc="Web manager for systemd-nspawn containers, podman pods, and QEMU/KVM virtual machines with Guacamole access (SteamOS variant - storage relocated under /home)"
+arch=('any')
+# TODO: fill in once a public repo URL exists.
+url=""
+license=('Apache')
+provides=('nspawnmgr')
+conflicts=('nspawnmgr')
+# Same reasoning as ../nspawnmgr-arch/PKGBUILD - no compiled output, debugedit isn't needed/present.
+options=('!debug')
+# Same as ../nspawnmgr-arch - see that file's own comment on why no JRE/rotatelogs/
+# systemd-container entries are needed here either.
+depends=('openssh' 'openssl' 'dnsmasq')
+backup=('etc/dnsmasq.d/nspawnmgr.conf')
+install=nspawnmgr.install
+source=()
+sha256sums=()
+
+# Nothing to build - identical reasoning to ../nspawnmgr-arch/PKGBUILD.
+build() {
+    :
+}
+
+# Identical to ../nspawnmgr-arch/PKGBUILD's own package() - same artifacts, same layout under
+# $pkgdir. The /home relocation is entirely a post_install()-time concern (nspawnmgr.install),
+# not a packaging-time one - the files this package ships are identical either way.
+package() {
+    debdir="$startdir/../nspawnmgr-deb"
+    reporoot="$startdir/../.."
+
+    install -Dm644 "$reporoot/target/nspawnmgr.war" "$pkgdir/usr/share/nspawnmgr/nspawnmgr.war"
+    install -Dm644 "$reporoot/auth/target/auth.war" "$pkgdir/usr/share/nspawnmgr/auth.war"
+    install -Dm644 "$reporoot/root-wizard/target/ROOT.war" "$pkgdir/usr/share/nspawnmgr/ROOT.war"
+    install -Dm644 "$debdir/vendor/guacamole-1.5.5.war" "$pkgdir/usr/share/nspawnmgr/guacamole.war"
+
+    install -d -m755 "$pkgdir/usr/lib/nspawnmgr/privileged"
+    for f in "$debdir/privileged-scripts"/*.sh; do
+        install -Dm750 -o root -g root "$f" "$pkgdir/usr/lib/nspawnmgr/privileged/$(basename "$f")"
+    done
+
+    install -Dm750 -o root -g root "$debdir/scripts/setup-sudo-account.sh" "$pkgdir/usr/lib/nspawnmgr/setup-sudo-account.sh"
+    install -Dm750 -o root -g root "$debdir/scripts/setup-ci-template-account.sh" "$pkgdir/usr/lib/nspawnmgr/setup-ci-template-account.sh"
+    install -Dm750 -o root -g root "$debdir/scripts/uninstall-nspawnmgr.sh" "$pkgdir/usr/lib/nspawnmgr/uninstall-nspawnmgr.sh"
+    install -Dm750 -o root -g root "$debdir/scripts/upgrade-nspawnmgr.sh" "$pkgdir/usr/lib/nspawnmgr/upgrade-nspawnmgr.sh"
+    install -Dm750 -o root -g root "$debdir/scripts/install-guacamole-auth-jdbc.sh" "$pkgdir/usr/lib/nspawnmgr/install-guacamole-auth-jdbc.sh"
+    install -Dm750 -o root -g root "$debdir/scripts/install-guacamole-jdbc-drivers.sh" "$pkgdir/usr/lib/nspawnmgr/install-guacamole-jdbc-drivers.sh"
+
+    install -Dm440 -o root -g root "$debdir/debian/nspawnmgr.sudoers" "$pkgdir/etc/sudoers.d/nspawnmgr_exec"
+    install -Dm644 -o root -g root "$debdir/debian/nspawnmgr-ci.sudoers" "$pkgdir/usr/share/nspawnmgr/nspawnmgr-ci.sudoers"
+
+    install -Dm644 "$debdir/70-nspawnmgr-bridge.netdev" "$pkgdir/usr/share/nspawnmgr/70-nspawnmgr-bridge.netdev"
+    install -Dm644 "$debdir/70-nspawnmgr-bridge.network" "$pkgdir/usr/share/nspawnmgr/70-nspawnmgr-bridge.network"
+    install -Dm644 "$debdir/dnsmasq-nspawnmgr.conf" "$pkgdir/usr/share/nspawnmgr/dnsmasq-nspawnmgr.conf"
+    install -Dm644 "$debdir/guacd.service" "$pkgdir/usr/share/nspawnmgr/guacd.service"
+    install -Dm644 "$debdir/tomcat9.service" "$pkgdir/usr/share/nspawnmgr/tomcat9.service"
+
+    install -Dm644 "$debdir/vendor/guacd-bundle.tar.gz" "$pkgdir/usr/share/nspawnmgr/guacd-bundle.tar.gz"
+    install -Dm644 "$debdir/vendor/guacamole-auth-jdbc-1.5.5.tar.gz" "$pkgdir/usr/share/nspawnmgr/guacamole-auth-jdbc-1.5.5.tar.gz"
+    install -Dm644 "$debdir/vendor/apache-tomcat-9.0.120.tar.gz" "$pkgdir/usr/share/nspawnmgr/apache-tomcat-9.0.120.tar.gz"
+
+    # Pre-baked debian-minimal/postgresql-minimal images - same as ../nspawnmgr-arch/PKGBUILD (see
+    # that file's own comment): consistency with the published .deb (the bundled variant), and
+    # lands at the exact path nspawnmgr-bootstrap-app-machine.sh/nspawnmgr-bootstrap-db-machine.sh
+    # already check for (BUNDLED_DEBIAN_MINIMAL/BUNDLED_POSTGRESQL_MINIMAL) with no script changes
+    # needed. Especially relevant here: a Steam Deck is more likely than a typical Arch host to be
+    # on a slow, metered, or unreliable connection when this install runs.
+    install -Dm644 "$debdir/vendor/debian-minimal.tar.gz" "$pkgdir/usr/share/nspawnmgr/debian-minimal.tar.gz"
+    install -Dm644 "$debdir/vendor/postgresql-minimal.tar.gz" "$pkgdir/usr/share/nspawnmgr/postgresql-minimal.tar.gz"
+
+    install -d -m755 "$pkgdir/usr/share/nspawnmgr/guacamole-jdbc-drivers"
+    for f in "$reporoot/target/guacamole-jdbc-drivers"/*; do
+        install -Dm644 "$f" "$pkgdir/usr/share/nspawnmgr/guacamole-jdbc-drivers/$(basename "$f")"
+    done
+
+    install -Dm644 "$debdir/vendor/README.md" "$pkgdir/usr/share/doc/nspawnmgr/guacd-bundle-README.md"
+    install -Dm644 "$reporoot/docs/administrator-guide.md" "$pkgdir/usr/share/doc/nspawnmgr/administrator-guide.md"
+}

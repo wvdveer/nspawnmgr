@@ -82,7 +82,7 @@ public class Container {
      * footgun: a pod whose image's own default CMD is a bare interactive shell (no TTY attached,
      * since podman create/start here never runs interactively) exits within milliseconds of
      * starting, landing on podman's own "Exited" state that nspawnmgr never notices (see
-     * PodLivenessPollingService) - editable after creation (pod-detail.html), but only takes effect
+     * ContainerLivenessPollingService) - editable after creation (pod-detail.html), but only takes effect
      * on the next full recreate (podman's own command is baked in at create time, not something
      * `podman start` can change) - see ProvisioningService#updatePodCommand.
      */

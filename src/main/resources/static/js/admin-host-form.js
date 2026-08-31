@@ -26,5 +26,6 @@ document.getElementById('host-form').addEventListener('submit', async (event) =>
         status.textContent = 'Error: ' + await response.text();
         return;
     }
-    window.location.href = `${basePath}/admin/hosts`;
+    const result = await response.json();
+    window.location.href = `${basePath}/containers/${result.id}`;
 });

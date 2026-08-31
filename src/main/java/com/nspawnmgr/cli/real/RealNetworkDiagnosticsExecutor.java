@@ -60,10 +60,24 @@ public class RealNetworkDiagnosticsExecutor implements NetworkDiagnosticsExecuto
         return ssh.execNoPasswordSudo(CHECK_TIMEOUT, List.of("/usr/sbin/ip", "-4", "-o", "addr", "show", "scope", "global"));
     }
 
+    /** `enable --now` alone is a no-op for the "now" part when systemd-networkd is already
+     *  running (e.g. it was already active from a previous nspawnmgr install, or the host was
+     *  already using it for its primary NIC) - it does not notice the bridge's .netdev/.network
+     *  files sitting in /etc/systemd/network, so nspawnbr0 can silently never get created even
+     *  after this "fix" reports success. {@code networkctl reload} forces networkd to re-read
+     *  every .netdev/.network file without restarting the daemon or disrupting any link it's
+     *  already managing - safe to run unconditionally after enable/start regardless of whether
+     *  that step was a fresh start or a no-op. Confirmed live (SteamOS fresh-install testing,
+     *  same underlying systemd-networkd mechanism this repair action drives). */
     @Override
     public CommandResult enableNetworkd(char[] sudoPassword) {
-        return ssh.execWithSudoPassword(FIX_TIMEOUT,
-                List.of("/usr/bin/systemctl", "enable", "--now", "systemd-networkd"), null, resolvePassword(sudoPassword));
+        char[] password = resolvePassword(sudoPassword);
+        CommandResult enableResult = ssh.execWithSudoPassword(FIX_TIMEOUT,
+                List.of("/usr/bin/systemctl", "enable", "--now", "systemd-networkd"), null, password);
+        if (enableResult.exitCode() != 0) {
+            return enableResult;
+        }
+        return ssh.execWithSudoPassword(FIX_TIMEOUT, List.of("/usr/bin/networkctl", "reload"), null, password);
     }
 
     @Override

@@ -46,6 +46,18 @@ document.getElementById('btn-take-ownership')?.addEventListener('click', async (
     post('/take-ownership');
 });
 
+document.getElementById('btn-delete-host')?.addEventListener('click', async () => {
+    if (!await window.appDialog.confirm('Delete this host? This cannot be undone.')) {
+        return;
+    }
+    const response = await fetch(`${basePath}/api/admin/hosts/${containerId}`, { method: 'DELETE' });
+    if (!response.ok) {
+        await window.appDialog.alert('Failed: ' + await response.text());
+        return;
+    }
+    window.location.href = `${basePath}/`;
+});
+
 document.getElementById('btn-add-ssh-credential')?.addEventListener('click', async () => {
     const accountName = document.getElementById('ssh-credential-account').value;
     const privateKeyPem = document.getElementById('ssh-credential-key').value;

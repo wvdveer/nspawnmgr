@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+        BUILD verified live (2026-08-27): a real `mvn package` against this exact file, on the
+        fedora-runner systemd-nspawn container on acer (see packaging/ci/fedora-runner/), produces
+        a real nspawnmgr-0.3.0-1.noarch.rpm via .gitea/workflows/build.yml's `rpm-package` job,
+        including the same bundled debian-minimal.tar.gz/postgresql-minimal.tar.gz consistency the
+        Arch/SteamOS packages already have. INSTALL still unverified - only the build side is
+        proven so far, same posture as the Arch package before its own SteamOS/QEMU verification
+        pass.
+
+        RPM package for production nspawnmgr deployment - the RPM/Fedora-host equivalent of
+        ../nspawnmgr-deb (a .deb) and ../nspawnmgr-arch (an Arch PKGBUILD). Uses
+        org.codehaus.mojo:rpm-maven-plugin - CORRECTION to this project's own earlier planning
+        assumption (confirmed live 2026-08-26): this plugin is NOT entirely Redline-based/
+        pure-Java the way jdeb is for .deb - it genuinely shells out to a real `rpmbuild` binary
+        for the actual build step (`rpm-build` package), and separately to plain `rpm` for one
+        macro lookup (see this file's own <vendor> comment below) unless overridden. A real
+        RPM/Fedora host (or equivalent - `rpm-build` installed) is required to build this, same
+        "needs the real distro's own native tooling" story ../nspawnmgr-arch/PKGBUILD already has
+        with `makepkg`, just discovered the hard way here since the plugin's own reputation
+        suggested otherwise going in. Confirmed live: this module can never fully build on a
+        non-RPM host (e.g. Windows) - packaging/ci/fedora-runner/ exists specifically to give this
+        a real build/test environment, same reasoning as the Arch runner.
+
+        Like the .deb/Arch packages, this ships already-built artifacts (the WARs, the vendored
+        guacd/Tomcat/Guacamole binaries) rather than building anything from a downloaded source
+        tarball. Build this LAST, same prerequisites as ../nspawnmgr-deb - see
+        tools/scripts/build-all.sh.
+
+        No <parent>: same reasoning as ../nspawnmgr-deb's own pom - this module just packages
+        already-built WARs into an .rpm, it doesn't need the Spring Boot parent at all.
+
+        Reuses ../nspawnmgr-deb/'s privileged-scripts/, vendor/ binaries, and sudoers files by
+        reference rather than duplicating them - same cross-module pattern
+        ../nspawnmgr-deb-bundled/pom.xml and ../nspawnmgr-arch/PKGBUILD already use. `Requires:`
+        translated from ../nspawnmgr-deb/debian/control's `Depends:` line - `openssh-server`/
+        `openssl`/`dnsmasq`/`systemd-container` all keep the exact same package names on Fedora
+        (confirmed real live 2026-08-26 via the packaging/ci/fedora-runner/ test runner - none of
+        these needed a name translation).
+
+        Three files need renaming on the way in (source filename differs from where the package
+        should install it) - rpm-maven-plugin's <mapping>/<source> model doesn't reliably support
+        per-file renaming the way jdeb's <dst> does, so a maven-antrun-plugin <copy file= tofile=>
+        step stages renamed copies into target/rpm-staging/ first (generate-resources phase, ahead
+        of the rpm-maven-plugin's own package-phase execution), and the rpm mappings below point
+        at those staged copies instead of the originals directly.
+    -->
+    <groupId>com.nspawnmgr</groupId>
+    <artifactId>nspawnmgr-rpm</artifactId>
+    <version>0.3.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>nspawnmgr-rpm</name>
+    <description>RPM package for production nspawnmgr deployment (Fedora/RHEL)</description>
+
+    <properties>
+        <!-- 2.3.0 is the real latest release on Maven Central (confirmed live via search.maven.org
+             - an earlier guess of 2.4.0 doesn't exist at all, "Could not find artifact"). -->
+        <rpm.plugin.version>2.3.0</rpm.plugin.version>
+        <staging.dir>${project.build.directory}/rpm-staging</staging.dir>
+        <debdir>${project.basedir}/../nspawnmgr-deb</debdir>
+        <nspawnmgr.war>${project.basedir}/../../target/nspawnmgr.war</nspawnmgr.war>
+        <auth.war>${project.basedir}/../../auth/target/auth.war</auth.war>
+        <root.war>${project.basedir}/../../root-wizard/target/ROOT.war</root.war>
+        <guacamole.jdbc.drivers.dir>${project.basedir}/../../target/guacamole-jdbc-drivers</guacamole.jdbc.drivers.dir>
+    </properties>
+
+    <build>
+        <plugins>
+            <!-- Stage the three rename cases before the rpm-maven-plugin execution below reads
+                 them - see this file's own top-of-file comment for why. One plugin, one step:
+                 antrun's <copy file= tofile=> renames directly from each original source, no
+                 intermediate non-renamed copy needed. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <!-- Explicit version required - this module has no <parent> providing
+                     dependencyManagement for it (same reasoning as ../nspawnmgr-deb's own pom -
+                     these packaging modules just package already-built WARs, no Spring Boot
+                     parent needed). 3.2.0 confirmed real/current via search.maven.org. -->
+                <version>3.2.0</version>
+                <executions>
+                    <execution>
+                        <id>stage-renamed-files</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <mkdir dir="${staging.dir}"/>
+                                <copy file="${debdir}/vendor/guacamole-1.5.5.war" tofile="${staging.dir}/guacamole.war"/>
+                                <copy file="${debdir}/debian/nspawnmgr.sudoers" tofile="${staging.dir}/nspawnmgr_exec"/>
+                                <copy file="${debdir}/vendor/README.md" tofile="${staging.dir}/guacd-bundle-README.md"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>rpm-maven-plugin</artifactId>
+                <version>${rpm.plugin.version}</version>
+                <extensions>true</extensions>
+                <executions>
+                    <execution>
+                        <id>generate-rpm</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>rpm</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <!-- Not documented on the goal's own reference page, but confirmed live
+                         required - "The parameters 'sourceEncoding' ... are missing or invalid"
+                         with no other value set. -->
+                    <sourceEncoding>UTF-8</sourceEncoding>
+                    <name>nspawnmgr</name>
+                    <!-- Must match this module's own <version> above (minus -SNAPSHOT) - same
+                         "keep these two in sync by hand" trap ../nspawnmgr-deb/pom.xml's own
+                         comment already warns about for the .deb's control-file Version:. -->
+                    <version>0.3.0</version>
+                    <release>1</release>
+                    <group>Applications/Internet</group>
+                    <packager>nspawnmgr packaging &lt;packaging@nspawnmgr.invalid&gt;</packager>
+                    <!-- Confirmed live: without this, the plugin shells out to a real `rpm`
+                         binary (`rpm -E %{_host_vendor}`) just to look up a default - fails
+                         outright on a Windows build host with no rpm binary at all, and is a
+                         fragile, environment-dependent default even on a real Linux host. -->
+                    <vendor>nspawnmgr packaging</vendor>
+                    <!-- TODO: fill in once a public repo URL exists - same placeholder as
+                         ../nspawnmgr-arch/PKGBUILD's own url="". -->
+                    <url></url>
+                    <summary>Web manager for systemd-nspawn containers with Apache Guacamole access</summary>
+                    <description>nspawnmgr provides a web UI for creating, starting, stopping, and accessing systemd-nspawn containers via Guacamole (SSH/RDP). Deploys as nspawnmgr.war and auth.war into its own self-hosted machine, alongside guacamole.war.</description>
+                    <license>Apache-2.0</license>
+                    <needarch>noarch</needarch>
+                    <requires>
+                        <require>openssh-server</require>
+                        <require>openssl</require>
+                        <require>dnsmasq</require>
+                        <require>systemd-container</require>
+                        <!-- NOT a straight translation of ../nspawnmgr-deb/debian/control's own
+                             Depends: line (which has no iptables entry either) - confirmed live
+                             (real Fedora 43 Cloud Edition install, packaging/nspawnmgr-rpm/
+                             verification): the privileged-scripts/nspawnmgr-outbound-*.sh scripts
+                             (the per-container outbound-internet-access toggle) call `iptables`
+                             directly and unconditionally, and Fedora's minimal Cloud image simply
+                             doesn't ship that binary at all - native nftables only. Debian's own
+                             Depends: line has the same latent gap in principle, it just doesn't
+                             bite there because `iptables` is near-universally already present on
+                             a real Debian host. `iptables-nft` is Fedora's nft-backed package that
+                             actually provides /usr/bin/iptables (confirmed live: the plain
+                             `iptables` package name doesn't exist on Fedora 43 - `iptables-nft`
+                             does, and command creation of the NSPAWNMGR-OUTBOUND chain succeeds
+                             immediately after installing it). -->
+                        <require>iptables-nft</require>
+                    </requires>
+
+                    <mappings>
+                        <mapping>
+                            <directory>/usr/share/nspawnmgr</directory>
+                            <filemode>644</filemode>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <sources>
+                                <source><location>${nspawnmgr.war}</location></source>
+                                <source><location>${auth.war}</location></source>
+                                <source><location>${root.war}</location></source>
+                                <source><location>${staging.dir}/guacamole.war</location></source>
+                                <source><location>${debdir}/vendor/guacd-bundle.tar.gz</location></source>
+                                <source><location>${debdir}/vendor/guacamole-auth-jdbc-1.5.5.tar.gz</location></source>
+                                <source><location>${debdir}/vendor/apache-tomcat-9.0.120.tar.gz</location></source>
+                                <!-- Consistency with the published .deb (the bundled variant,
+                                     nspawnmgr-deb-bundled, not the "online" nspawnmgr-deb) and
+                                     with the Arch/SteamOS packages (see those PKGBUILDs' own
+                                     comments on this exact point, raised again for RPM after
+                                     initially being missed here) - no network needed for the app
+                                     machine or a PostgreSQL DB machine at install time. Zero
+                                     script changes needed: nspawnmgr-bootstrap-app-machine.sh/
+                                     nspawnmgr-bootstrap-db-machine.sh already check for
+                                     BUNDLED_DEBIAN_MINIMAL/BUNDLED_POSTGRESQL_MINIMAL at these
+                                     exact /usr/share/nspawnmgr/ paths. -->
+                                <source><location>${debdir}/vendor/debian-minimal.tar.gz</location></source>
+                                <source><location>${debdir}/vendor/postgresql-minimal.tar.gz</location></source>
+                                <source><location>${debdir}/guacd.service</location></source>
+                                <source><location>${debdir}/tomcat9.service</location></source>
+                                <source><location>${debdir}/dnsmasq-nspawnmgr.conf</location></source>
+                                <source><location>${debdir}/70-nspawnmgr-bridge.netdev</location></source>
+                                <source><location>${debdir}/70-nspawnmgr-bridge.network</location></source>
+                                <source><location>${debdir}/debian/nspawnmgr-ci.sudoers</location></source>
+                            </sources>
+                        </mapping>
+                        <mapping>
+                            <!-- Fedora/RHEL-only: source for the SELinux policy module
+                                 post-install.sh compiles+loads to fix a real AVC denial (confirmed
+                                 live: systemd-machined can't watch a container's own cgroup.events
+                                 file under Enforcing, causing "Failed to register machine: Access
+                                 denied" on every single container start) - see that script's own
+                                 comment for the full story. Shipped as source (.te), not a
+                                 precompiled .pp, so it's compiled against whatever policy version
+                                 is actually running on the target host rather than baking in one
+                                 specific version at build time. -->
+                            <directory>/usr/share/nspawnmgr/selinux</directory>
+                            <filemode>644</filemode>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <sources>
+                                <source><location>${project.basedir}/selinux/nspawnmgr_machined_cgroup.te</location></source>
+                            </sources>
+                        </mapping>
+                        <mapping>
+                            <directory>/usr/share/nspawnmgr/guacamole-jdbc-drivers</directory>
+                            <filemode>644</filemode>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <sources>
+                                <source><location>${guacamole.jdbc.drivers.dir}</location></source>
+                            </sources>
+                        </mapping>
+                        <mapping>
+                            <directory>/usr/lib/nspawnmgr/privileged</directory>
+                            <filemode>750</filemode>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <sources>
+                                <source><location>${debdir}/privileged-scripts</location></source>
+                            </sources>
+                        </mapping>
+                        <mapping>
+                            <directory>/usr/lib/nspawnmgr</directory>
+                            <filemode>750</filemode>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <sources>
+                                <source><location>${debdir}/scripts/setup-sudo-account.sh</location></source>
+                                <source><location>${debdir}/scripts/install-guacamole-auth-jdbc.sh</location></source>
+                                <source><location>${debdir}/scripts/install-guacamole-jdbc-drivers.sh</location></source>
+                                <source><location>${debdir}/scripts/uninstall-nspawnmgr.sh</location></source>
+                                <source><location>${debdir}/scripts/upgrade-nspawnmgr.sh</location></source>
+                                <source><location>${debdir}/scripts/setup-ci-template-account.sh</location></source>
+                            </sources>
+                        </mapping>
+                        <mapping>
+                            <directory>/etc/sudoers.d</directory>
+                            <filemode>440</filemode>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <configuration>noreplace</configuration>
+                            <directoryIncluded>false</directoryIncluded>
+                            <sources>
+                                <source><location>${staging.dir}/nspawnmgr_exec</location></source>
+                            </sources>
+                        </mapping>
+                        <mapping>
+                            <directory>/usr/share/doc/nspawnmgr</directory>
+                            <filemode>644</filemode>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <sources>
+                                <source><location>${staging.dir}/guacd-bundle-README.md</location></source>
+                                <source><location>${project.basedir}/../../docs/administrator-guide.md</location></source>
+                            </sources>
+                        </mapping>
+                    </mappings>
+
+                    <postinstallScriptlet>
+                        <scriptFile>${project.basedir}/scripts/post-install.sh</scriptFile>
+                        <fileEncoding>UTF-8</fileEncoding>
+                    </postinstallScriptlet>
+                    <!-- Deliberately no-op, matching ../nspawnmgr-arch/nspawnmgr.install's own
+                         pre_remove()/post_remove() (see that file's own comment): never removes
+                         the nspawnmgr_exec account, /etc/nspawnmgr, or the self-hosted machine -
+                         those are the only credentials your containers stay reachable through.
+                         Full cleanup is what the shared uninstall-nspawnmgr.sh script (staged
+                         above at /usr/lib/nspawnmgr/uninstall-nspawnmgr.sh) is for, run by hand -
+                         same posture as the .deb/Arch packages, not a gap specific to RPM. -->
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

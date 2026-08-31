@@ -18,13 +18,6 @@ public class AdminHostPageController {
         this.currentUserProvider = currentUserProvider;
     }
 
-    @GetMapping("/admin/hosts")
-    public String list(Model model) {
-        model.addAttribute("hosts", hostService.listAll());
-        model.addAttribute("currentUser", currentUserProvider.get());
-        return "admin/hosts";
-    }
-
     @GetMapping("/admin/hosts/new")
     public String newForm(Model model) {
         model.addAttribute("currentUser", currentUserProvider.get());

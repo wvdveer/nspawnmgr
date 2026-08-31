@@ -1,11 +1,41 @@
 const basePath = document.body.getAttribute('data-base-path').replace(/\/$/, '');
 
+// Best-effort filename-vs-package-manager sanity check, not enforced server-side - a mismatch is
+// exactly the kind of easy mistake the package-manager dropdown invites (nothing else ties the two
+// together), so this is a confirm-to-proceed warning, not a hard block: an admin's file might
+// genuinely just be named unconventionally.
+const EXPECTED_EXTENSIONS = {
+    APT: ['.deb'],
+    DNF: ['.rpm'],
+    PACMAN: ['.pkg.tar.zst', '.pkg.tar.xz', '.pkg.tar.gz'],
+    APK: ['.apk'],
+    ISO: ['.iso'],
+};
+
+function filenameLooksWrongForPackageManager(filename, packageManager) {
+    const expected = EXPECTED_EXTENSIONS[packageManager];
+    if (!expected) {
+        return false;
+    }
+    const lower = filename.toLowerCase();
+    return !expected.some((ext) => lower.endsWith(ext));
+}
+
+async function confirmExtensionMismatchOrAbort(filename, packageManager) {
+    if (!filenameLooksWrongForPackageManager(filename, packageManager)) {
+        return true;
+    }
+    const expectedList = EXPECTED_EXTENSIONS[packageManager].join(' or ');
+    return window.appDialog.confirm(
+        `"${filename}" doesn't look like a ${packageManager} package (expected ${expectedList}). Continue anyway?`);
+}
+
 // Matches spring.servlet.multipart.max-file-size (application.yml) - keep both in sync. Same
 // pre-flight-rejection pattern files.js already uses, so an obviously-oversized file is rejected
 // immediately instead of only after a (possibly very slow) failed upload attempt.
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 * 1024;
 
-document.getElementById('upload-form').addEventListener('submit', (event) => {
+document.getElementById('upload-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const status = document.getElementById('upload-status');
     const progress = document.getElementById('upload-progress');
@@ -19,8 +49,12 @@ document.getElementById('upload-form').addEventListener('submit', (event) => {
         status.textContent = `"${fileInput.files[0].name}" is too large. The upload limit is 10GB.`;
         return;
     }
+    const packageManager = document.getElementById('packageManager').value;
+    if (!await confirmExtensionMismatchOrAbort(fileInput.files[0].name, packageManager)) {
+        return;
+    }
     const formData = new FormData();
-    formData.append('packageManager', document.getElementById('packageManager').value);
+    formData.append('packageManager', packageManager);
     formData.append('description', document.getElementById('description').value);
     formData.append('file', fileInput.files[0]);
 
@@ -94,8 +128,15 @@ document.getElementById('download-form').addEventListener('submit', async (event
     event.preventDefault();
     const status = document.getElementById('download-status');
     const url = document.getElementById('download-url').value;
+    const packageManager = document.getElementById('download-packageManager').value;
+    // Mirrors PackageDownloadService.filenameFromUrl()'s own "last path segment" heuristic - close
+    // enough for a best-effort warning, doesn't need to be exact.
+    const urlFilename = url.split('?')[0].split('/').filter(Boolean).pop() || url;
+    if (!await confirmExtensionMismatchOrAbort(urlFilename, packageManager)) {
+        return;
+    }
     const body = {
-        packageManager: document.getElementById('download-packageManager').value,
+        packageManager: packageManager,
         url: url,
         description: document.getElementById('download-description').value,
     };

@@ -169,7 +169,7 @@
             th:disabled="${container.state.name() != 'RUNNING' or !container.rdpEnabled or container.guacRdpConnectionId == null}">RDP</button>
     <button id="btn-session-vnc" class="btn-primary"
             th:disabled="${container.state.name() != 'RUNNING' or !container.vncEnabled or container.guacVncConnectionId == null}">VNC</button>
-    <a th:href="@{/containers/{id}/files(id=${container.id})}" class="btn-primary">Files</a>
+    <a th:href="@{/containers/{name}/files(name=${container.name})}" class="btn-primary">Files</a>
 </div>
 </div>
 </div>

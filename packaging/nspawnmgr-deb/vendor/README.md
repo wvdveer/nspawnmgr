@@ -173,47 +173,53 @@ directory, update the filename/version string in `packaging/nspawnmgr-deb/pom.xm
 `packaging/nspawnmgr-deb/debian/postinst`'s `TOMCAT_TARBALL` path (Tomcat) to match, and delete the
 old tarball.
 
-# debian-minimal.tar.gz (optional — only used by the "bundled" .deb variant)
+# debian-minimal.tar.gz (optional — only used by the "bundled" .deb variant, plus Arch/SteamOS/RPM)
 
-**Not present here by default.** Unlike every other file in this directory, this one isn't
-committed automatically — it has to be baked once, by hand, on a real Linux host with root, the
-same way `guacd-bundle.tar.gz` was. `packaging/nspawnmgr-deb` (the "online" variant, the default)
-never looks for this file at all and works exactly as it always has; only
-`packaging/nspawnmgr-deb-bundled` (see that module's own `pom.xml`) stages it, so its `postinst`
-copies a pre-baked image into place at install time instead of baking one fresh — no network access
-needed for that one step, at the cost of a larger `.deb`.
+**Not present here by default, and not committed to git at all** (too large — ~189MB — see the
+root `.gitignore`). `packaging/nspawnmgr-deb` (the "online" variant, the default) never looks for
+this file at all and works exactly as it always has; `packaging/nspawnmgr-deb-bundled`,
+`packaging/nspawnmgr-arch`, `packaging/nspawnmgr-steamos`, and `packaging/nspawnmgr-rpm` all stage
+it, so their installers copy a pre-baked image into place at install time instead of baking one
+fresh — no network access needed for that one step, at the cost of a larger package.
 
-It's the exact same tarball `nspawnmgr-create-debian-template.sh` itself produces — nothing
-special about the *build*, only about *when* it happens (once, ahead of time, by whoever maintains
-this vendor directory, rather than on every fresh install):
+`tools/scripts/ensure-vendor-templates.sh` (called automatically from `build-all.sh` whenever
+`BUILD_DEB_BUNDLED`/`BUILD_ARCH_PKG`/`BUILD_STEAMOS_PKG`/`BUILD_RPM` is set) obtains it
+automatically: downloads it from Gitea's generic package registry
+(`ward/nspawnmgr-vendor@bookworm`) if a copy is already published there, or bakes it fresh (real
+root required) and publishes the result for next time if not. To trigger a rebake by hand (e.g.
+after bumping the Debian release pin below), just delete whatever's published in the registry
+(or the local file, if testing without `PACKAGE_REGISTRY_TOKEN` set) and re-run a build that needs
+it — no separate manual step required anymore. The underlying bake command, for reference or
+manual use:
 
 ```bash
 sudo packaging/nspawnmgr-deb/privileged-scripts/nspawnmgr-create-debian-template.sh \
     packaging/nspawnmgr-deb/vendor/debian-minimal.tar.gz
 ```
 
-Run this on a Debian/Ubuntu-family host (so it takes the confirmed-live, fast `apt-get -o Dir=`
-path that script's own header comment describes, rather than the unverified chroot fallback) with
-real internet access, since this step is exactly the network fetch the bundled variant exists to
-avoid needing *at install time* — it still has to happen *somewhere*, just ahead of time here
-instead. Commit the resulting tarball to this directory once produced.
+Only confirmed reliable on a Debian/Ubuntu-family host (so it takes the confirmed-live, fast
+`apt-get -o Dir=` path that script's own header comment describes, rather than the unverified
+chroot fallback) with real internet access.
 
 To bump the Debian release this produces (the script pins `bookworm` — see its own `DEBIAN_RELEASE`
-variable): re-run the same command after updating that pin, and replace the committed file.
+variable): update that pin, **and update `ensure-vendor-templates.sh`'s own `PKG_VERSION`
+to match** (it's used as the registry version tag, deliberately distinct from nspawnmgr's own
+version, so an old release's consumers never silently pick up a mismatched bake).
 
-# postgresql-minimal.tar.gz (optional — only used by the "bundled" .deb variant)
+# postgresql-minimal.tar.gz (optional — only used by the "bundled" .deb variant, plus Arch/SteamOS/RPM)
 
-**Not present here by default**, same status as `debian-minimal.tar.gz` above — baked once, by
-hand, on a real Linux host with root, and committed. `debian-minimal.tar.gz` with PostgreSQL
-already `apt-get install`ed on top, so the DB setup wizard's PostgreSQL path is offline-capable too,
-not just the app machine itself. **Only PostgreSQL gets this treatment, not MySQL/MariaDB** — a
+**Not present here by default, and not committed to git at all** (too large — ~336MB — same status
+as `debian-minimal.tar.gz` above). `debian-minimal.tar.gz` with PostgreSQL already
+`apt-get install`ed on top, so the DB setup wizard's PostgreSQL path is offline-capable too, not
+just the app machine itself. **Only PostgreSQL gets this treatment, not MySQL/MariaDB** — a
 deliberate choice, not an oversight: bundling every engine's full dependency closure would add
-~150-250MB more to the `.deb` for a step that already needs real time regardless (cloning the DB
+~150-250MB more to the package for a step that already needs real time regardless (cloning the DB
 machine, running the engine's own first-boot init); PostgreSQL alone gives an admin who must do a
 fully offline install *something* usable, without chasing full parity across every engine choice.
 
-Requires `debian-minimal.tar.gz` (above) to already exist — this layers on top of it, rather than
-baking a rootfs from scratch itself:
+Same `ensure-vendor-templates.sh` handling as `debian-minimal.tar.gz` above (download-or-bake,
+auto-published back to the registry). The underlying bake command requires `debian-minimal.tar.gz`
+to already exist — this layers on top of it, rather than baking a rootfs from scratch itself:
 
 ```bash
 sudo packaging/nspawnmgr-deb/privileged-scripts/nspawnmgr-create-postgresql-template.sh \
@@ -222,7 +228,7 @@ sudo packaging/nspawnmgr-deb/privileged-scripts/nspawnmgr-create-postgresql-temp
 ```
 
 Same Debian/Ubuntu-family-host-with-real-internet-access requirement as `debian-minimal.tar.gz`.
-Commit the resulting tarball to this directory once produced. To rebuild after a PostgreSQL point
-release: re-run the same command against a fresh `debian-minimal.tar.gz` bake and replace the
-committed file — there's no in-place update, since `nspawnmgr-create-postgresql-template.sh`
-refuses to overwrite an existing target.
+To rebuild after a PostgreSQL point release: delete the registry's published copy (so
+`ensure-vendor-templates.sh` re-bakes it) — there's no in-place update, since
+`nspawnmgr-create-postgresql-template.sh` refuses to overwrite an existing target, so a manual
+rebuild needs a fresh `debian-minimal.tar.gz` bake first too.

@@ -181,6 +181,17 @@ else
     umount "$ROOTFS/proc"
     umount "$ROOTFS/dev"
     umount "$ROOTFS/run"
+    # The resolv.conf copy above is build-time-only glue for apt to reach Debian's mirrors from
+    # inside this chroot - it must not survive into the packed template. Left in place, every future
+    # container booted from it would ship with a real (non-symlink) /etc/resolv.conf frozen to
+    # whatever this BUILD host's own resolver happened to be at bake time: systemd's own postinst
+    # only ever creates the /etc/resolv.conf -> stub-resolv.conf symlink once, at package-install
+    # time, so nothing re-creates it at container boot, permanently locking out
+    # systemd-resolved's live per-link management - including the Domains=internal drop-in below,
+    # since resolved never gets a chance to actually own the file. Restore the standard
+    # systemd-resolved-managed symlink so real containers dynamically resolve via their own live
+    # network config again, same as the host-apt branch's untouched rootfs already does.
+    ln -sf ../run/systemd/resolve/stub-resolv.conf "$ROOTFS/etc/resolv.conf"
 fi
 
 # Without net.ipv4.ping_group_range set, ping from inside the container fails - confirmed live,

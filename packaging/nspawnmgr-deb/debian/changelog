@@ -1,3 +1,24 @@
+nspawnmgr (0.3.0) stable; urgency=medium
+
+  * Podman and QEMU join systemd-nspawn as full container/VM backends: pods
+    (podman, sharing the same nspawnbr0 bridge via netavark host-local IPAM)
+    and QEMU/KVM virtual machines (configurable CPU/memory/NIC/pointer
+    device, ISO boot media, disk cloning from a template), both alongside
+    nspawn containers on one unified Machines page.
+  * Redesigned UI: a persistent sidebar/topbar shell, a card-based Machines
+    grid with backend badges and inline SSH/RDP/VNC/Files pills, and a
+    Profile page with working logout.
+  * Machine ownership and sharing are now enforced uniformly across every
+    kind (nspawn, podman, QEMU, and admin-managed Hosts) - nothing is
+    visible by default except to its owner, an admin, or someone it's been
+    explicitly shared with; admins can take ownership of anything.
+  * A Host's RUNNING/STOPPED state is now resolved live via a cached TCP
+    reachability check instead of always showing RUNNING.
+  * Numerous smaller reliability fixes. See the project's git history for
+    the full list.
+
+ -- nspawnmgr packaging <packaging@nspawnmgr.invalid>  Tue, 25 Aug 2026 00:00:00 +1000
+
 nspawnmgr (0.2.0) stable; urgency=medium
 
   * Substantial accumulation of fixes and features since the initial 0.1.0

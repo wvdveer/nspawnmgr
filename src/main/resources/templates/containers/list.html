@@ -52,12 +52,11 @@
             <button class="access-pill VNC" th:data-container-name="${c.name}"
                     th:disabled="${c.state.name() != 'RUNNING' or !c.vncEnabled or c.guacVncConnectionId == null}">VNC</button>
             <a th:if="${c.kind.name() != 'EXTERNAL' and c.backend.name() != 'QEMU'}"
-               class="access-pill FILES" th:href="@{/containers/{id}/files(id=${c.id})}">FILES</a>
-            <button th:if="${c.kind.name() == 'EXTERNAL'}" class="access-pill FILES" disabled
-                    title="Files access isn't available for network hosts.">FILES</button>
-            <button th:if="${c.kind.name() != 'EXTERNAL' and c.backend.name() == 'QEMU'}"
-                    class="access-pill FILES" disabled
-                    title="Files access for QEMU VMs isn't available yet - planned for a future release.">FILES</button>
+               class="access-pill FILES" th:href="@{/containers/{name}/files(name=${c.name})}">FILES</a>
+            <a th:if="${(c.kind.name() == 'EXTERNAL' or c.backend.name() == 'QEMU') and c.state.name() == 'RUNNING' and c.guacSshConnectionId != null}"
+               class="access-pill FILES" th:href="@{/containers/{name}/files(name=${c.name})}">FILES</a>
+            <button th:if="${(c.kind.name() == 'EXTERNAL' or c.backend.name() == 'QEMU') and (c.state.name() != 'RUNNING' or c.guacSshConnectionId == null)}"
+                    class="access-pill FILES" disabled>FILES</button>
         </div>
     </div>
 </div>

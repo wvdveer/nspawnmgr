@@ -42,6 +42,14 @@ public record DbConnectionSettings(String url, String username, String password,
         try (Connection ignored = DriverManager.getConnection(url, username, password)) {
             return true;
         } catch (SQLException e) {
+            // Runs before Spring (and therefore any logging framework) exists, so there's no
+            // logger to use - but silently swallowing this otherwise leaves onStartup()'s
+            // "DB unreachable" fallback with zero clue why, forcing exactly the kind of indirect
+            // reconstruction (server-side logs, manual client connection, env var checks) this
+            // line exists to avoid next time. Tomcat captures stderr into catalina.out same as
+            // stdout, so this reaches the same place a real logger's output would.
+            System.err.println("DbConnectionSettings.isReachable(): connection to " + url
+                    + " as " + username + " failed - falling back to the DB setup wizard: " + e);
             return false;
         }
     }

@@ -21,6 +21,7 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -511,11 +512,23 @@ public class DatabaseSetupWizardServlet extends HttpServlet {
      * verified against (see {@code tools/scripts/start-dev-stack.sh}) starts Tomcat via
      * {@code startup.sh} instead, which does use the plain name - kept as the fallback so that path
      * keeps working unchanged.
+     *
+     * <p>{@code LocalDate.now(ZoneOffset.UTC)}, not the bare zone-less {@code LocalDate.now()} -
+     * confirmed live (2026-08-26) on a real SteamOS install in a non-UTC timezone (PDT): the
+     * {@code tomcat9.service} unit's own {@code rotatelogs} invocation has no {@code -l} flag, so
+     * per rotatelogs' own docs it names files using UTC regardless of the host's local timezone,
+     * while the bare {@code LocalDate.now()} this used to call resolves "today" using the JVM's
+     * local zone instead - once local time crosses midnight UTC but hasn't yet reached local
+     * midnight (or vice versa near the other end of the day), the two disagree on what "today" is,
+     * this panel looks for a file dated the wrong day, and it silently falls through to the never-
+     * produced plain {@code catalina.out}, empty. Matching rotatelogs' own UTC reference here -
+     * rather than adding {@code -l} to the unit file - keeps the actual log rotation/naming
+     * behavior on disk unchanged and only fixes which file this panel goes looking for.
      */
     private static Path tomcatLogPath() {
         String catalinaBase = System.getProperty("catalina.base", System.getProperty("catalina.home"));
         Path logsDir = Path.of(catalinaBase, "logs");
-        Path rotated = logsDir.resolve("catalina.out." + LocalDate.now() + ".log");
+        Path rotated = logsDir.resolve("catalina.out." + LocalDate.now(ZoneOffset.UTC) + ".log");
         return Files.isReadable(rotated) ? rotated : logsDir.resolve("catalina.out");
     }
 

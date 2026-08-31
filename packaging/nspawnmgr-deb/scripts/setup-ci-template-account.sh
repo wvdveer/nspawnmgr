@@ -60,12 +60,13 @@ fi
 
 # 1. Service account - idempotent. Real home dir + shell since it's an SSH login target that must
 #    be able to run a non-interactive remote command (`ssh user@host sudo ...`); a nologin-style
-#    shell would refuse that too, not just an interactive session.
+#    shell would refuse that too, not just an interactive session. Plain `useradd` (not Debian's
+#    `adduser` wrapper) - see setup-sudo-account.sh's matching comment for why.
 ACCOUNT_EXISTED=false
 if id "$SERVICE_USER" >/dev/null 2>&1; then
     ACCOUNT_EXISTED=true
 else
-    adduser --system --home "$SERVICE_HOME" --shell /bin/bash --group "$SERVICE_USER"
+    useradd -r -m -d "$SERVICE_HOME" -s /bin/bash -U "$SERVICE_USER"
 fi
 
 # 2. Wrapper scripts - only copied in if a source was given (standalone/manual use); when installed

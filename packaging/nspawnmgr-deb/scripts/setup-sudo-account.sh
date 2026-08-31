@@ -60,8 +60,13 @@ mkdir -p "$ETC_DIR"
 
 # 1. Service account — idempotent. Real home dir + shell since it's an SSH login target for
 #    RealContainerCliExecutor/RealContainerFilesystemProvisioner/RealContainerOutboundAccessManager.
+#    Plain `useradd` (not Debian's `adduser` wrapper) so this script is directly reusable by the
+#    Arch/RPM packages too - `-r` (system account) + `-m` (create the home dir, off by default for
+#    system accounts) + `-U` (user-private group, matching adduser's own --group behavior) is the
+#    portable equivalent, identical across Debian/Fedora/Arch since it's shadow-utils, not a
+#    distro-specific tool.
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
-    adduser --system --home "$SERVICE_HOME" --shell /bin/bash --group "$SERVICE_USER"
+    useradd -r -m -d "$SERVICE_HOME" -s /bin/bash -U "$SERVICE_USER"
 fi
 
 # 2. Wrapper scripts — only copied in if a source was given (standalone/manual use); when run
@@ -84,9 +89,15 @@ if [ ! -f "$ENV_FILE" ]; then
     # Best-effort real hostname for HOST_EXTERNAL_HOSTNAME (nspawnmgr.host.external-hostname) — the
     # outward-facing name the /admin/settings URL "Refresh" buttons use, not the SSH_HOST above
     # (always 127.0.0.1 — that's the separate sudo-account transport, unrelated to this). `hostname
-    # -f` needs the FQDN to resolve (DNS/hosts), which isn't guaranteed on a fresh box; fall back to
-    # the short hostname, which always works.
-    DETECTED_HOSTNAME="$(hostname -f 2>/dev/null || hostname)"
+    # -f` needs the FQDN to resolve (DNS/hosts), which isn't guaranteed on a fresh box, so this
+    # only even tries it if the `hostname` binary exists at all - confirmed live: SteamOS ships
+    # no `hostname` command whatsoever (not even the plain, no-flags form), and the unguarded
+    # original call aborted this whole script outright under `set -e` before it ever reached the
+    # $ENV_FILE write below, with no visible error surfaced anywhere in the .install hook chain
+    # that called it. `uname -n` is the portable, always-present fallback (plain POSIX/coreutils,
+    # not a distro-specific package) - short hostname only, no FQDN, same as `hostname` (no -f)
+    # would have given anyway.
+    DETECTED_HOSTNAME="$( (command -v hostname >/dev/null 2>&1 && hostname -f 2>/dev/null) || uname -n)"
     # nspawnmgr.host.public-address (HOST_PUBLIC_ADDRESS) — what guacd/ContainerReadinessPollingService
     # dial to reach *into* a container's forwarded port, not the same thing as HOST_EXTERNAL_HOSTNAME
     # above (that's for outside-facing URLs). A literal 127.0.0.1 (application.yml's own fallback
@@ -99,12 +110,18 @@ if [ ! -f "$ENV_FILE" ]; then
     # address instead of a normal LAN address, confirmed live on a host with a tun-pure VPN
     # interface. List this host's own global-scope addresses directly instead, skipping
     # virtual/tunnel-style interfaces; `hostname -I` is the fallback if that finds nothing.
+    # nspawnbr0 (this host's own shared container bridge) must be excluded too - confirmed live,
+    # its address (10.100.0.1) doesn't match any of the other prefixes below ("br-" isn't a match
+    # for a literal "nspawnbr0"), so without this it could get picked as "the" host address on a
+    # host where nspawnbr0 happens to enumerate before the real external NIC - just as broken as
+    # the literal-127.0.0.1 case this whole detection exists to avoid (only reachable from inside
+    # the container bridge's own network, not from a real client outside the host).
     DETECTED_PUBLIC_ADDRESS="$(ip -4 -o addr show scope global 2>/dev/null | awk '
         { iface=$2; addr="";
           for (i=1;i<=NF;i++) if ($i=="inet") { addr=$(i+1); sub(/\/.*/,"",addr) }
-          if (addr != "" && iface !~ /^(tun|tap|wg|ppp|docker|veth|ve-|br-)/) { print addr; exit } }')"
+          if (addr != "" && iface !~ /^(tun|tap|wg|ppp|docker|veth|ve-|br-|nspawnbr)/) { print addr; exit } }')"
     if [ -z "$DETECTED_PUBLIC_ADDRESS" ]; then
-        DETECTED_PUBLIC_ADDRESS="$(hostname -I 2>/dev/null | awk '{print $1}')"
+        DETECTED_PUBLIC_ADDRESS="$(command -v hostname >/dev/null 2>&1 && hostname -I 2>/dev/null | awk '{print $1}')"
     fi
     DETECTED_PUBLIC_ADDRESS="${DETECTED_PUBLIC_ADDRESS:-127.0.0.1}"
     # nspawnmgr.crypto.secret-key (APP_SECRET_KEY) — required at boot (SecretEncryptionService
@@ -151,7 +168,7 @@ else
     # deliberately customized it since (or, for APP_SECRET_KEY, already has real encrypted data at
     # rest keyed to it).
     if ! grep -q '^HOST_EXTERNAL_HOSTNAME=' "$ENV_FILE"; then
-        DETECTED_HOSTNAME="$(hostname -f 2>/dev/null || hostname)"
+        DETECTED_HOSTNAME="$( (command -v hostname >/dev/null 2>&1 && hostname -f 2>/dev/null) || uname -n)"
         echo "HOST_EXTERNAL_HOSTNAME=$DETECTED_HOSTNAME" >> "$ENV_FILE"
         echo "setup-sudo-account.sh: backfilled HOST_EXTERNAL_HOSTNAME=$DETECTED_HOSTNAME into $ENV_FILE (upgrade from an older version)."
     fi
@@ -159,9 +176,9 @@ else
         DETECTED_PUBLIC_ADDRESS="$(ip -4 -o addr show scope global 2>/dev/null | awk '
             { iface=$2; addr="";
               for (i=1;i<=NF;i++) if ($i=="inet") { addr=$(i+1); sub(/\/.*/,"",addr) }
-              if (addr != "" && iface !~ /^(tun|tap|wg|ppp|docker|veth|ve-|br-)/) { print addr; exit } }')"
+              if (addr != "" && iface !~ /^(tun|tap|wg|ppp|docker|veth|ve-|br-|nspawnbr)/) { print addr; exit } }')"
         if [ -z "$DETECTED_PUBLIC_ADDRESS" ]; then
-            DETECTED_PUBLIC_ADDRESS="$(hostname -I 2>/dev/null | awk '{print $1}')"
+            DETECTED_PUBLIC_ADDRESS="$(command -v hostname >/dev/null 2>&1 && hostname -I 2>/dev/null | awk '{print $1}')"
         fi
         DETECTED_PUBLIC_ADDRESS="${DETECTED_PUBLIC_ADDRESS:-127.0.0.1}"
         echo "HOST_PUBLIC_ADDRESS=$DETECTED_PUBLIC_ADDRESS" >> "$ENV_FILE"
@@ -174,7 +191,7 @@ else
         echo "setup-sudo-account.sh: backfilled a fresh APP_SECRET_KEY into $ENV_FILE (upgrade from an older version)."
     fi
     if ! grep -q '^USER_ID_URL=' "$ENV_FILE" && ! grep -q '^AUTH_LOGIN_URL=' "$ENV_FILE"; then
-        DETECTED_HOSTNAME="$(hostname -f 2>/dev/null || hostname)"
+        DETECTED_HOSTNAME="$( (command -v hostname >/dev/null 2>&1 && hostname -f 2>/dev/null) || uname -n)"
         cat >> "$ENV_FILE" <<EOF
 USER_ID_URL=http://$DETECTED_HOSTNAME:8080/auth/userinfo
 AUTH_LOGIN_URL=http://$DETECTED_HOSTNAME:8080/auth/login

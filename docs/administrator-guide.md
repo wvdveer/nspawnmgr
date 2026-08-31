@@ -149,12 +149,13 @@ the container first, which is nonstandard on Alpine and untested here.
 
 **debian-minimal is the only one of the three "Set up X-minimal" buttons confirmed against a real
 container** — it's been created and booted live multiple times over the course of this project.
-**fedora-minimal** and **arch-minimal** are new and unverified: no Fedora/RHEL or Arch host exists
-anywhere in this project's test/dev environment, so
-`nspawnmgr-create-fedora-template.sh`/`nspawnmgr-create-arch-template.sh` are built to each distro's
-own documented bootstrap conventions as carefully as possible, but have never actually been run
-against a real systemd-nspawn container. If you try either, please report back what breaks — some
-specific known risk areas, roughly in order of how likely they are to bite:
+**fedora-minimal** and **arch-minimal** remain unverified specifically: real Fedora/Arch hosts do
+exist and have been used extensively elsewhere in this project (see the RPM/Arch package
+installation sections above), but `nspawnmgr-create-fedora-template.sh`/
+`nspawnmgr-create-arch-template.sh` — the scripts these two specific admin-UI buttons call — have
+never actually been exercised against a real systemd-nspawn container. If you try either, please
+report back what breaks — some specific known risk areas, roughly in order of how likely they are
+to bite:
 
 - **All three bake scripts (Debian, Fedora, Arch) detect the HOST's own distro and pick one of two
   install paths accordingly**, rather than assuming any one distro. Each script checks
@@ -171,8 +172,8 @@ specific known risk areas, roughly in order of how likely they are to bite:
   the same technique `pacstrap`/`arch-chroot`/`debootstrap`'s own chroot stage use. Only the Debian
   script's host-side branch (Debian-on-Debian) has actually been exercised against a real container;
   the Debian script's chroot fallback, and both branches of the Fedora/Arch scripts, are built to
-  spec but unverified — no Fedora/RHEL or Arch host exists anywhere in this project's test
-  environment to confirm any of them against.
+  spec but unverified — these specific bake-a-container-template scripts have never been run for
+  real, even though real Fedora/Arch hosts exist and are used elsewhere in this project.
 - **arch-minimal is the most speculative of the three.** Known risk areas: (1) the downloaded
   image's `/etc/pacman.d/mirrorlist` ships with every mirror commented out by Arch's own
   convention — the script writes in `geo.mirror.pkgbuild.com` (Arch's official GeoIP redirector)
@@ -553,10 +554,11 @@ same address (see ["Resolving containers by name"](#resolving-containers-by-name
 
 **Lifecycle** has full parity with nspawn containers — Start/Stop/Restart/Pause/Resume all dispatch
 to native podman commands (`start`/`stop`/`kill`/`restart`/`pause`/`unpause`) rather than any
-nspawn-specific mechanism. A separate **`PodLivenessPollingService`** re-checks every `RUNNING`
-pod's real podman status on its own ~30s schedule and flips nspawnmgr's own state to `STOPPED` the
-moment podman disagrees — needed because a pod can exit entirely on its own (a bad or missing
-keep-alive command, see the Command field above) with nothing else in the app ever noticing, since
+nspawn-specific mechanism. A separate **`ContainerLivenessPollingService`** re-checks every
+`RUNNING` pod's real podman status (and every `RUNNING` QEMU VM's real unit status — see below) on
+its own ~30s schedule and flips nspawnmgr's own state to `STOPPED` the moment reality disagrees —
+needed because a pod can exit entirely on its own (a bad or missing keep-alive command, see the
+Command field above) with nothing else in the app ever noticing, since
 pods skip the nspawn-only readiness-polling path entirely. `PAUSED` pods aren't polled.
 
 **Access**: SSH/RDP/VNC are **prompt-credentials only**, the same reachability-gated mechanism
@@ -684,12 +686,14 @@ the HMP monitor for the operations QEMU itself has to be asked to do gracefully:
 and Restart are plain `systemctl start/stop/restart` against the VM's own unit; graceful Stop and
 Pause/Resume go through HMP as described above rather than `systemctl freeze`/`thaw`.
 
-**One known gap**: there's no QEMU-equivalent of podman's `PodLivenessPollingService` above —
-nothing reconciles nspawnmgr's own database state against a QEMU guest process crashing or being
-killed out from under its own systemd unit, only against the unit itself stopping (which
-`systemctl start/stop` already tracks correctly, since nspawnmgr always drives a VM's lifecycle
-through that same unit rather than touching the QEMU process directly). Worth keeping in mind if a
-VM's badge ever seems to disagree with reality after an unusual host-side event.
+**Crash reconciliation**: the same `ContainerLivenessPollingService` described above for podman
+also covers QEMU — every `RUNNING` VM's own unit is re-checked (`systemctl is-active`) on the same
+~30s schedule, and nspawnmgr's own state flips to `STOPPED` the moment the unit itself has stopped
+or gone missing out from under it. **Still a real limit, not fully solved**: this only detects the
+unit/process itself going away, not a guest-OS-only crash where the process stays alive but
+whatever's running inside has hung or died — `systemctl is-active` has no visibility into that, and
+neither backend offers a way to ask. Worth keeping in mind if a VM's badge ever seems to disagree
+with reality despite the process still technically running.
 
 No dedicated automated test suite exists for the QEMU backend either (no `*Qemu*` test classes) —
 covered by the general suite against fakes, plus manual dev-stack and live click-through; the
@@ -771,11 +775,12 @@ contained to a single, download-only, non-interactive step instead of the real i
 This sub-step
 needs the same sudo-password tier as container creation, so it fails outright (no silent partial
 install) if no stored sudo secret is configured and the request didn't supply one. **DNF and PACMAN
-support is unverified**: no RPM/Fedora/RHEL or Arch host exists anywhere in this project's test
-environment (see ["Fedora and Arch templates: verification
-status"](#fedora-and-arch-templates-verification-status) below), so both are built to their
-documented CLI contract as carefully as possible but have never been exercised against a real
-container — flag any live discrepancy found. **PACMAN is the more speculative of the two**: unlike
+support for installing an uploaded package *into a Fedora/Arch container* is unverified** —
+distinct from installing *nspawnmgr itself* on a real RPM/Arch host, which is verified (see the RPM
+and Arch package installation sections above); this specific in-container package-upload flow has
+never been exercised against a real Fedora/Arch container, only built to each tool's documented
+CLI contract as carefully as possible — flag any live discrepancy found. **PACMAN is the more
+speculative of the two**: unlike
 `apt-get install -s`/`dnf install --assumeno`, which are apt/dnf's own well-documented dry-run modes,
 `pacman -U --print`'s behavior for a full local-file dependency-closure simulation has never been
 exercised anywhere in this project, not even manually. **APK** packages skip all of this and just
@@ -873,6 +878,15 @@ doesn't notice a changed `addn-hosts` file on its own (no automatic/inotify-base
 only SIGHUP or a restart), so every write is followed by a reload
 (`nspawnmgr-reload-dnsmasq.sh`/`DnsReloader`) — without it, containers would keep failing to
 resolve each other no matter how current the file on disk actually is.
+
+Since this `dnsmasq` instance runs directly on the host, it also reads and serves the host's own
+`/etc/hosts` to containers by default (confirmed as the wanted behavior live) — an admin's own
+static LAN entries there (e.g. `192.168.1.15 acer`) become resolvable from inside every container
+too, not just from the host itself. The one caveat: if `/etc/hosts` also maps the host's bare
+hostname to a loopback address (Debian's own `127.0.1.1 <hostname>` convention) *and* that same
+bare name is set as the external-hostname setting below, the two sources collide and dnsmasq may
+answer with either address — avoid picking an already-`/etc/hosts`-mapped short name for that
+setting.
 
 `/etc/nspawnmgr/dns-hosts` also carries one more, fixed entry: the host's own external hostname
 (`nspawnmgr.host.external-hostname`/`HOST_EXTERNAL_HOSTNAME` — detected automatically at install
@@ -995,11 +1009,11 @@ here. There's no separate Hosts page: a Host is a `Container` row under the hood
 `EXTERNAL`), so it shows up as an ordinary card — a fixed `HOST` badge instead of a backend badge
 — right alongside nspawn/podman/QEMU machines on the main **Machines** grid, and its detail page
 is the same `/containers/{id}` route every other machine uses. Admins add one from the "+" menu's
-**New Host** item (`/admin/hosts/new`, admin-only) or edit an existing one at
-`/admin/hosts/{id}/edit`: a name, a hostname/IP, an owner username (must belong to a user who has
-already logged in at least once), and which of SSH/RDP/VNC to offer plus the port for each. The
-admin pages above are the only way to manage these entries; the database is the sole source of
-truth.
+**New Host** item (`/admin/hosts/new`, admin-only): a name, a hostname/IP, an owner username (must
+belong to a user who has already logged in at least once), and which of SSH/RDP/VNC to offer plus
+the port for each. An admin viewing that host's own detail page gets **Edit host** (back to the
+same form, at `/admin/hosts/{id}/edit`) and **Delete host** buttons in its Manage panel — there is
+no separate hosts list page; the database is the sole source of truth.
 
 **Visibility follows the same owner/admin/shared rule as every other machine** — a Host isn't
 public just because it's admin-created; only an admin, its owner, or someone it's been explicitly
@@ -1318,10 +1332,33 @@ your deployment.
 ## 5. Installing nspawnmgr
 
 Two paths from here — pick one. **Option A (the `.deb`) does §3 and most of §6 for you**; Option B
-is the fully manual walkthrough in §6 onward. Either way, §4 (database), the Guacamole
-`GUACAMOLE_HOME`/JDBC setup in §7, the config values in §9, and verification in §10 are still your
-own responsibility — the `.deb` only automates the *sudo account* and *deploying the WARs into
-Tomcat*, not Guacamole's own storage backend or nspawnmgr's application-level settings.
+is the fully manual walkthrough in §6 onward. (Arch Linux and Fedora/RHEL packages also exist,
+same automation as Option A — see ["Installing on Arch Linux"](#installing-on-arch-linux) and
+["Installing on Fedora/RHEL (RPM)"](#installing-on-fedorarhel-rpm) right after it.) Either way, §4
+(database), the Guacamole `GUACAMOLE_HOME`/JDBC setup in §7, the config values in §9, and
+verification in §10 are still your own responsibility — none of the three packages automate more
+than the *sudo account* and *deploying the WARs into Tomcat*, not Guacamole's own storage backend
+or nspawnmgr's application-level settings.
+
+**What you need to *build* each package format is not the same as what you need to *install* it**
+— worth knowing before you pick a path, especially if the machine you're building on isn't the one
+you're deploying to:
+
+| Format | Build needs | Install needs | Cross-buildable? |
+|---|---|---|---|
+| `.deb` (`packaging/nspawnmgr-deb/`) | JDK 21 + Maven (the `jdeb` plugin is pure Java) | `apt`, Debian/Ubuntu | **Yes** — build on any host with a JDK, including Arch/Fedora/Windows/macOS |
+| Arch (`packaging/nspawnmgr-arch/`) | JDK 21 + Maven, **plus `makepkg`/`base-devel`** | `pacman`, Arch Linux | **No** — `makepkg` is native Arch tooling with no cross-platform equivalent; the build host must itself be Arch (or the `archlinux/devtools` container image) |
+| RPM (`packaging/nspawnmgr-rpm/`) | JDK 21 + Maven, **plus `rpm-build`** | `dnf`, Fedora/RHEL | **No** — despite `rpm-maven-plugin`'s reputation, it genuinely shells out to a real `rpmbuild` binary; confirmed live it fails outright on a non-RPM build host (e.g. Windows) with no cross-platform equivalent, same story as Arch's `makepkg` |
+
+If you don't have a spare Arch or Fedora machine to build these on,
+`packaging/ci/arch-runner/bootstrap-arch-runner.sh` and `packaging/ci/fedora-runner/
+bootstrap-fedora-runner.sh` show one way to get either without dual-booting or bare metal: both
+bake a real rootfs into a plain `systemd-nspawn` container (not a
+Docker/Podman image — nspawn turned out simplest here, since it shares the host's network
+namespace by default rather than needing its own bridge just for CI). `.gitea/workflows/build.yml`'s
+`arch-package` and `rpm-package` jobs show the exact build commands that run once each container
+exists (install the JDK/Maven/native packaging tooling, then `BUILD_ARCH_PKG=1`/`BUILD_RPM=1
+tools/scripts/build-all.sh`, same as shown below).
 
 ### Option A: the `.deb` package (recommended)
 
@@ -1352,7 +1389,7 @@ a Gitea access token with package-write scope — see that job's own comment in 
 **Install it:**
 
 ```bash
-sudo apt install ./nspawnmgr_0.2.0_all.deb   # pulls in a JRE, openssh-server, openssl, apache2-utils, dnsmasq, systemd-container - not tomcat9
+sudo apt install ./nspawnmgr_0.3.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
 ```
 
 Neither `tomcat9` nor `guacd`/`guacamole-tomcat` are in this package's `Depends:` — apt's own
@@ -1436,6 +1473,23 @@ you're using admin-approval mode, per that section), and verification (§10).
 `postrm` deliberately never deletes `nspawnmgr_exec` or `/etc/nspawnmgr` on package removal/purge
 — that account is the only credential your containers are reachable through.
 
+**To upgrade an existing install to a newer package build** (a bug fix, not a fresh install):
+`sudo /usr/lib/nspawnmgr/upgrade-nspawnmgr.sh <path-to-the-new-package-file>`. A plain
+`apt install`/`dnf install`/`pacman -U` — or even `apt install --reinstall` — isn't enough by
+itself: those can silently no-op if the recorded installed-version string hasn't changed, which
+matters since every build within a dev cycle republishes under the same fixed version. This script
+installs the given package file directly instead (always applies its content, regardless of the
+recorded version), which in turn re-triggers the package's own postinstall — and that always calls
+`nspawnmgr-bootstrap-app-machine.sh`, which fully reconciles the self-hosted `nspawnmgr` machine's
+contents on every call, not just on first install: the four bundled WARs, `guacd`'s own bundle and
+service, Tomcat's service unit, and the SSH-back credential file are all refreshed, and the
+machine is stopped/restarted around that so nothing is overwritten while still in use. Its existing
+host-forwarded port is preserved across the upgrade, not re-picked. Non-destructive —
+`/var/lib/machines` (every *other* container) and both databases are left completely alone; the
+base rootfs clone and the `tomcat`/`guacd` system accounts inside the machine are also left alone
+(re-touching those could clobber real admin customization, or fail outright on a second run) — a
+Tomcat *version* bump specifically still needs a full reinstall, same as before.
+
 **To remove all of it anyway** (test machines, starting over from scratch — not something to run
 on a real deployment without thinking about it first, since it deletes the sudo/SSH credentials
 your containers stay reachable through): `sudo /usr/lib/nspawnmgr/uninstall-nspawnmgr.sh`. Beyond
@@ -1459,6 +1513,110 @@ the `nspawnmgr`/`guacamole` databases and their DB users (only supported when `D
 `localhost`/`127.0.0.1`, read from `db.properties`/`nspawnmgr.env` before those files are removed)
 and whether to remove every container currently registered with `machinectl`. Useful for quickly
 resetting a real test host between iterations, since those two steps are real data loss.
+
+### Installing on Arch Linux
+
+Build and install both verified live on real Arch-family systems: `makepkg -f` against this exact
+`PKGBUILD` (the `arch-runner` systemd-nspawn container on acer — see `packaging/ci/arch-runner/`)
+produces a real `nspawnmgr-0.3.0-1-any.pkg.tar.zst` via `.gitea/workflows/build.yml`'s
+`arch-package` job, and the resulting package's own `pacman -U` + `nspawnmgr.install` hooks have
+been exercised repeatedly on a real SteamOS system (Arch-based, `pacman`-compatible once
+`steamos-readonly disable` is run) — fresh installs, uninstall/reinstall cycles, and in-place
+upgrades via `upgrade-nspawnmgr.sh` have all been confirmed working, including the self-hosted
+machine coming up with a real network lease and the web UI answering correctly. A **separate**
+package, `packaging/nspawnmgr-steamos/`, exists specifically for SteamOS (see its own `provides`/
+`conflicts` against this one — install exactly one of the two, never both) since SteamOS's small
+root partition needs storage relocated under `/home`; this plain Arch package is what a
+non-SteamOS Arch host should install instead. That non-SteamOS path — installing this exact
+package on genuinely vanilla Arch (as opposed to SteamOS, which shares the same underlying
+`pacman`/`systemd` mechanics but isn't identical) — hasn't been directly tested yet; report back
+what breaks if you try it.
+
+`packaging/nspawnmgr-arch/` (a `PKGBUILD` + `nspawnmgr.install`, not a Maven module — no
+Maven-native Arch packaging plugin exists) is otherwise the same self-hosted architecture as Option
+A above, just a different package format: same `nspawnmgr_exec` account/sudoers/bridge/dnsmasq
+setup, same self-hosted `nspawnmgr` machine (still Debian-minimal regardless of this host's own
+distro — see [§1](#1-architecture-overview) — an Arch host doesn't change what the self-hosted
+*app machine* runs, only what the *bare host* itself needs), same "What just happened," "Check it
+landed correctly," and "What's still manual after this" as Option A — read those above, they apply
+here unchanged. The differences are narrow:
+
+- **Dependencies**: `openssh`, `openssl`, `dnsmasq` — no JRE, no `apache2-utils`-equivalent (both
+  install *inside* the self-hosted app machine, not needed on the bare host at all — see
+  `nspawnmgr-bootstrap-app-machine.sh`), no `systemd-container`-equivalent (`machinectl`/
+  `systemd-nspawn` ship in Arch's own base `systemd` package already).
+- **No firewall step**: unlike the `.deb`'s `ufw` DHCP carve-out, Arch ships no firewall enabled by
+  default, so there's nothing to work around. If you've set up `nftables`/`iptables`/`ufw` yourself,
+  make sure inbound UDP/67 on `nspawnbr0` is allowed (same requirement the `.deb`'s own `ufw` step
+  exists for).
+- **Removal stays conservative by default**: `pacman -R`/`-Rns` doesn't give the same purge-vs-remove
+  distinction `dpkg`/`apt` does, so `nspawnmgr.install`'s `post_remove()` deliberately does as little
+  as `postrm`'s own default (non-purge) behavior — same `uninstall-nspawnmgr.sh` script as the `.deb`
+  handles full cleanup, still installed at the same path.
+
+Build and install:
+
+```bash
+mvn -DskipTests install
+mvn -f auth/pom.xml -DskipTests package
+mvn -f root-wizard/pom.xml -DskipTests package
+BUILD_ARCH_PKG=1 tools/scripts/build-all.sh   # needs `makepkg` on PATH - a real Arch host, or the
+                                               # archlinux/devtools container image
+
+sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.3.0-1-any.pkg.tar.zst
+```
+
+### Installing on Fedora/RHEL (RPM)
+
+Build and install both verified live on a real Fedora 43 host under `Enforcing` SELinux (the
+`fedora-runner` systemd-nspawn container on acer for building — see
+`packaging/ci/fedora-runner/` — and a separate `fedora-test-vm` QEMU guest for install
+verification): the real end-to-end flow (DB setup wizard, login, container creation, and repeated
+in-place upgrades via `upgrade-nspawnmgr.sh`) has been confirmed working, including under
+SELinux Enforcing specifically.
+
+`packaging/nspawnmgr-rpm/` (a real Maven module — `rpm-maven-plugin` genuinely shells out to
+`rpmbuild`, it isn't pure Java despite appearances) is otherwise the same self-hosted architecture
+as Option A above — same `nspawnmgr_exec` account/sudoers/bridge/dnsmasq setup, same self-hosted
+`nspawnmgr` machine (still Debian-minimal regardless of this host's own distro), same "What just
+happened," "Check it landed correctly," and "What's still manual after this" as Option A. The
+differences are narrow:
+
+- **Dependencies**: `openssh-server`, `openssl`, `dnsmasq`, `systemd-container`, and
+  `iptables-nft` — Fedora's nftables-backed package that actually provides `/usr/bin/iptables`
+  (the plain `iptables` package name doesn't exist on Fedora; the per-container outbound-internet
+  toggle needs a real `iptables` binary regardless of backend).
+- **firewalld carve-out**: Fedora ships `firewalld` active by default. Installing adds `nspawnbr0`
+  to firewalld's `trusted` zone and reloads — without this, firewalld's default zone policy
+  silently blocks DHCP leases to containers, same failure shape as SteamOS's own `firewalld`
+  carve-out (below).
+- **SELinux policy module**: under `Enforcing` mode, `systemd_machined_t` needs a small custom
+  policy module (`nspawnmgr_machined_cgroup.te`, compiled from source at install time via
+  `checkmodule`/`semodule_package`/`semodule -i` rather than shipped as a precompiled `.pp`, so it
+  matches whatever policy version is actually running) granting `watch` on `cgroup_t` files — a
+  general SELinux policy gap on any stock Enforcing Fedora host, not nspawnmgr-specific, that
+  otherwise breaks every `machinectl`/`systemd-nspawn` container start with "Failed to register
+  machine: Access denied."
+- **Removal stays conservative by default**, same posture and same `uninstall-nspawnmgr.sh` script
+  as the other two package formats.
+
+One environment-topology caveat, not a code bug: `AUTH_LOGIN_URL`'s auto-detected hostname needs
+to be resolvable from wherever the browser actually connects (a deliberate design choice — see
+[§9](#9-configuring-nspawnmgr) — that avoids a worse cookie-scoping login loop). This can bite
+specifically when testing through a NAT/tunnel/port-forward topology rather than a directly
+reachable real hostname; adjust `AUTH_LOGIN_URL` by hand in that case.
+
+Build and install:
+
+```bash
+mvn -DskipTests install
+mvn -f auth/pom.xml -DskipTests package
+mvn -f root-wizard/pom.xml -DskipTests package
+BUILD_RPM=1 tools/scripts/build-all.sh   # needs a real `rpmbuild` binary (`rpm-build` package) -
+                                          # a real Fedora/RHEL host, no cross-platform equivalent
+
+sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.3.0-1.noarch.rpm
+```
 
 ### Option B: build from source, deploy manually
 
@@ -1496,9 +1654,8 @@ sudo chmod 750 /etc/nspawnmgr/auth-live
 ## 6. Tomcat 9 (nspawnmgr + Guacamole + auth)
 
 **This section describes deploying Tomcat directly on the host** — the shape a manual (§5 Option
-B) install takes, and the shape a `.deb` install used to take before nspawnmgr became self-hosted
-(see [§1](#1-architecture-overview)). If you installed via the `.deb` (§5 Option A), Tomcat isn't
-on the host at all anymore — it's inside the self-hosted `nspawnmgr` machine, already set up by
+B) install takes. If you installed via the `.deb`/Arch/RPM package (§5 Option A), Tomcat isn't
+on the host at all — it's inside the self-hosted `nspawnmgr` machine, already set up by
 `nspawnmgr-bootstrap-app-machine.sh`, and none of this section applies; skip straight to §7.
 
 Guacamole's official webapp still targets `javax.servlet`, so it and nspawnmgr are deployed
@@ -2028,7 +2185,8 @@ is saved, not a per-request database read. One exception, called out on the page
 `nspawnmgr.crypto.secret-key`/`nspawnmgr.guacamole.admin-username`/`admin-password` (secrets, plus
 rotating the crypto key live would invalidate anything already encrypted with the old one),
 and `CONTAINER_CLI_EXECUTOR` (see above). Hosts are not a static setting at all — they're fully
-admin-managed at `/admin/hosts` (see "Hosts: admin-managed external machines" above).
+admin-managed via each host's own detail page and `/admin/hosts/new` (see "Hosts: admin-managed
+external machines" above).
 
 Every change is validated before being accepted:
 - **Guacamole base URL, auth user-ID URL, auth login URL**: a live HTTP reachability probe (any

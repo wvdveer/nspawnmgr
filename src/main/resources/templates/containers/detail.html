@@ -20,10 +20,14 @@
 <p>Owner: <span th:text="${container.owner.username}">owner</span></p>
 <p th:if="${container.description}" th:text="${container.description}">description</p>
 
-<div th:if="${currentUser.role.name() == 'ADMIN' and container.owner.id != currentUser.id}" class="panel">
+<div th:if="${currentUser.role.name() == 'ADMIN'}" class="panel">
     <h2>Manage</h2>
     <div class="panel-section">
-        <button id="btn-take-ownership" class="btn-primary">Take ownership</button>
+        <button id="btn-take-ownership" class="btn-primary" th:if="${container.owner.id != currentUser.id}">Take ownership</button>
+        <a th:if="${container.kind.name() == 'EXTERNAL'}"
+           th:href="@{/admin/hosts/{id}/edit(id=${container.id})}" class="btn-primary">Edit host</a>
+        <button th:if="${container.kind.name() == 'EXTERNAL'}" id="btn-delete-host" class="btn-danger"
+                th:attr="data-host-id=${container.id}">Delete host</button>
     </div>
 </div>
 
@@ -321,9 +325,11 @@
     <button id="btn-session-vnc" class="btn-primary"
             th:disabled="${container.state.name() != 'RUNNING' or !container.vncEnabled or container.guacVncConnectionId == null}">VNC</button>
     <a th:if="${container.kind.name() != 'EXTERNAL'}"
-       th:href="@{/containers/{id}/files(id=${container.id})}" class="btn-primary">Files</a>
-    <button th:if="${container.kind.name() == 'EXTERNAL'}" class="btn-primary" disabled
-            title="Files access isn't available for network hosts.">Files</button>
+       th:href="@{/containers/{name}/files(name=${container.name})}" class="btn-primary">Files</a>
+    <a th:if="${container.kind.name() == 'EXTERNAL' and container.state.name() == 'RUNNING' and container.guacSshConnectionId != null}"
+       th:href="@{/containers/{name}/files(name=${container.name})}" class="btn-primary">Files</a>
+    <button th:if="${container.kind.name() == 'EXTERNAL' and (container.state.name() != 'RUNNING' or container.guacSshConnectionId == null)}"
+            class="btn-primary" disabled>Files</button>
 </div>
 </div>
 </div>

@@ -46,8 +46,18 @@ public class NetworkDiagnosticsService {
         }
     }
 
+    // nspawnbr0 (the shared container bridge - see docs/administrator-guide.md's "Resolving
+    // containers by name") is a real bug fix, not a defensive addition: confirmed live, its own
+    // address (10.100.0.1) doesn't start with any of the other prefixes here ("br-" doesn't match
+    // a literal "nspawnbr0"), so it was never actually excluded - detectHostAddress() could pick
+    // it as "the" host address on a host where nspawnbr0 happens to enumerate before the real
+    // external NIC in `ip addr show`'s own ordering (not guaranteed to always lose that race).
+    // That's just as broken as the literal-loopback case this whole feature exists to catch - an
+    // address reachable only from inside the container bridge's own network, not from a real
+    // client outside the host - but checkHostAddress()'s own OK/loopback check has no way to catch
+    // it, since 10.100.0.1 isn't textually "127.0.0.1"/"localhost" either.
     private static final String[] EXCLUDED_INTERFACE_PREFIXES =
-            {"tun", "tap", "wg", "ppp", "docker", "veth", "ve-", "br-"};
+            {"tun", "tap", "wg", "ppp", "docker", "veth", "ve-", "br-", "nspawnbr"};
 
     private final NetworkDiagnosticsExecutor executor;
     private final SettingsService settingsService;
@@ -283,16 +293,56 @@ public class NetworkDiagnosticsService {
         return false;
     }
 
+    // nspawnbr0's own fixed bridge address (see docs/administrator-guide.md's "Resolving
+    // containers by name") - only reachable from inside the container bridge's own network, not
+    // from a real client outside the host, so it's just as broken as a literal loopback address
+    // for this check's purposes even though it isn't textually "127.0.0.1"/"localhost". Confirmed
+    // live: detectHostAddress()'s own EXCLUDED_INTERFACE_PREFIXES gap (fixed above) let this get
+    // auto-detected and stored as HOST_PUBLIC_ADDRESS on a real host - this check needs to flag an
+    // already-affected install too, not just prevent new ones once the detection bug is fixed.
+    private static final String BRIDGE_ADDRESS = "10.100.0.1";
+
     private DiagnosticCheck checkHostAddress() {
         String address = settingsService.hostPublicAddress();
-        boolean loopback = "127.0.0.1".equals(address) || "localhost".equalsIgnoreCase(address);
+        boolean loopback = isLoopbackAddress(address);
+        boolean bridgeInternal = BRIDGE_ADDRESS.equals(address);
+        boolean broken = loopback || bridgeInternal;
+        String detail;
+        if (loopback) {
+            detail = "HOST_PUBLIC_ADDRESS is '" + address + "' - some hosts (confirmed live: systemd-networkd's "
+                    + "own NAT table) refuse to hairpin loopback-destined traffic back into a container, even "
+                    + "though the port forward itself is configured correctly.";
+        } else if (bridgeInternal) {
+            detail = "HOST_PUBLIC_ADDRESS is '" + address + "' - that's nspawnbr0's own internal bridge address, "
+                    + "only reachable from inside the container network, not from a real client outside this "
+                    + "host. Re-run the fix, or set a real external address in Settings.";
+        } else {
+            detail = "HOST_PUBLIC_ADDRESS is '" + address + "', not loopback.";
+        }
         return new DiagnosticCheck("host-address", "HOST_PUBLIC_ADDRESS not loopback",
-                loopback ? Status.WARN : Status.OK,
-                loopback ? "HOST_PUBLIC_ADDRESS is '" + address + "' - some hosts (confirmed live: systemd-networkd's "
-                        + "own NAT table) refuse to hairpin loopback-destined traffic back into a container, even "
-                        + "though the port forward itself is configured correctly."
-                        : "HOST_PUBLIC_ADDRESS is '" + address + "', not loopback.",
-                loopback);
+                broken ? Status.WARN : Status.OK, detail, broken);
+    }
+
+    /** Any address in 127.0.0.0/8, not just the literal "127.0.0.1" - confirmed live this matters:
+     *  Debian's own convention maps a host's short hostname to 127.0.1.1 (not 127.0.0.1) in
+     *  /etc/hosts, and that address suffers the exact same NAT-hairpin problem this check exists
+     *  to catch. Parses the dotted-decimal form directly rather than via InetAddress.getByName()
+     *  (which would trigger a real DNS lookup - and block this synchronous check on network I/O -
+     *  for anything that isn't already a literal IP), so a genuine hostname or malformed value
+     *  just falls through to "not loopback" instead of being resolved. */
+    private static boolean isLoopbackAddress(String address) {
+        if ("localhost".equalsIgnoreCase(address)) {
+            return true;
+        }
+        String[] octets = address.split("\\.");
+        if (octets.length != 4) {
+            return false;
+        }
+        try {
+            return Integer.parseInt(octets[0]) == 127;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 
     /**

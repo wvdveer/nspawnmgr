@@ -1,0 +1,10 @@
+module nspawnmgr_machined_cgroup 1.0;
+
+require {
+	type systemd_machined_t;
+	type cgroup_t;
+	class file watch;
+}
+
+#============= systemd_machined_t ==============
+allow systemd_machined_t cgroup_t:file watch;

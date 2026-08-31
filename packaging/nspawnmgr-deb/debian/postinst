@@ -32,8 +32,24 @@ fi
 #    config below.
 cp /usr/share/nspawnmgr/70-nspawnmgr-bridge.netdev /etc/systemd/network/70-nspawnmgr-bridge.netdev
 cp /usr/share/nspawnmgr/70-nspawnmgr-bridge.network /etc/systemd/network/70-nspawnmgr-bridge.network
-systemctl restart systemd-networkd \
-    || echo "nspawnmgr: systemd-networkd restart failed — check 'systemctl status systemd-networkd'." >&2
+# enable, not just restart - confirmed live (real Fedora 43 host, packaging/nspawnmgr-rpm/
+# verification): a plain restart only affects the current boot, so systemd-networkd (and with it
+# nspawnbr0/every container's own networking) never came back after a real host reboot until an
+# admin ran `systemctl enable --now systemd-networkd` by hand - exactly the command
+# debian/nspawnmgr.sudoers already grants nspawnmgr_exec for a diagnostics-page repair, which
+# should never have been necessary for a fresh, un-tampered-with install in the first place.
+systemctl enable --now systemd-networkd \
+    || echo "nspawnmgr: systemd-networkd enable/start failed — check 'systemctl status systemd-networkd'." >&2
+# `enable --now` on a systemd-networkd that's already running (e.g. any reinstall) is a no-op for
+# the "now" part — it does NOT notice the 70-nspawnmgr-bridge.netdev/.network files just copied
+# above, so nspawnbr0 silently never gets created. `networkctl reload` forces networkd to re-read
+# every .netdev/.network file without restarting the daemon or disrupting any link it's already
+# managing — safe to call unconditionally here regardless of whether the enable/start above was a
+# fresh start or a no-op against an already-running daemon. Confirmed live (SteamOS, same
+# underlying systemd-networkd mechanism): without this, a fresh install on a host where networkd
+# was already active left nspawnbr0 never created at all.
+networkctl reload \
+    || echo "nspawnmgr: networkctl reload failed — nspawnbr0 may not pick up its config; check 'systemctl status systemd-networkd'." >&2
 
 # systemctl restart returns once the restart is *issued*, not once systemd-networkd has actually
 # finished bringing nspawnbr0 up with its address - confirmed live, dnsmasq's own restart just

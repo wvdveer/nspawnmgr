@@ -1,8 +1,10 @@
-// Drives the Hosts feature: admin create/edit/delete at /admin/hosts, and the owner-facing browse/
-// connect page at /hosts. Requires an already-signed-in ADMIN session (see tests-auth.js's own
-// comment on how that role gets assigned on a fresh dev-stack DB) - ownerUsername is set to that
-// same account, since HostService requires the owner to already exist (have logged in at least
-// once), and the signed-in admin is the one account guaranteed to satisfy that.
+// Drives the Hosts feature: admin create at /admin/hosts/new, and edit/delete from the host's own
+// /containers/{id} detail page. Hosts show up directly on the main Machines grid (/) alongside
+// nspawn/podman/QEMU machines, badged HOST - there is no separate hosts-only listing page.
+// Requires an already-signed-in ADMIN session (see tests-auth.js's own comment on how that role
+// gets assigned on a fresh dev-stack DB) - ownerUsername is set to that same account, since
+// HostService requires the owner to already exist (have logged in at least once), and the
+// signed-in admin is the one account guaranteed to satisfy that.
 async function runHostTests(ownerUsername) {
     const h = window.harness;
     const stamp = Date.now();
@@ -11,13 +13,14 @@ async function runHostTests(ownerUsername) {
 
     const hostName = `harness-host-${stamp}`;
     const win = h.openApp('nspawnmgr', `${location.origin}/nspawnmgr/admin/hosts/new`);
+    let hostDetailPath;
     await h.step('new-host form renders', async () => {
         await h.waitForReload(win);
         await h.waitForSelector(win, '#name', { timeout: 8000 });
         h.assertContains(h.bodyText(win), 'New host', 'form heading visible');
     });
 
-    await h.step('submitting creates the host and lists it', async () => {
+    await h.step('submitting creates the host and lands on its detail page', async () => {
         h.fill(win, '#name', hostName);
         h.fill(win, '#hostname', '203.0.113.10');
         h.fill(win, '#ownerUsername', ownerUsername);
@@ -27,39 +30,28 @@ async function runHostTests(ownerUsername) {
         h.check(win, '#vncEnabled', true);
         h.fill(win, '#vncPort', '5900');
         h.click(win, 'button[type=submit]');
-        await h.waitFor(() => win.location.pathname.endsWith('/admin/hosts'), {
+        await h.waitFor(() => /\/containers\/\d+$/.test(win.location.pathname), {
             timeout: 8000,
-            label: 'redirect to the hosts list',
+            label: 'redirect to the host\'s own detail page',
         });
         await h.waitForText(win, hostName, { timeout: 10000 });
-        h.pass('host appears in the admin list');
+        hostDetailPath = win.location.pathname;
+        h.pass('host detail page shows the new host');
     });
 
-    await h.step('admin list shows SSH/VNC enabled, RDP not', async () => {
-        const row = h.findRowByText(win, hostName);
-        h.assertContains(row.textContent, 'yes (22)', 'SSH shown enabled with its port');
-        h.assertContains(row.textContent, 'yes (5900)', 'VNC shown enabled with its port');
-        h.assertNotContains(row.textContent.replace('yes (22)', '').replace('yes (5900)', ''), 'yes (',
-            'RDP not shown enabled');
-    });
+    h.section('hosts: appears on the Machines grid, badged HOST');
 
-    h.section('hosts: separate from Containers, visible on /hosts');
-
-    const containersWin = h.openApp('nspawnmgr', `${location.origin}/nspawnmgr/`);
-    await h.step('does not appear on the containers list', async () => {
-        await h.waitForReload(containersWin);
-        await h.waitForText(containersWin, 'Containers', { timeout: 8000 });
-        h.assertNotContains(h.bodyText(containersWin), hostName, 'host absent from Containers');
-    });
-
-    const hostsWin = h.openApp('nspawnmgr', `${location.origin}/nspawnmgr/hosts`);
-    await h.step('appears on the owner-facing /hosts page with SSH/VNC connect enabled', async () => {
-        await h.waitForReload(hostsWin);
-        await h.waitForText(hostsWin, hostName, { timeout: 8000 });
-        const row = h.findRowByText(hostsWin, hostName);
-        const sshButton = [...row.querySelectorAll('button')].find((b) => b.textContent.trim() === 'SSH');
-        const rdpButton = [...row.querySelectorAll('button')].find((b) => b.textContent.trim() === 'RDP');
-        const vncButton = [...row.querySelectorAll('button')].find((b) => b.textContent.trim() === 'VNC');
+    const machinesWin = h.openApp('nspawnmgr', `${location.origin}/nspawnmgr/`);
+    await h.step('shows a HOST badge with SSH/VNC connect enabled, RDP disabled', async () => {
+        await h.waitForReload(machinesWin);
+        await h.waitForText(machinesWin, hostName, { timeout: 8000 });
+        const card = [...machinesWin.document.querySelectorAll('.machine-card')]
+            .find((c) => c.textContent.includes(hostName));
+        if (!card) throw new Error(`no machine-card containing "${hostName}"`);
+        h.assertContains(card.textContent, 'HOST', 'HOST badge shown');
+        const sshButton = card.querySelector('button.access-pill.SSH');
+        const rdpButton = card.querySelector('button.access-pill.RDP');
+        const vncButton = card.querySelector('button.access-pill.VNC');
         h.assertContains(String(!sshButton.disabled), 'true', 'SSH connect enabled');
         h.assertContains(String(rdpButton.disabled), 'true', 'RDP connect disabled (was not enabled on create)');
         h.assertContains(String(!vncButton.disabled), 'true', 'VNC connect enabled');
@@ -67,17 +59,18 @@ async function runHostTests(ownerUsername) {
 
     h.section('hosts: cleanup');
 
-    await h.step('deleting the host removes it from the admin list', async () => {
-        // Re-open /admin/hosts: `win` names the same reused tab as containersWin/hostsWin above, so
-        // it's currently showing whatever the last openApp() call navigated it to (the /hosts page),
-        // not the admin list this step needs.
-        const adminWin = h.openApp('nspawnmgr', `${location.origin}/nspawnmgr/admin/hosts`);
-        await h.waitForReload(adminWin);
-        await h.waitForText(adminWin, hostName, { timeout: 8000 });
-        const row = h.findRowByText(adminWin, hostName);
-        h.clickByText(adminWin, 'button', 'Delete', row);
-        await h.acceptAppDialog(adminWin);
-        await h.waitForReload(adminWin);
-        h.assertNotContains(h.bodyText(adminWin), hostName, 'host no longer listed');
+    await h.step('deleting the host from its own detail page removes it', async () => {
+        // Re-open the host's own detail page: `win` names the same reused tab as machinesWin
+        // above, so it's currently showing whatever the last openApp() call navigated it to (the
+        // Machines grid), not the host detail page this step needs.
+        const detailWin = h.openApp('nspawnmgr', `${location.origin}${hostDetailPath}`);
+        await h.waitForReload(detailWin);
+        await h.waitForText(detailWin, 'Delete host', { timeout: 8000 });
+        h.clickByText(detailWin, 'button', 'Delete host');
+        await h.acceptAppDialog(detailWin);
+        // detail.js redirects to `/` (the Machines grid) after a successful delete.
+        await h.waitForReload(detailWin);
+        await h.waitForText(detailWin, 'Machines', { timeout: 8000 });
+        h.assertNotContains(h.bodyText(detailWin), hostName, 'host no longer listed');
     });
 }

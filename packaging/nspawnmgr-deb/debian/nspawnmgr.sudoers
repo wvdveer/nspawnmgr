@@ -108,7 +108,8 @@ Cmnd_Alias NSPAWNMGR_PASSWORD = /usr/bin/systemd-run --machine=* --pipe --quiet 
     /usr/lib/nspawnmgr/privileged/nspawnmgr-qemu-create-disk.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-qemu-pack-disk-as-template.sh *, \
     /usr/lib/nspawnmgr/privileged/nspawnmgr-qemu-clone-template.sh *, \
-    /usr/bin/systemctl enable --now systemd-networkd
+    /usr/bin/systemctl enable --now systemd-networkd, \
+    /usr/bin/networkctl reload
 
 # Order matters: sudo grants access based on the LAST matching entry, and
 # NSPAWNMGR_PASSWORD's `systemd-run --machine=* --pipe --quiet --wait *` also matches the

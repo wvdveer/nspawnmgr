@@ -54,8 +54,14 @@ import java.util.stream.Collectors;
  * class free of shared mutable state under concurrent Tomcat request threads.
  *
  * <p>Host key checking is off by default ({@code strict-host-key-checking: false}) since the
- * target is always the loopback interface of the same box Tomcat runs on; set it to true and rely
- * on the Tomcat account's {@code ~/.ssh/known_hosts} if that stops being true.
+ * target is always the real host this whole self-hosted machine (where Tomcat itself runs) is
+ * managing - {@code nspawnmgr.env}'s {@code SSH_HOST} is nspawnbr0's own gateway address
+ * (confirmed live: {@code 10.100.0.1}), not literal loopback. The self-hosted machine is
+ * network-isolated on that same bridge like any other managed container (its own veth, its own
+ * {@code sshd} bound to its own {@code 127.0.0.1}/internal address) - a connection to literal
+ * {@code 127.0.0.1} from inside it would hit that local sshd instead, not the real host. Set
+ * strict checking to true and rely on the Tomcat account's {@code ~/.ssh/known_hosts} if this
+ * target ever becomes something other than a single fixed, admin-controlled bridge address.
  */
 @Component
 @Profile("!dev")

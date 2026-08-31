@@ -1,6 +1,8 @@
 package com.nspawnmgr.web;
 
 import com.nspawnmgr.cli.ContainerCliException;
+import com.nspawnmgr.cli.RemoteAuthenticationException;
+import com.nspawnmgr.cli.RemotePermissionDeniedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -21,6 +23,31 @@ public class ApiExceptionHandler {
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<String> handleAccessDenied(AccessDeniedException e) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
+    }
+
+    /** WARN, not ERROR like {@link #handleCliFailure} - now that Files/SFTP browsing isn't capped
+     *  at the connecting account's own home directory, hitting a path that account's own OS
+     *  permissions don't allow is an expected, routine thing to attempt (another user's home, a
+     *  root-owned path), not a sign anything is actually broken. Still logged (the user explicitly
+     *  wants a server-side record of these, unlike the plain {@link #handleAccessDenied} case
+     *  above, which covers nspawnmgr's own owner/share checks and is common enough not to be worth
+     *  logging every time). */
+    @ExceptionHandler(RemotePermissionDeniedException.class)
+    public ResponseEntity<String> handleRemotePermissionDenied(RemotePermissionDeniedException e) {
+        log.warn("Remote SFTP operation denied by the target's own OS permissions: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
+    }
+
+    /** WARN, same rationale as {@link #handleRemotePermissionDenied} - a wrong password or a guest
+     *  OS's own SSH policy (e.g. root password login refused by default) is a routine thing to hit
+     *  via the Files Connect form, not a sign anything is actually broken. 401, not a bare 500 or
+     *  the generic {@link #handleCliFailure} 500, so the Connect form's own error text can say
+     *  "wrong username or password" instead of the misleading "failed to establish SSH connection"
+     *  that a real network/firewall failure would also produce. */
+    @ExceptionHandler(RemoteAuthenticationException.class)
+    public ResponseEntity<String> handleRemoteAuthenticationFailure(RemoteAuthenticationException e) {
+        log.warn("Remote SSH/SFTP authentication rejected: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(e.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

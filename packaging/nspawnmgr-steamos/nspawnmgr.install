@@ -1,0 +1,157 @@
+# SteamOS variant of ../nspawnmgr-arch/nspawnmgr.install - identical hook shape, with one
+# extra first step: relocating every storage-heavy nspawnmgr path under /home/nspawnmgr before
+# anything else runs. See ../nspawnmgr-arch/nspawnmgr.install for the shared rationale behind
+# every step below this one.
+
+_relocate_to_home() {
+    # SteamOS ships a deliberately tiny root partition (confirmed live: 5GB total, already >80%
+    # full with base SteamOS alone) - the real storage budget lives on /home instead. Symlinks,
+    # not bind mounts: simpler (no /etc/fstab entry, no boot-ordering to get right), and nothing
+    # here needs bind-mount semantics specifically - ordinary directory access through a symlinked
+    # parent works the same for machinectl/systemd-nspawn as for nspawnmgr's own scripts.
+    #
+    # Covers two different kinds of path:
+    #   - nspawnmgr's own paths (/var/lib/nspawnmgr, /var/cache/nspawnmgr, /etc/nspawnmgr) -
+    #     configurable in principle via TEMPLATES_DIR etc., but simplest to just relocate the
+    #     real path once here rather than overriding every env var individually.
+    #   - machinectl/systemd-nspawn's own genuinely FIXED paths (/var/lib/machines,
+    #     /etc/systemd/nspawn) - these are never configurable via nspawnmgr's own settings at
+    #     all (see docs/administrator-guide.md's own warning: "machinectl/systemd-nspawn never
+    #     look anywhere else, regardless of what nspawnmgr's own config says") - relocating the
+    #     real system path via symlink is the only way to move these off the tiny root partition.
+    #
+    # Must run before setup-sudo-account.sh/the bridge/dnsmasq/bootstrap steps below - anything
+    # that writes into these paths needs the symlink already in place first. Idempotent: skips
+    # any path that's already a symlink (post_upgrade calls this too).
+    for pair in \
+        "/var/lib/nspawnmgr:/home/nspawnmgr/var-lib-nspawnmgr" \
+        "/var/cache/nspawnmgr:/home/nspawnmgr/var-cache-nspawnmgr" \
+        "/etc/nspawnmgr:/home/nspawnmgr/etc-nspawnmgr" \
+        "/var/lib/machines:/home/nspawnmgr/machines" \
+        "/etc/systemd/nspawn:/home/nspawnmgr/nspawn-settings"
+    do
+        real="${pair%%:*}"
+        link="${pair##*:}"
+        if [ -L "$real" ]; then
+            continue
+        fi
+        mkdir -p "$link"
+        # /var/lib/machines in particular always exists already (shipped by the systemd-container
+        # package itself, empty or not) - move any real content into place before replacing the
+        # original with a symlink, rather than silently discarding it.
+        if [ -d "$real" ]; then
+            cp -a "$real"/. "$link"/ 2>/dev/null || true
+            rm -rf "$real"
+        fi
+        mkdir -p "$(dirname "$real")"
+        ln -s "$link" "$real"
+        echo "nspawnmgr: relocated $real -> $link (SteamOS's root partition is too small to hold it)."
+    done
+}
+
+_setup() {
+    _relocate_to_home
+
+    /usr/lib/nspawnmgr/setup-sudo-account.sh
+
+    cp /usr/share/nspawnmgr/70-nspawnmgr-bridge.netdev /etc/systemd/network/70-nspawnmgr-bridge.netdev
+    cp /usr/share/nspawnmgr/70-nspawnmgr-bridge.network /etc/systemd/network/70-nspawnmgr-bridge.network
+    # enable, not just restart - see ../nspawnmgr-deb/debian/postinst's own comment on this exact
+    # point (confirmed live on Fedora: a plain restart doesn't survive a real host reboot).
+    systemctl enable --now systemd-networkd \
+        || echo "nspawnmgr: systemd-networkd enable/start failed - check 'systemctl status systemd-networkd'." >&2
+    # `enable --now` on a systemd-networkd that's already running (confirmed live: true on a
+    # reinstall, and apparently also true for whatever brings up SteamOS's own enp0s3 by the time
+    # nspawnmgr's install hook runs) is a no-op for the "now" part - it does NOT notice the
+    # 70-nspawnmgr-bridge.netdev/.network files just copied above, so nspawnbr0 silently never
+    # gets created. `networkctl reload` forces networkd to re-read every .netdev/.network file
+    # without restarting the daemon or disrupting any link it's already managing - safe to call
+    # unconditionally here regardless of whether the enable/start above was a fresh start or a
+    # no-op against an already-running daemon.
+    networkctl reload \
+        || echo "nspawnmgr: networkctl reload failed - nspawnbr0 may not pick up its config; check 'systemctl status systemd-networkd'." >&2
+
+    bridge_ready=0
+    i=1
+    while [ "$i" -le 20 ]; do
+        if /usr/sbin/ip -4 -o addr show nspawnbr0 2>/dev/null | grep -q '10\.100\.0\.1/24'; then
+            bridge_ready=1
+            break
+        fi
+        sleep 0.5
+        i=$((i + 1))
+    done
+    [ "$bridge_ready" -eq 1 ] \
+        || echo "nspawnmgr: nspawnbr0 didn't come up with 10.100.0.1/24 within 10s - the self-hosted machine bootstrap below may fail; check 'systemctl status systemd-networkd'." >&2
+
+    # SteamOS ships firewalld active by default (confirmed live via `nft list ruleset` - contrary
+    # to an earlier assumption/../nspawnmgr-arch's own comment, which correctly has no firewall
+    # step because vanilla Arch ships none). Its default zone policy blocks nspawnbr0's own DHCP
+    # server from ever reaching a container's DHCP client - confirmed live: a self-hosted machine
+    # came up with a self-assigned 169.254.x.x link-local address instead of a real 10.100.0.x
+    # lease, and was completely unreachable from the host as a result (not just the port forward -
+    # even a direct connection to the link-local address itself failed, since the host has no
+    # route to 169.254.0.0/16 at all without a real lease putting the container on the bridge's
+    # own subnet). Same class of problem as the .deb's own ufw carve-out, different firewall
+    # backend. Assigning the whole bridge to firewalld's built-in `trusted` zone (rather than
+    # poking a narrow DHCP-only hole) matches how other self-hosted virtualization bridges (e.g.
+    # libvirt's own virbr0) are conventionally handled under firewalld - nspawnmgr needs much more
+    # than DHCP to flow freely here anyway (SSH/RDP/VNC to containers, inter-container DNS). Only
+    # touches firewalld if it's actually active, same "only if actually installed and running"
+    # tolerance the .deb's own ufw step already uses.
+    if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld; then
+        firewall-cmd --permanent --zone=trusted --change-interface=nspawnbr0 \
+            || echo "nspawnmgr: failed to add nspawnbr0 to firewalld's trusted zone - containers may never get a DHCP lease; check 'sudo firewall-cmd --list-all --zone=trusted'." >&2
+        firewall-cmd --reload \
+            || echo "nspawnmgr: firewalld reload failed after the zone change - the interface assignment may not have taken effect yet." >&2
+    fi
+
+    # Two extra steps confirmed live-necessary on real SteamOS (same as
+    # ../nspawnmgr-arch/nspawnmgr.install - see that file's own comment for the full detail):
+    # Arch's own dnsmasq package ships no /etc/dnsmasq.d/ directory at all, and its
+    # /etc/dnsmasq.conf ships `conf-dir=/etc/dnsmasq.d` commented out by default - the bare `cp`
+    # failed with "No such file or directory" without the mkdir, and even after creating the
+    # directory dnsmasq wouldn't read it until conf-dir was actually enabled.
+    mkdir -p /etc/dnsmasq.d
+    grep -qE '^conf-dir=/etc/dnsmasq\.d' /etc/dnsmasq.conf \
+        || echo 'conf-dir=/etc/dnsmasq.d,*.conf' >> /etc/dnsmasq.conf
+    cp /usr/share/nspawnmgr/dnsmasq-nspawnmgr.conf /etc/dnsmasq.d/nspawnmgr.conf
+    mkdir -p /etc/nspawnmgr
+    [ -f /etc/nspawnmgr/dns-hosts ] || touch /etc/nspawnmgr/dns-hosts
+    [ -f /etc/dnsmasq.d/nspawnmgr-upstream.conf ] || printf 'server=1.1.1.1\nserver=9.9.9.9\n' > /etc/dnsmasq.d/nspawnmgr-upstream.conf
+    # Confirmed live on a genuinely fresh vanilla Arch install (nspawnmgr-arch, same _setup()
+    # shape as this file): pacman defers system-user creation (dnsmasq's own sysusers.d
+    # declaration included) to a single post-transaction hook that runs AFTER every package in the
+    # transaction is unpacked/configured - but this whole _setup() function runs synchronously as
+    # nspawnmgr's OWN post_install(), which pacman runs BEFORE that hook. Starting dnsmasq here
+    # without this line hits it before the "dnsmasq" user exists at all ("unknown user or group:
+    # dnsmasq"), fails immediately, and burns through systemd's restart limit in under a second
+    # (ending in start-limit-hit, not just a transient failure). Debian's dnsmasq package never hit
+    # this: its user is created via a classic `adduser --system` call inside its own postinst,
+    # which runs synchronously and immediately, not deferred. systemd-sysusers (bare) processes
+    # every pending sysusers.d declaration right now - idempotent, safe even when nothing pending.
+    systemd-sysusers
+    systemctl restart dnsmasq \
+        || echo "nspawnmgr: dnsmasq restart failed - check 'systemctl status dnsmasq'." >&2
+
+    /usr/lib/nspawnmgr/privileged/nspawnmgr-bootstrap-app-machine.sh
+}
+
+post_install() {
+    _setup
+}
+
+post_upgrade() {
+    _setup
+}
+
+pre_remove() {
+    :
+}
+
+post_remove() {
+    # Same conservative-by-default posture as ../nspawnmgr-arch/nspawnmgr.install - full cleanup
+    # is what uninstall-nspawnmgr.sh is for. Deliberately does NOT remove the /home/nspawnmgr
+    # symlinks or their real content either, for the same reason.
+    :
+}

@@ -12,7 +12,8 @@
         activeNav='machines', currentUser=${currentUser}, addMenu=null,
         content=~{::#page-content})}">
 <div id="page-content">
-<p><a th:href="@{/admin/hosts}">&laquo; Back to hosts</a></p>
+<p><a th:if="${host != null}" th:href="@{/containers/{id}(id=${host.id})}">&laquo; Back to host</a></p>
+<p><a th:unless="${host != null}" th:href="@{/}">&laquo; Back to Machines</a></p>
 <form id="host-form" class="card">
     <div class="field">
         <label for="name">Name</label>

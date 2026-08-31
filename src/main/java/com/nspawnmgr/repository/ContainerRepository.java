@@ -88,8 +88,8 @@ public interface ContainerRepository extends JpaRepository<Container, Long> {
     /** Feeds ContainerDnsSyncService's hosts-file regeneration — RUNNING alone excludes stale/mid-restart addresses. */
     List<Container> findByKindAndStateAndInternalAddressIsNotNull(ContainerKind kind, ContainerState state);
 
-    /** Feeds PodLivenessPollingService — every pod nspawnmgr currently believes is RUNNING, to check
-     *  against what podman itself actually reports. */
+    /** Feeds ContainerLivenessPollingService — every pod/VM nspawnmgr currently believes is RUNNING,
+     *  to check against what podman/QEMU itself actually reports. */
     List<Container> findByBackendAndState(ContainerBackend backend, ContainerState state);
 
     /** Feeds ProvisioningService#allocateQemuVncPort — every existing QEMU VM's own qemuVncPort,
