@@ -8,18 +8,18 @@
 </head>
 <body th:attr="data-base-path=@{/},data-all-role-names=${allRoleNames}">
 <div th:replace="~{fragments/app-shell :: shell(
-        title='Users', subtitle='Manage user accounts and roles',
+        title=${t.get('nav.users')}, subtitle=${t.get('page.adminUsers.subtitle')},
         activeNav='users', currentUser=${currentUser},
         addMenu=${smbAuth} ? null : ~{::#add-menu-items},
         content=~{::#page-content})}">
 <div id="add-menu-items" th:unless="${smbAuth}">
     <a th:if="${nspawnmgrContainerId != null}"
-       th:href="@{/containers/{id}(id=${nspawnmgrContainerId})} + '#container-users-section'">Add user</a>
+       th:href="@{/containers/{id}(id=${nspawnmgrContainerId})} + '#container-users-section'" th:text="${t.get('button.addUser')}">Add user</a>
     <button th:if="${nspawnmgrContainerId == null}" disabled
-            title="The self-hosted nspawnmgr machine hasn't been discovered yet.">Add user</button>
+            th:title="${t.get('page.adminUsers.notDiscoveredHint')}" th:text="${t.get('button.addUser')}">Add user</button>
 </div>
 <div id="page-content">
-<p th:if="${externalManaged}">
+<p th:if="${externalManaged}" th:utext="${t.get('page.adminUsers.externallyManagedNotice')}">
     Role is externally managed for this deployment (<code>nspawnmgr.auth.user-is-admin-json</code>
     is configured) — roles are derived from the identity backend on every login and cannot be
     changed here.
@@ -29,10 +29,10 @@
         <div class="machine-card-header">
             <span class="machine-card-name" th:text="${u.username}">username</span>
             <span class="badge badge-role role-trigger" th:unless="${externalManaged}"
-                  th:classappend="${u.role.name()}" th:text="${u.role}"
+                  th:classappend="${u.role.name()}" th:text="${t.get('role.' + u.role.name())}"
                   th:attr="data-user-id=${u.id},data-role=${u.role.name()}">USER</span>
             <span class="badge badge-role" th:if="${externalManaged}"
-                  th:classappend="${u.role.name()}" th:text="${u.role}">USER</span>
+                  th:classappend="${u.role.name()}" th:text="${t.get('role.' + u.role.name())}">USER</span>
         </div>
         <p class="machine-card-meta" th:if="${u.email != null and u.email != ''}" th:text="${u.email}">email</p>
     </div>

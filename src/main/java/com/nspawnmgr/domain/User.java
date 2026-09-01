@@ -55,6 +55,12 @@ public class User {
     @Column(nullable = false)
     private Role role = Role.USER;
 
+    /** Null means auto-detect from the browser's own Accept-Language header on every request -
+     *  see LocaleResolutionService. Never touched by UserService#upsert's cookie-sync, same
+     *  protection guacamoleUsername already has (see this class's own @DynamicUpdate javadoc). */
+    @Column(name = "preferred_language", length = 2)
+    private String preferredLanguage;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

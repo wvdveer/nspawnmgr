@@ -19,7 +19,7 @@ function attachPasswordToggle(input) {
     const toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.className = 'password-toggle';
-    toggle.setAttribute('aria-label', 'Show password');
+    toggle.setAttribute('aria-label', t('js.passwordToggle.show'));
     toggle.innerHTML = EYE_ICON;
     wrapper.appendChild(toggle);
 
@@ -27,6 +27,6 @@ function attachPasswordToggle(input) {
         const willShow = input.type === 'password';
         input.type = willShow ? 'text' : 'password';
         toggle.innerHTML = willShow ? EYE_OFF_ICON : EYE_ICON;
-        toggle.setAttribute('aria-label', willShow ? 'Hide password' : 'Show password');
+        toggle.setAttribute('aria-label', willShow ? t('js.passwordToggle.hide') : t('js.passwordToggle.show'));
     });
 }

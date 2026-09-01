@@ -54,7 +54,8 @@ export CATALINA_OPTS="-DSPRING_PROFILES_ACTIVE=prod \
   -DSSH_PASSWORD=coexistence-test-unused \
   -DTEMPLATES_DIR='$root/site/templates' \
   -DNSPAWN_MACHINES_DIR='$tomcat_dir/temp/machines' \
-  -DNSPAWN_SETTINGS_DIR='$tomcat_dir/temp/nspawn-settings'"
+  -DNSPAWN_SETTINGS_DIR='$tomcat_dir/temp/nspawn-settings' \
+  -DLANG_DIR='$root/lang'"
 
 "$tomcat_dir/bin/startup.sh"
 

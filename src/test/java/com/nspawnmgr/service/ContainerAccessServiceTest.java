@@ -41,7 +41,8 @@ class ContainerAccessServiceTest {
         portProbe = mock(ContainerPortProbe.class);
         guacamoleAdminClient = mock(GuacamoleAdminClient.class);
         secretEncryptionService = mock(SecretEncryptionService.class);
-        service = new ContainerAccessService(containerRepository, credentialRepository, portProbe, guacamoleAdminClient, secretEncryptionService);
+        service = new ContainerAccessService(containerRepository, credentialRepository, portProbe, guacamoleAdminClient, secretEncryptionService,
+                TestUserMessages.create());
     }
 
     private Container containerWithAddress(String address) {

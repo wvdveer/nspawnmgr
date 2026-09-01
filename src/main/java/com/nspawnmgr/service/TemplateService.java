@@ -200,13 +200,16 @@ public class TemplateService {
     private final ContainerRepository containerRepository;
     private final ContainerFilesystemProvisioner filesystemProvisioner;
     private final SettingsService settingsService;
+    private final UserMessages messages;
 
     public TemplateService(TemplateRepository templateRepository, ContainerRepository containerRepository,
-                            ContainerFilesystemProvisioner filesystemProvisioner, SettingsService settingsService) {
+                            ContainerFilesystemProvisioner filesystemProvisioner, SettingsService settingsService,
+                            UserMessages messages) {
         this.templateRepository = templateRepository;
         this.containerRepository = containerRepository;
         this.filesystemProvisioner = filesystemProvisioner;
         this.settingsService = settingsService;
+        this.messages = messages;
     }
 
     public List<Template> listActive() {
@@ -219,7 +222,7 @@ public class TemplateService {
 
     public Template getById(Long id) {
         return templateRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("No such template: " + id));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.templates.noSuchTemplate", id)));
     }
 
     public String resolveInstallSshCommand(Template template) {
@@ -498,10 +501,10 @@ public class TemplateService {
      */
     public Template createMinimalDefault(MinimalTemplateFlavor flavor, char[] sudoPasswordOverride) {
         if (templateRepository.findByName(flavor.templateName()).isPresent()) {
-            throw new IllegalStateException("'" + flavor.templateName() + "' is already set up.");
+            throw new IllegalStateException(messages.get("error.templates.alreadySetUp", flavor.templateName()));
         }
         if (sudoPasswordOverride == null && settingsService.sshApprovalRequired()) {
-            throw new IllegalArgumentException("A sudo password is required — no stored sudo secret is configured (see /admin/settings).");
+            throw new IllegalArgumentException(messages.get("error.templates.sudoPasswordRequired"));
         }
         filesystemProvisioner.createMinimalTemplate(flavor, sudoPasswordOverride);
         // Confirmed live: xrdp/xorgxrdp were dropped from Arch's official repos entirely (AUR-only
@@ -595,14 +598,14 @@ public class TemplateService {
     public Template createFromMachine(String templateName, String description, Container container, char[] sudoPasswordOverride) {
         requireNameAvailable(templateName, null);
         if (sudoPasswordOverride == null && settingsService.sshApprovalRequired()) {
-            throw new IllegalArgumentException("A sudo password is required — no stored sudo secret is configured (see /admin/settings).");
+            throw new IllegalArgumentException(messages.get("error.templates.sudoPasswordRequired"));
         }
         // container.getTemplate() may be a lazy proxy tied to whatever session loaded it in the
         // controller (open-in-view is off) - confirmed live, LazyInitializationException - re-fetch
         // with template eagerly joined, same fix PackageCacheService.installOnContainer already
         // needed for the exact same reason.
         Container freshContainer = containerRepository.findByIdWithTemplate(container.getId())
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + container.getId()));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", container.getId())));
         Template originatingTemplate = freshContainer.getTemplate();
         ContainerBackend backend = originatingTemplate != null ? originatingTemplate.getBackend() : freshContainer.getBackend();
         filesystemProvisioner.packMachineAsTemplate(freshContainer.getName(), backend, templateName, sudoPasswordOverride);
@@ -642,12 +645,12 @@ public class TemplateService {
      */
     public Template createFromPodmanPull(String pullReference, char[] sudoPasswordOverride) {
         if (pullReference == null || pullReference.isBlank()) {
-            throw new IllegalArgumentException("A podman pull reference is required");
+            throw new IllegalArgumentException(messages.get("error.templates.podmanPullReferenceRequired"));
         }
         String derivedName = deriveTemplateNameFromPullReference(pullReference);
         requireNameAvailable(derivedName, null);
         if (sudoPasswordOverride == null && settingsService.sshApprovalRequired()) {
-            throw new IllegalArgumentException("A sudo password is required — no stored sudo secret is configured (see /admin/settings).");
+            throw new IllegalArgumentException(messages.get("error.templates.sudoPasswordRequired"));
         }
         filesystemProvisioner.pullPodmanTemplate(pullReference, derivedName, sudoPasswordOverride);
         return create(new TemplateFields(derivedName, "Pulled via podman pull " + pullReference, derivedName,
@@ -664,13 +667,13 @@ public class TemplateService {
      *  from both ends) - "docker.io/library/alpine:latest" becomes "docker.io-library-alpine-latest".
      *  Not required to be unique itself - {@link #requireNameAvailable} is what actually enforces
      *  that, surfacing a clear error if two pulls would derive the same name. */
-    private static String deriveTemplateNameFromPullReference(String pullReference) {
+    private String deriveTemplateNameFromPullReference(String pullReference) {
         String sanitized = pullReference.toLowerCase(Locale.ROOT)
                 .replaceAll("[^a-z0-9._-]+", "-")
                 .replaceAll("-{2,}", "-")
                 .replaceAll("^-|-$", "");
         if (sanitized.isEmpty()) {
-            throw new IllegalArgumentException("Could not derive a template name from '" + pullReference + "'");
+            throw new IllegalArgumentException(messages.get("error.templates.couldNotDeriveTemplateName", pullReference));
         }
         return sanitized;
     }
@@ -686,11 +689,11 @@ public class TemplateService {
     public Template convertToPodman(Long nspawnTemplateId, String newName, char[] sudoPasswordOverride) {
         Template source = getById(nspawnTemplateId);
         if (source.getBackend() != ContainerBackend.SYSTEMD_NSPAWN) {
-            throw new IllegalArgumentException("Template '" + source.getName() + "' is not a systemd-nspawn template");
+            throw new IllegalArgumentException(messages.get("error.templates.notASystemdNspawnTemplate", source.getName()));
         }
         requireNameAvailable(newName, null);
         if (sudoPasswordOverride == null && settingsService.sshApprovalRequired()) {
-            throw new IllegalArgumentException("A sudo password is required — no stored sudo secret is configured (see /admin/settings).");
+            throw new IllegalArgumentException(messages.get("error.templates.sudoPasswordRequired"));
         }
         filesystemProvisioner.convertNspawnTemplateToPodman(source.getSourcePath(), newName, sudoPasswordOverride);
         return create(new TemplateFields(newName, "Converted from nspawn template '" + source.getName() + "'", newName,
@@ -708,11 +711,11 @@ public class TemplateService {
     public Template convertToNspawn(Long podmanTemplateId, String newName, char[] sudoPasswordOverride) {
         Template source = getById(podmanTemplateId);
         if (source.getBackend() != ContainerBackend.PODMAN) {
-            throw new IllegalArgumentException("Template '" + source.getName() + "' is not a podman template");
+            throw new IllegalArgumentException(messages.get("error.templates.notAPodmanTemplate", source.getName()));
         }
         requireNameAvailable(newName, null);
         if (sudoPasswordOverride == null && settingsService.sshApprovalRequired()) {
-            throw new IllegalArgumentException("A sudo password is required — no stored sudo secret is configured (see /admin/settings).");
+            throw new IllegalArgumentException(messages.get("error.templates.sudoPasswordRequired"));
         }
         filesystemProvisioner.convertPodmanTemplateToNspawn(source.getSourcePath(), newName, sudoPasswordOverride);
         return create(new TemplateFields(newName, "Converted from podman template '" + source.getName() + "'", newName,
@@ -728,7 +731,7 @@ public class TemplateService {
     private void requireNameAvailable(String name, Long excludingId) {
         templateRepository.findByName(name).ifPresent(existing -> {
             if (excludingId == null || !existing.getId().equals(excludingId)) {
-                throw new IllegalArgumentException("A template named '" + name + "' already exists");
+                throw new IllegalArgumentException(messages.get("error.templates.nameAlreadyExists", name));
             }
         });
     }

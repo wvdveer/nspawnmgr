@@ -26,8 +26,7 @@ async function confirmExtensionMismatchOrAbort(filename, packageManager) {
         return true;
     }
     const expectedList = EXPECTED_EXTENSIONS[packageManager].join(' or ');
-    return window.appDialog.confirm(
-        `"${filename}" doesn't look like a ${packageManager} package (expected ${expectedList}). Continue anyway?`);
+    return window.appDialog.confirm(t('page.packageForm.extensionMismatchConfirm', filename, packageManager, expectedList));
 }
 
 // Matches spring.servlet.multipart.max-file-size (application.yml) - keep both in sync. Same
@@ -42,11 +41,11 @@ document.getElementById('upload-form').addEventListener('submit', async (event) 
     const bar = document.getElementById('upload-progress-bar');
     const fileInput = document.getElementById('file');
     if (!fileInput.files.length) {
-        status.textContent = 'Choose a file first.';
+        status.textContent = t('page.packageForm.chooseFileFirst');
         return;
     }
     if (fileInput.files[0].size > MAX_UPLOAD_BYTES) {
-        status.textContent = `"${fileInput.files[0].name}" is too large. The upload limit is 10GB.`;
+        status.textContent = t('page.packageForm.tooLarge', fileInput.files[0].name);
         return;
     }
     const packageManager = document.getElementById('packageManager').value;
@@ -61,7 +60,7 @@ document.getElementById('upload-form').addEventListener('submit', async (event) 
     document.getElementById('btn-start-upload').disabled = true;
     progress.style.display = '';
     bar.value = 0;
-    status.textContent = 'Uploading...';
+    status.textContent = t('page.packageForm.uploading');
 
     // XMLHttpRequest, not fetch() - fetch has no upload-progress event, only XHR's
     // xhr.upload.onprogress reports bytes sent to Tomcat as they go.
@@ -78,7 +77,7 @@ document.getElementById('upload-form').addEventListener('submit', async (event) 
         // All bytes are in Tomcat's hands now, but the server still has to stream them on to the
         // real host over SSH before it responds - no per-byte visibility into that phase from here.
         bar.removeAttribute('value');
-        status.textContent = 'Finishing...';
+        status.textContent = t('page.packageForm.finishing');
     });
     xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
@@ -86,11 +85,11 @@ document.getElementById('upload-form').addEventListener('submit', async (event) 
             return;
         }
         document.getElementById('btn-start-upload').disabled = false;
-        status.textContent = 'Error: ' + xhr.responseText;
+        status.textContent = t('general.failedPrefix', xhr.responseText);
     });
     xhr.addEventListener('error', () => {
         document.getElementById('btn-start-upload').disabled = false;
-        status.textContent = 'Error: upload failed.';
+        status.textContent = t('page.packageForm.uploadFailedGeneric');
     });
     xhr.open('POST', `${basePath}/api/admin/packages`);
     xhr.send(formData);
@@ -147,7 +146,7 @@ document.getElementById('download-form').addEventListener('submit', async (event
     });
     if (!response.ok) {
         document.getElementById('download-progress').style.display = '';
-        status.textContent = 'Error: ' + await response.text();
+        status.textContent = t('general.failedPrefix', await response.text());
         return;
     }
     const { downloadId } = await response.json();
@@ -156,13 +155,13 @@ document.getElementById('download-form').addEventListener('submit', async (event
     document.getElementById('btn-abort-download').style.display = '';
     document.getElementById('download-progress').style.display = '';
     document.getElementById('download-progress-bar').removeAttribute('value');
-    status.textContent = 'Starting...';
+    status.textContent = t('page.packageForm.starting');
     downloadPollHandle = setInterval(() => pollDownloadStatus(downloadId), 1000);
 });
 
 document.getElementById('btn-abort-download').addEventListener('click', async () => {
     const downloadId = document.getElementById('download-status').getAttribute('data-download-id');
-    if (!downloadId || !await window.appDialog.confirm('Abort this download?')) {
+    if (!downloadId || !await window.appDialog.confirm(t('page.packageForm.confirmAbortDownload'))) {
         return;
     }
     await fetch(`${basePath}/api/admin/packages/download/${downloadId}/abort`, { method: 'POST' });
@@ -182,7 +181,7 @@ async function pollDownloadStatus(downloadId) {
         status.textContent = `${formatBytes(result.bytesDownloaded)} / ${formatBytes(result.totalBytes)} (${percent}%)`;
     } else {
         bar.removeAttribute('value');
-        status.textContent = `${formatBytes(result.bytesDownloaded)} downloaded`;
+        status.textContent = t('page.packageForm.downloadedSuffix', formatBytes(result.bytesDownloaded));
     }
     if (result.state === 'RUNNING') {
         return;
@@ -196,8 +195,8 @@ async function pollDownloadStatus(downloadId) {
         return;
     }
     if (result.state === 'ABORTED') {
-        status.textContent = 'Aborted.';
+        status.textContent = t('js.status.aborted');
         return;
     }
-    status.textContent = 'Error: ' + (result.errorMessage || 'Download failed.');
+    status.textContent = t('general.failedPrefix', result.errorMessage || t('page.packageForm.downloadFailedDefault'));
 }

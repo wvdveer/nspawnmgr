@@ -7,6 +7,7 @@ import com.nspawnmgr.cli.ContainerIsoMounter;
 import com.nspawnmgr.cli.MachineStatus;
 import com.nspawnmgr.domain.ContainerBackend;
 import com.nspawnmgr.service.SettingsService;
+import com.nspawnmgr.service.UserMessages;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
@@ -38,11 +39,14 @@ public class RealContainerIsoMounter implements ContainerIsoMounter {
     private final SettingsService settingsService;
     private final SshRemoteExecutor ssh;
     private final ContainerCliExecutor cliExecutor;
+    private final UserMessages messages;
 
-    public RealContainerIsoMounter(SettingsService settingsService, SshRemoteExecutor ssh, ContainerCliExecutor cliExecutor) {
+    public RealContainerIsoMounter(SettingsService settingsService, SshRemoteExecutor ssh, ContainerCliExecutor cliExecutor,
+                                    UserMessages messages) {
         this.settingsService = settingsService;
         this.ssh = ssh;
         this.cliExecutor = cliExecutor;
+        this.messages = messages;
     }
 
     @Override
@@ -83,7 +87,8 @@ public class RealContainerIsoMounter implements ContainerIsoMounter {
         command.addAll(List.of(args));
         CommandResult result = ssh.execNoPasswordSudo(timeout, command);
         if (!result.success()) {
-            throw new ContainerCliException("ISO mount command failed (" + scriptName + "): " + result.stdout() + " -- " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.isoMountCommandFailed",
+                    scriptName, result.stdout(), result.stderr()));
         }
     }
 }

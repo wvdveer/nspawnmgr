@@ -5,7 +5,7 @@ const basePath = document.body.getAttribute('data-base-path').replace(/\/$/, '')
 async function post(path) {
     const response = await fetch(`${basePath}/api/containers/${containerId}${path}`, { method: 'POST' });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
@@ -23,36 +23,36 @@ document.getElementById('btn-create-template')?.addEventListener('click', async 
     const templateName = document.getElementById('create-template-name').value.trim();
     const description = document.getElementById('create-template-description').value;
     if (!templateName) {
-        status.textContent = 'Enter a template name first.';
+        status.textContent = t('page.detail.enterTemplateNameFirst');
         return;
     }
-    status.textContent = 'Creating...';
+    status.textContent = t('js.status.creating');
     const response = await fetch(`${basePath}/api/containers/${containerId}/create-template`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ templateName, description }),
     });
     if (!response.ok) {
-        status.textContent = 'Error: ' + await response.text();
+        status.textContent = t('general.failedPrefix', await response.text());
         return;
     }
-    status.textContent = `Template "${templateName}" created.`;
+    status.textContent = t('page.detail.templateCreated', templateName);
 });
 
 document.getElementById('btn-take-ownership')?.addEventListener('click', async () => {
-    if (!await window.appDialog.confirm('Take ownership of this container? The previous owner keeps their existing access as an ordinary share.')) {
+    if (!await window.appDialog.confirm(t('page.detail.confirmTakeOwnership'))) {
         return;
     }
     post('/take-ownership');
 });
 
 document.getElementById('btn-delete-host')?.addEventListener('click', async () => {
-    if (!await window.appDialog.confirm('Delete this host? This cannot be undone.')) {
+    if (!await window.appDialog.confirm(t('page.detail.confirmDeleteHost'))) {
         return;
     }
     const response = await fetch(`${basePath}/api/admin/hosts/${containerId}`, { method: 'DELETE' });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.href = `${basePath}/`;
@@ -67,7 +67,7 @@ document.getElementById('btn-add-ssh-credential')?.addEventListener('click', asy
         body: JSON.stringify({ accountName, privateKeyPem }),
     });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
@@ -80,7 +80,7 @@ document.getElementById('btn-enable-vnc')?.addEventListener('click', () => post(
 async function deleteAccess(protocol) {
     const response = await fetch(`${basePath}/api/containers/${containerId}/access/${protocol}`, { method: 'DELETE' });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
@@ -114,12 +114,12 @@ setInterval(async () => {
 }, 10000);
 
 document.getElementById('btn-delete')?.addEventListener('click', async () => {
-    if (!await window.appDialog.confirm('Delete this container? This cannot be undone.')) {
+    if (!await window.appDialog.confirm(t('page.detail.confirmDeleteContainer'))) {
         return;
     }
     const response = await fetch(`${basePath}/api/containers/${containerId}`, { method: 'DELETE' });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.href = `${basePath}/`;
@@ -133,7 +133,7 @@ document.getElementById('btn-save-description')?.addEventListener('click', async
         body: JSON.stringify({ description }),
     });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
@@ -150,7 +150,7 @@ document.getElementById('btn-save-pod-command')?.addEventListener('click', async
     });
     if (!response.ok) {
         button.disabled = false;
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
@@ -164,7 +164,7 @@ document.getElementById('btn-save-package-manager')?.addEventListener('click', a
         body: JSON.stringify({ packageManager }),
     });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
@@ -178,7 +178,7 @@ document.getElementById('btn-add-share')?.addEventListener('click', async () => 
         body: JSON.stringify({ username }),
     });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
@@ -189,7 +189,7 @@ document.querySelectorAll('.btn-remove-share').forEach((button) => {
         const userId = button.getAttribute('data-user-id');
         const response = await fetch(`${basePath}/api/containers/${containerId}/shares/${userId}`, { method: 'DELETE' });
         if (!response.ok) {
-            await window.appDialog.alert('Failed: ' + await response.text());
+            await window.appDialog.alert(t('general.failedPrefix', await response.text()));
             return;
         }
         window.location.reload();
@@ -206,7 +206,7 @@ document.getElementById('btn-add-port-mapping')?.addEventListener('click', async
         body: JSON.stringify({ hostPort, containerPort, protocol }),
     });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
@@ -217,7 +217,7 @@ document.querySelectorAll('.btn-remove-port-mapping').forEach((button) => {
         const mappingId = button.getAttribute('data-mapping-id');
         const response = await fetch(`${basePath}/api/containers/${containerId}/port-mappings/${mappingId}`, { method: 'DELETE' });
         if (!response.ok) {
-            await window.appDialog.alert('Failed: ' + await response.text());
+            await window.appDialog.alert(t('general.failedPrefix', await response.text()));
             return;
         }
         window.location.reload();
@@ -232,7 +232,7 @@ document.getElementById('btn-save-rdp-security')?.addEventListener('click', asyn
         body: JSON.stringify({ security }),
     });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
@@ -247,7 +247,7 @@ document.getElementById('btn-save-pam-auth')?.addEventListener('click', async ()
         body: JSON.stringify({ source, services }),
     });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
@@ -261,7 +261,7 @@ document.getElementById('btn-save-outbound')?.addEventListener('click', async ()
         body: JSON.stringify({ enabled }),
     });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
@@ -277,7 +277,7 @@ document.getElementById('btn-add-outbound-allowlist')?.addEventListener('click',
         body: JSON.stringify({ destinationHost, destinationPort, protocol }),
     });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
@@ -288,7 +288,7 @@ document.querySelectorAll('.btn-remove-outbound-allowlist').forEach((button) => 
         const entryId = button.getAttribute('data-entry-id');
         const response = await fetch(`${basePath}/api/containers/${containerId}/outbound/allowlist/${entryId}`, { method: 'DELETE' });
         if (!response.ok) {
-            await window.appDialog.alert('Failed: ' + await response.text());
+            await window.appDialog.alert(t('general.failedPrefix', await response.text()));
             return;
         }
         window.location.reload();
@@ -303,7 +303,7 @@ if (containerUserList) {
         const response = await fetch(`${basePath}/api/containers/${containerId}/users`);
         if (!response.ok) {
             containerUserList.innerHTML = '';
-            document.getElementById('container-users-status').textContent = 'Failed: ' + await response.text();
+            document.getElementById('container-users-status').textContent = t('general.failedPrefix', await response.text());
             return;
         }
         const usernames = await response.json();
@@ -312,13 +312,13 @@ if (containerUserList) {
             const li = document.createElement('li');
             const isPrimary = username === containerUserList.dataset.primaryAccount;
             const label = document.createElement('span');
-            label.textContent = username + (isPrimary ? ' (primary)' : '');
+            label.textContent = username + (isPrimary ? t('page.detail.primarySuffix') : '');
             const passwordInput = document.createElement('input');
             passwordInput.type = 'password';
-            passwordInput.placeholder = 'new password';
+            passwordInput.placeholder = t('page.detail.newPasswordPlaceholder');
             const changeButton = document.createElement('button');
             changeButton.className = 'btn-primary';
-            changeButton.textContent = 'Change password';
+            changeButton.textContent = t('button.changePassword');
             changeButton.addEventListener('click', async () => {
                 const password = passwordInput.value;
                 passwordInput.value = '';
@@ -328,18 +328,18 @@ if (containerUserList) {
                     body: JSON.stringify({ password }),
                 });
                 if (!changeResponse.ok) {
-                    await window.appDialog.alert('Failed: ' + await changeResponse.text());
+                    await window.appDialog.alert(t('general.failedPrefix', await changeResponse.text()));
                     return;
                 }
                 const result = await changeResponse.json();
                 showUsersStatus(result.pending
-                    ? `Password change for ${username} is pending admin approval.`
-                    : `Password changed for ${username}.`);
+                    ? t('page.detail.passwordChangePending', username)
+                    : t('page.detail.passwordChanged', username));
                 renderUsers();
             });
             const primaryButton = document.createElement('button');
             primaryButton.className = 'btn-primary';
-            primaryButton.textContent = 'Make primary';
+            primaryButton.textContent = t('button.makePrimary');
             primaryButton.disabled = isPrimary;
             primaryButton.addEventListener('click', async () => {
                 const primaryResponse = await fetch(`${basePath}/api/containers/${containerId}/primary-account`, {
@@ -348,7 +348,7 @@ if (containerUserList) {
                     body: JSON.stringify({ accountName: username }),
                 });
                 if (!primaryResponse.ok) {
-                    await window.appDialog.alert('Failed: ' + await primaryResponse.text());
+                    await window.appDialog.alert(t('general.failedPrefix', await primaryResponse.text()));
                     return;
                 }
                 const result = await primaryResponse.json();
@@ -356,8 +356,8 @@ if (containerUserList) {
                     containerUserList.dataset.primaryAccount = username;
                 }
                 showUsersStatus(result.pending
-                    ? `Switching the primary account to ${username} is pending admin approval.`
-                    : `Primary account switched to ${username}.`);
+                    ? t('page.detail.primarySwitchPending', username)
+                    : t('page.detail.primarySwitched', username));
                 renderUsers();
             });
             li.append(label, passwordInput, changeButton, primaryButton);
@@ -381,15 +381,15 @@ if (containerUserList) {
             body: JSON.stringify({ username, password }),
         });
         if (!response.ok) {
-            await window.appDialog.alert('Failed: ' + await response.text());
+            await window.appDialog.alert(t('general.failedPrefix', await response.text()));
             return;
         }
         usernameInput.value = '';
         passwordInput.value = '';
         const result = await response.json();
         showUsersStatus(result.pending
-            ? `Adding ${username} is pending admin approval.`
-            : `Added ${username}.`);
+            ? t('page.detail.userAddPending', username)
+            : t('page.detail.userAdded', username));
         renderUsers();
     });
 
@@ -402,17 +402,17 @@ document.getElementById('btn-install-package')?.addEventListener('click', async 
     const button = document.getElementById('btn-install-package');
     const cachedPackageId = select.value;
     button.disabled = true;
-    output.textContent = 'Installing...';
+    output.textContent = t('js.status.installing');
     const response = await fetch(`${basePath}/api/containers/${containerId}/packages/${cachedPackageId}/install`, {
         method: 'POST',
     });
     button.disabled = false;
     if (!response.ok) {
-        output.textContent = 'Failed: ' + await response.text();
+        output.textContent = t('general.failedPrefix', await response.text());
         return;
     }
     const result = await response.json();
-    output.textContent = `Exit code: ${result.exitCode}\n\n${result.stdout}\n${result.stderr}`;
+    output.textContent = t('page.detail.installOutput', result.exitCode, result.stdout, result.stderr);
 });
 
 document.getElementById('btn-mount-iso')?.addEventListener('click', () => {
@@ -423,7 +423,7 @@ document.getElementById('btn-mount-iso')?.addEventListener('click', () => {
 document.getElementById('btn-eject-iso')?.addEventListener('click', async () => {
     const response = await fetch(`${basePath}/api/containers/${containerId}/iso`, { method: 'DELETE' });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
@@ -448,7 +448,7 @@ document.getElementById('btn-save-boot-settings')?.addEventListener('click', asy
         body: JSON.stringify({ autoStart, requiresContainerName }),
     });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();

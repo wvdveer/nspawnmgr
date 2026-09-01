@@ -19,7 +19,7 @@ document.querySelectorAll('#container-requests-section .btn-approve').forEach((b
             body: JSON.stringify({ sudoPassword }),
         });
         if (!response.ok) {
-            await window.appDialog.alert('Failed: ' + await response.text());
+            await window.appDialog.alert(t('general.failedPrefix', await response.text()));
             return;
         }
         window.location.reload();
@@ -29,14 +29,14 @@ document.querySelectorAll('#container-requests-section .btn-approve').forEach((b
 document.querySelectorAll('#container-requests-section .btn-deny').forEach((button) => {
     button.addEventListener('click', async () => {
         const containerId = button.getAttribute('data-container-id');
-        if (!await window.appDialog.confirm('Deny this container request?')) {
+        if (!await window.appDialog.confirm(t('page.requests.confirmDenyContainer'))) {
             return;
         }
         // /api/requests/... (not /api/admin/...) - denying, unlike approving, is open to any
         // authenticated user for their own requests; the server enforces the ownership check.
         const response = await fetch(`${basePath}/api/requests/containers/${containerId}/deny`, { method: 'POST' });
         if (!response.ok) {
-            await window.appDialog.alert('Failed: ' + await response.text());
+            await window.appDialog.alert(t('general.failedPrefix', await response.text()));
             return;
         }
         window.location.reload();
@@ -60,7 +60,7 @@ document.querySelectorAll('#user-requests-section .btn-approve').forEach((button
             body: JSON.stringify({ sudoPassword }),
         });
         if (!response.ok) {
-            await window.appDialog.alert('Failed: ' + await response.text());
+            await window.appDialog.alert(t('general.failedPrefix', await response.text()));
             return;
         }
         window.location.reload();
@@ -70,12 +70,12 @@ document.querySelectorAll('#user-requests-section .btn-approve').forEach((button
 document.querySelectorAll('#user-requests-section .btn-deny').forEach((button) => {
     button.addEventListener('click', async () => {
         const requestId = button.getAttribute('data-request-id');
-        if (!await window.appDialog.confirm('Deny this request?')) {
+        if (!await window.appDialog.confirm(t('page.requests.confirmDenyRequest'))) {
             return;
         }
         const response = await fetch(`${basePath}/api/requests/container-user-requests/${requestId}/deny`, { method: 'POST' });
         if (!response.ok) {
-            await window.appDialog.alert('Failed: ' + await response.text());
+            await window.appDialog.alert(t('general.failedPrefix', await response.text()));
             return;
         }
         window.location.reload();

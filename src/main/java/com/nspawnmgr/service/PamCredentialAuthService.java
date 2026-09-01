@@ -71,6 +71,7 @@ public class PamCredentialAuthService {
     private final SecretEncryptionService secretEncryptionService;
     private final PamAuthProperties pamAuthProperties;
     private final SecureRandom secureRandom = new SecureRandom();
+    private final UserMessages messages;
 
     public PamCredentialAuthService(ContainerRepository containerRepository,
                                      ContainerPamServiceRepository pamServiceRepository,
@@ -79,7 +80,8 @@ public class PamCredentialAuthService {
                                      ContainerCliExecutor cliExecutor,
                                      GuacamoleAdminClient guacamoleAdminClient,
                                      SecretEncryptionService secretEncryptionService,
-                                     PamAuthProperties pamAuthProperties) {
+                                     PamAuthProperties pamAuthProperties,
+                                     UserMessages messages) {
         this.containerRepository = containerRepository;
         this.pamServiceRepository = pamServiceRepository;
         this.credentialRepository = credentialRepository;
@@ -88,6 +90,7 @@ public class PamCredentialAuthService {
         this.guacamoleAdminClient = guacamoleAdminClient;
         this.secretEncryptionService = secretEncryptionService;
         this.pamAuthProperties = pamAuthProperties;
+        this.messages = messages;
     }
 
     public List<ContainerPamService> listServices(Container container) {
@@ -106,7 +109,7 @@ public class PamCredentialAuthService {
                 .filter(name -> !PamServiceCatalog.KNOWN_SERVICES.contains(name))
                 .collect(Collectors.toSet());
         if (!unknown.isEmpty()) {
-            throw new IllegalArgumentException("Unknown PAM service name(s): " + unknown);
+            throw new IllegalArgumentException(messages.get("error.pam.unknownServiceNames", unknown));
         }
         requireSourceCredential(container, source);
 
@@ -238,7 +241,7 @@ public class PamCredentialAuthService {
         };
         if (required != null && credentialRepository.findByContainerAndType(container, required).isEmpty()) {
             throw new IllegalStateException(
-                    "Can't check against " + required + " — " + container.getName() + " has no such credential yet");
+                    messages.get("error.pam.noSuchCredential", required, container.getName()));
         }
     }
 
@@ -259,7 +262,7 @@ public class PamCredentialAuthService {
         // ContainerPortMappingService.rewriteSettings/ProvisioningService.ensureVncServerRunning
         // already needed for the identical reason.
         Container withTemplate = containerRepository.findByIdWithTemplate(container.getId())
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + container.getId()));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", container.getId())));
 
         String script = buildApplyScript(withTemplate, enabled);
         ScriptRunResult result = cliExecutor.runScript(container.getName(), container.getBackend(), script, APPLY_TIMEOUT);

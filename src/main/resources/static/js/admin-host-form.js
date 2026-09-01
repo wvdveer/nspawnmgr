@@ -23,7 +23,7 @@ document.getElementById('host-form').addEventListener('submit', async (event) =>
         body: JSON.stringify(body),
     });
     if (!response.ok) {
-        status.textContent = 'Error: ' + await response.text();
+        status.textContent = t('general.failedPrefix', await response.text());
         return;
     }
     const result = await response.json();

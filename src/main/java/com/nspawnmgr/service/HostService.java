@@ -26,13 +26,15 @@ public class HostService {
     private final UserRepository userRepository;
     private final GuacamoleAdminClient guacamoleAdminClient;
     private final ShareService shareService;
+    private final UserMessages messages;
 
     public HostService(ContainerRepository containerRepository, UserRepository userRepository,
-                        GuacamoleAdminClient guacamoleAdminClient, ShareService shareService) {
+                        GuacamoleAdminClient guacamoleAdminClient, ShareService shareService, UserMessages messages) {
         this.containerRepository = containerRepository;
         this.userRepository = userRepository;
         this.guacamoleAdminClient = guacamoleAdminClient;
         this.shareService = shareService;
+        this.messages = messages;
     }
 
     public List<Container> listAll() {
@@ -50,9 +52,9 @@ public class HostService {
      */
     public Container getById(Long id) {
         Container container = containerRepository.findByIdWithTemplate(id)
-                .orElseThrow(() -> new IllegalArgumentException("No such host: " + id));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.host.noSuchHost", id)));
         if (container.getKind() != ContainerKind.EXTERNAL) {
-            throw new IllegalArgumentException("No such host: " + id);
+            throw new IllegalArgumentException(messages.get("error.host.noSuchHost", id));
         }
         return container;
     }
@@ -61,9 +63,9 @@ public class HostService {
      *  by name rather than numeric ID since that URL gets shared/pasted around directly. */
     public Container getByName(String name) {
         Container container = containerRepository.findByNameWithTemplate(name)
-                .orElseThrow(() -> new IllegalArgumentException("No such host: " + name));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.host.noSuchHost", name)));
         if (container.getKind() != ContainerKind.EXTERNAL) {
-            throw new IllegalArgumentException("No such host: " + name);
+            throw new IllegalArgumentException(messages.get("error.host.noSuchHost", name));
         }
         return container;
     }
@@ -165,7 +167,7 @@ public class HostService {
     private void requireNameAvailable(String name, Long excludingId) {
         containerRepository.findByName(name).ifPresent(existing -> {
             if (excludingId == null || !existing.getId().equals(excludingId)) {
-                throw new IllegalArgumentException("A container or host named '" + name + "' already exists");
+                throw new IllegalArgumentException(messages.get("error.host.nameAlreadyExists", name));
             }
         });
     }
@@ -173,6 +175,6 @@ public class HostService {
     private User requireUser(String username) {
         return userRepository.findByUsernameIgnoreCase(username)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "No such user: '" + username + "' — they must have logged in at least once before being set as a host's owner"));
+                        messages.get("error.host.noSuchUserOwner", username)));
     }
 }

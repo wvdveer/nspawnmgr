@@ -46,13 +46,16 @@ public class PackageDownloadService {
     private final PackageCacheService packageCacheService;
     private final AuditLogService auditLogService;
     private final Map<String, ActiveDownload> activeDownloads = new ConcurrentHashMap<>();
+    private final UserMessages messages;
 
     public PackageDownloadService(PackageDownloadExecutor executor, PackageCacheFilesystem filesystem,
-                                   PackageCacheService packageCacheService, AuditLogService auditLogService) {
+                                   PackageCacheService packageCacheService, AuditLogService auditLogService,
+                                   UserMessages messages) {
         this.executor = executor;
         this.filesystem = filesystem;
         this.packageCacheService = packageCacheService;
         this.auditLogService = auditLogService;
+        this.messages = messages;
     }
 
     /**
@@ -79,7 +82,7 @@ public class PackageDownloadService {
     public ActiveDownload status(String downloadId) {
         ActiveDownload activeDownload = activeDownloads.get(downloadId);
         if (activeDownload == null) {
-            throw new IllegalArgumentException("No such download: " + downloadId);
+            throw new IllegalArgumentException(messages.get("error.packages.noSuchDownload", downloadId));
         }
         return activeDownload;
     }

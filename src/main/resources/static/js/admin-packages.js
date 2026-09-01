@@ -7,18 +7,18 @@ document.getElementById('btn-show-auto-cache').addEventListener('click', async (
     const packageManager = document.getElementById('autoCachePackageManager').value;
     tbody.innerHTML = '';
     table.style.display = 'none';
-    status.textContent = 'Loading...';
+    status.textContent = t('js.status.loading');
     const response = await fetch(`${basePath}/api/admin/packages/auto-cache?packageManager=${encodeURIComponent(packageManager)}`);
     if (!response.ok) {
-        status.textContent = 'Error: ' + await response.text();
+        status.textContent = t('general.failedPrefix', await response.text());
         return;
     }
     const files = await response.json();
     if (files.length === 0) {
-        status.textContent = 'Nothing cached for ' + packageManager + ' right now.';
+        status.textContent = t('page.adminPackages.nothingCached', packageManager);
         return;
     }
-    status.textContent = files.length + ' file(s):';
+    status.textContent = t('page.adminPackages.fileCount', files.length);
     for (const f of files) {
         const row = document.createElement('tr');
         const filenameCell = document.createElement('td');
@@ -35,12 +35,12 @@ document.getElementById('btn-show-auto-cache').addEventListener('click', async (
 document.querySelectorAll('.btn-delete').forEach((button) => {
     button.addEventListener('click', async () => {
         const packageId = button.getAttribute('data-package-id');
-        if (!await window.appDialog.confirm('Delete this package from the cache? This cannot be undone.')) {
+        if (!await window.appDialog.confirm(t('js.confirm.deletePackage'))) {
             return;
         }
         const response = await fetch(`${basePath}/api/admin/packages/${packageId}`, { method: 'DELETE' });
         if (!response.ok) {
-            await window.appDialog.alert('Failed: ' + await response.text());
+            await window.appDialog.alert(t('general.failedPrefix', await response.text()));
             return;
         }
         window.location.reload();

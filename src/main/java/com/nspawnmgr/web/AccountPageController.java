@@ -2,6 +2,7 @@ package com.nspawnmgr.web;
 
 import com.nspawnmgr.security.CurrentUserProvider;
 import com.nspawnmgr.service.SettingsService;
+import com.nspawnmgr.service.TranslationService;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,16 +12,20 @@ public class AccountPageController {
 
     private final CurrentUserProvider currentUserProvider;
     private final SettingsService settingsService;
+    private final TranslationService translationService;
 
-    public AccountPageController(CurrentUserProvider currentUserProvider, SettingsService settingsService) {
+    public AccountPageController(CurrentUserProvider currentUserProvider, SettingsService settingsService,
+                                  TranslationService translationService) {
         this.currentUserProvider = currentUserProvider;
         this.settingsService = settingsService;
+        this.translationService = translationService;
     }
 
     @GetMapping("/account")
     public String account(Model model) {
         model.addAttribute("currentUser", currentUserProvider.get());
         model.addAttribute("logoutUrl", logoutUrl());
+        model.addAttribute("availableLanguages", translationService.availableLocalesWithNames());
         return "account";
     }
 

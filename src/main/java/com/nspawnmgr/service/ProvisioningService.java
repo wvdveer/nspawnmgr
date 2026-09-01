@@ -65,6 +65,7 @@ public class ProvisioningService {
     private final PackageCacheService packageCacheService;
     private final PamCredentialAuthService pamCredentialAuthService;
     private final SecureRandom secureRandom = new SecureRandom();
+    private final UserMessages messages;
 
     public ProvisioningService(ContainerRepository containerRepository,
                                 ContainerCredentialRepository containerCredentialRepository,
@@ -78,7 +79,8 @@ public class ProvisioningService {
                                 SshKeyPairGenerator sshKeyPairGenerator,
                                 SettingsService settingsService,
                                 PackageCacheService packageCacheService,
-                                PamCredentialAuthService pamCredentialAuthService) {
+                                PamCredentialAuthService pamCredentialAuthService,
+                                UserMessages messages) {
         this.containerRepository = containerRepository;
         this.containerCredentialRepository = containerCredentialRepository;
         this.cliExecutor = cliExecutor;
@@ -92,6 +94,7 @@ public class ProvisioningService {
         this.settingsService = settingsService;
         this.packageCacheService = packageCacheService;
         this.pamCredentialAuthService = pamCredentialAuthService;
+        this.messages = messages;
     }
 
     @Transactional
@@ -176,10 +179,10 @@ public class ProvisioningService {
 
     private Container requireState(Long containerId, ContainerState expected) {
         Container container = containerRepository.findById(containerId)
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + containerId));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", containerId)));
         if (container.getState() != expected) {
-            throw new IllegalStateException("Container " + containerId + " is not " + expected
-                    + " (current state: " + container.getState() + ")");
+            throw new IllegalStateException(messages.get("error.provisioning.containerNotInExpectedState",
+                    containerId, expected, container.getState()));
         }
         return container;
     }
@@ -197,7 +200,7 @@ public class ProvisioningService {
     @Async
     public void provisionAsync(Long containerId, char[] sudoPasswordOverride) {
         Container container = containerRepository.findByIdWithTemplate(containerId)
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + containerId));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", containerId)));
         switch (container.getBackend()) {
             case PODMAN -> provisionPod(containerId, sudoPasswordOverride);
             case QEMU -> provisionQemu(containerId, sudoPasswordOverride);
@@ -219,7 +222,7 @@ public class ProvisioningService {
      */
     public void provision(Long containerId, char[] sudoPasswordOverride) {
         Container container = containerRepository.findByIdWithTemplate(containerId)
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + containerId));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", containerId)));
         try {
             filesystemProvisioner.cloneTemplate(container.getTemplate(), container.getName(), sudoPasswordOverride);
             filesystemProvisioner.writeNspawnSettings(container, List.of());
@@ -280,7 +283,7 @@ public class ProvisioningService {
      */
     public void provisionPod(Long containerId, char[] sudoPasswordOverride) {
         Container container = containerRepository.findByIdWithTemplate(containerId)
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + containerId));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", containerId)));
         try {
             // No outboundAccessManager.sync() here - that's the nspawn-specific veth/iptables
             // mechanism (see plan's "explicitly out of scope for pods" list); a podman container on
@@ -333,12 +336,12 @@ public class ProvisioningService {
     @Transactional
     public void updatePodCommand(Long containerId, String command, char[] sudoPasswordOverride) {
         Container container = containerRepository.findByIdWithTemplate(containerId)
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + containerId));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", containerId)));
         if (container.getBackend() != ContainerBackend.PODMAN) {
-            throw new IllegalArgumentException("Container '" + container.getName() + "' is not a pod");
+            throw new IllegalArgumentException(messages.get("error.provisioning.notAPod", container.getName()));
         }
         if (container.getState() != ContainerState.STOPPED && container.getState() != ContainerState.ERROR) {
-            throw new IllegalStateException("Pod must be stopped (or in ERROR) before its command can be changed");
+            throw new IllegalStateException(messages.get("error.provisioning.podMustBeStoppedToChangeCommand"));
         }
         try {
             cliExecutor.remove(container.getName(), container.getBackend());
@@ -376,7 +379,7 @@ public class ProvisioningService {
      */
     public void provisionQemu(Long containerId, char[] sudoPasswordOverride) {
         Container container = containerRepository.findByIdWithTemplate(containerId)
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + containerId));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", containerId)));
         try {
             if (container.getTemplate() != null) {
                 filesystemProvisioner.cloneQemuTemplate(container.getTemplate(), container.getName(), sudoPasswordOverride);
@@ -436,8 +439,7 @@ public class ProvisioningService {
                 return candidate;
             }
         }
-        throw new IllegalStateException("No free QEMU VNC port available in the configured range ("
-                + start + "-" + end + ") - every port is already allocated to another VM");
+        throw new IllegalStateException(messages.get("error.provisioning.noFreeQemuVncPort", start, end));
     }
 
     private void provisionSsh(Container container, char[] sudoPasswordOverride) {
@@ -522,7 +524,7 @@ public class ProvisioningService {
     @Transactional
     public void recordManualSshCredential(Container container, String accountName, String privateKeyPem) {
         if (containerCredentialRepository.findByContainerAndType(container, CredentialType.SSH_KEY).isPresent()) {
-            throw new IllegalStateException("nspawnmgr already has SSH credentials recorded for " + container.getName());
+            throw new IllegalStateException(messages.get("error.provisioning.alreadyHasSshCredentials", container.getName()));
         }
         saveCredential(container, CredentialType.SSH_KEY, accountName, privateKeyPem, null);
 
@@ -599,7 +601,6 @@ public class ProvisioningService {
         // PackageManager.DNF is the only available proxy for "this is a Fedora-family container" -
         // Template has no finer-grained distro field (see PamCredentialAuthService's own javadoc for
         // why this matters: sidesteps a still-unexplained Fedora unix_chkpwd/etc/shadow EACCES bug).
-        // May need loosening once RHEL/openSUSE also use DNF (see the v0.4.0 roadmap).
         if (container.getTemplate().getPackageManager() == PackageManager.DNF) {
             pamCredentialAuthService.enableDefaultForFedoraRdp(container);
         }
@@ -757,12 +758,12 @@ public class ProvisioningService {
     @Transactional
     public void changePrimaryAccount(Container container, String newAccountName, char[] sudoPasswordOverride) {
         Container attached = containerRepository.findByIdWithTemplate(container.getId())
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + container.getId()));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", container.getId())));
         if (attached.getState() != ContainerState.RUNNING) {
-            throw new IllegalStateException("Container must be running to change its primary account");
+            throw new IllegalStateException(messages.get("error.provisioning.mustBeRunningToChangePrimaryAccount"));
         }
         if (!USERNAME_PATTERN.matcher(newAccountName).matches() || !accountExistsInContainer(attached, newAccountName)) {
-            throw new IllegalArgumentException("'" + newAccountName + "' is not an existing account inside " + attached.getName());
+            throw new IllegalArgumentException(messages.get("error.provisioning.notAnExistingAccount", newAccountName, attached.getName()));
         }
 
         if (attached.getGuacSshConnectionId() != null) {
@@ -963,7 +964,7 @@ public class ProvisioningService {
         // eagerly joined, same fix ContainerPortMappingService.rewriteSettings/TemplateService
         // .createFromMachine already needed for the identical reason.
         Container withTemplate = containerRepository.findByIdWithTemplate(container.getId())
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + container.getId()));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", container.getId())));
         String accountName = resolveAccountName(container);
         String processNamePattern = templateService.resolveVncProcessNamePattern(withTemplate.getTemplate());
         String script = "ss -tln 2>/dev/null | grep -q ':" + VNC_PORT + "[[:space:]]' || { "

@@ -34,17 +34,19 @@ public class ShareService {
     private final SecretEncryptionService secretEncryptionService;
     private final GuacamoleUserSecretWriter guacamoleUserSecretWriter;
     private final SecureRandom secureRandom = new SecureRandom();
+    private final UserMessages messages;
 
     public ShareService(ContainerShareRepository containerShareRepository,
                          UserRepository userRepository, GuacamoleUserSecretRepository guacamoleUserSecretRepository,
                          GuacamoleAdminClient guacamoleAdminClient, SecretEncryptionService secretEncryptionService,
-                         GuacamoleUserSecretWriter guacamoleUserSecretWriter) {
+                         GuacamoleUserSecretWriter guacamoleUserSecretWriter, UserMessages messages) {
         this.containerShareRepository = containerShareRepository;
         this.userRepository = userRepository;
         this.guacamoleUserSecretRepository = guacamoleUserSecretRepository;
         this.guacamoleAdminClient = guacamoleAdminClient;
         this.secretEncryptionService = secretEncryptionService;
         this.guacamoleUserSecretWriter = guacamoleUserSecretWriter;
+        this.messages = messages;
     }
 
     /**
@@ -115,7 +117,7 @@ public class ShareService {
     @Transactional(readOnly = true)
     public String guacamolePassword(User user) {
         GuacamoleUserSecret secret = guacamoleUserSecretRepository.findById(user.getId())
-                .orElseThrow(() -> new IllegalStateException("No Guacamole credentials provisioned for user " + user.getId()));
+                .orElseThrow(() -> new IllegalStateException(messages.get("error.share.noGuacamoleCredentials", user.getId())));
         return secretEncryptionService.decrypt(secret.getPasswordCiphertext(), secret.getIv());
     }
 
@@ -140,7 +142,7 @@ public class ShareService {
             guacamoleAdminClient.updateUserPassword(user.getGuacamoleUsername(), newPassword);
             GuacamoleUserSecret secret = guacamoleUserSecretRepository.findById(user.getId())
                     .orElseThrow(() -> new IllegalStateException(
-                            "No Guacamole credentials row for user " + user.getId() + " despite a guacamoleUsername already being set"));
+                            messages.get("error.share.noGuacamoleSecretRow", user.getId())));
             // No explicit save() here: GuacamoleUserSecret.isNew() is hardcoded true (see its own
             // javadoc), so save() would attempt a duplicate-PK insert on an existing row. Mutating
             // this managed entity's setters inside this @Transactional method lets JPA's own dirty
@@ -166,7 +168,7 @@ public class ShareService {
      */
     private String ensureGuacamoleUser(User user) {
         User locked = userRepository.findByIdForUpdate(user.getId())
-                .orElseThrow(() -> new IllegalArgumentException("No such user: " + user.getId()));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchUser", user.getId())));
         if (locked.getGuacamoleUsername() != null) {
             return locked.getGuacamoleUsername();
         }
@@ -207,7 +209,7 @@ public class ShareService {
     @Transactional
     public String resetGuacamoleAccount(User user) {
         User locked = userRepository.findByIdForUpdate(user.getId())
-                .orElseThrow(() -> new IllegalArgumentException("No such user: " + user.getId()));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchUser", user.getId())));
         String guacUsername = locked.getGuacamoleUsername() != null ? locked.getGuacamoleUsername() : desiredGuacUsername(locked);
         String password = generatePassword();
         guacamoleAdminClient.createOrGetUser(guacUsername, password);

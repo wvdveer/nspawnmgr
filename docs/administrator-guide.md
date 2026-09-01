@@ -1318,7 +1318,7 @@ own database work right after migrations, no login required first (see ["Discove
 created outside nspawnmgr"](#discovering-machines-created-outside-nspawnmgr) for the same
 underlying registration mechanism, otherwise admin-triggered by hand). When you do log in for the
 first time (via that same account), you're simply reconnected to the admin identity the wizard
-already created ([§3](#admin-user-roles)) — both machines are already there waiting. They aren't
+already created ([§3](#adminuser-roles)) — both machines are already there waiting. They aren't
 hidden or special-cased afterward; you can SSH into either one, share them, delete them, like any
 other container — though deleting the `nspawnmgr` machine you're currently
 running from is, self-evidently, not a good idea.
@@ -1389,7 +1389,7 @@ a Gitea access token with package-write scope — see that job's own comment in 
 **Install it:**
 
 ```bash
-sudo apt install ./nspawnmgr_0.3.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
+sudo apt install ./nspawnmgr_0.4.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
 ```
 
 Neither `tomcat9` nor `guacd`/`guacamole-tomcat` are in this package's `Depends:` — apt's own
@@ -1563,7 +1563,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_ARCH_PKG=1 tools/scripts/build-all.sh   # needs `makepkg` on PATH - a real Arch host, or the
                                                # archlinux/devtools container image
 
-sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.3.0-1-any.pkg.tar.zst
+sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.4.0-1-any.pkg.tar.zst
 ```
 
 ### Installing on Fedora/RHEL (RPM)
@@ -1615,7 +1615,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_RPM=1 tools/scripts/build-all.sh   # needs a real `rpmbuild` binary (`rpm-build` package) -
                                           # a real Fedora/RHEL host, no cross-platform equivalent
 
-sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.3.0-1.noarch.rpm
+sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.4.0-1.noarch.rpm
 ```
 
 ### Option B: build from source, deploy manually

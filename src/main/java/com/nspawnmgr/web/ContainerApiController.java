@@ -31,6 +31,7 @@ import com.nspawnmgr.service.PamCredentialAuthService;
 import com.nspawnmgr.service.ProvisioningService;
 import com.nspawnmgr.service.ShareService;
 import com.nspawnmgr.service.TemplateService;
+import com.nspawnmgr.service.UserMessages;
 import com.nspawnmgr.web.dto.AddContainerUserRequest;
 import com.nspawnmgr.web.dto.AddOutboundAllowlistEntryRequest;
 import com.nspawnmgr.web.dto.AddPortMappingRequest;
@@ -99,6 +100,7 @@ public class ContainerApiController {
     private final CurrentUserProvider currentUserProvider;
     private final AuditLogService auditLogService;
     private final PamCredentialAuthService pamCredentialAuthService;
+    private final UserMessages messages;
 
     public ContainerApiController(ContainerRepository containerRepository, ProvisioningService provisioningService,
                                    ContainerLifecycleService lifecycleService, ContainerDiscoveryService discoveryService,
@@ -110,7 +112,7 @@ public class ContainerApiController {
                                    TemplateService templateService, UserRepository userRepository,
                                    ContainerShareRepository containerShareRepository,
                                    CurrentUserProvider currentUserProvider, AuditLogService auditLogService,
-                                   PamCredentialAuthService pamCredentialAuthService) {
+                                   PamCredentialAuthService pamCredentialAuthService, UserMessages messages) {
         this.containerRepository = containerRepository;
         this.provisioningService = provisioningService;
         this.lifecycleService = lifecycleService;
@@ -128,6 +130,7 @@ public class ContainerApiController {
         this.currentUserProvider = currentUserProvider;
         this.auditLogService = auditLogService;
         this.pamCredentialAuthService = pamCredentialAuthService;
+        this.messages = messages;
     }
 
     @PostMapping("/api/containers")
@@ -157,13 +160,13 @@ public class ContainerApiController {
     public ResponseEntity<CreatedContainerResponse> createQemu(@Valid @RequestBody CreateQemuVmRequest request) {
         User owner = currentUserProvider.get();
         if ((request.diskSizeGb() == null) == (request.templateId() == null)) {
-            throw new IllegalArgumentException("Specify exactly one of diskSizeGb or templateId");
+            throw new IllegalArgumentException(messages.get("error.web.specifyExactlyOne"));
         }
         Template template = null;
         if (request.templateId() != null) {
             template = templateService.getById(request.templateId());
             if (template.getBackend() != ContainerBackend.QEMU) {
-                throw new IllegalArgumentException("Template " + template.getName() + " is not QEMU-backed");
+                throw new IllegalArgumentException(messages.get("error.web.templateNotQemuBacked", template.getName()));
             }
         }
         CachedPackage iso = request.isoPackageId() != null ? packageCacheService.getById(request.isoPackageId()) : null;
@@ -186,7 +189,7 @@ public class ContainerApiController {
     public List<DiscoveredContainerResponse> discover() {
         User admin = currentUserProvider.get();
         if (admin.getRole() != Role.ADMIN) {
-            throw new AccessDeniedException("Only an admin may discover machines");
+            throw new AccessDeniedException(messages.get("error.web.onlyAdminDiscoverMachines"));
         }
         List<Container> discovered = discoveryService.discover(admin);
         discovered.forEach(c -> auditLogService.log(admin, AuditAction.CREATED, AuditTargetType.CONTAINER,
@@ -262,7 +265,7 @@ public class ContainerApiController {
     public void createTemplateFromMachine(@PathVariable Long id, @RequestBody CreateTemplateFromMachineRequest request) {
         Container container = requireOwned(id);
         if (container.getState() != ContainerState.STOPPED) {
-            throw new IllegalStateException("Container must be STOPPED to create a template from it");
+            throw new IllegalStateException(messages.get("error.web.mustBeStoppedToCreateTemplate"));
         }
         Template template = templateService.createFromMachine(request.templateName(), request.description(), container, null);
         auditLogService.log(currentUserProvider.get(), AuditAction.CREATED, AuditTargetType.TEMPLATE,
@@ -334,7 +337,7 @@ public class ContainerApiController {
     public void addShare(@PathVariable Long id, @Valid @RequestBody ShareRequest request) {
         Container container = requireOwned(id);
         User target = userRepository.findByUsernameIgnoreCase(request.username())
-                .orElseThrow(() -> new IllegalArgumentException("No such user: " + request.username()));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchUser", request.username())));
         shareService.grantAccess(container, target);
         auditLogService.log(currentUserProvider.get(), AuditAction.SHARED, AuditTargetType.CONTAINER,
                 container.getId(), container.getName(), "with " + target.getUsername());
@@ -344,7 +347,7 @@ public class ContainerApiController {
     public void removeShare(@PathVariable Long id, @PathVariable Long userId) {
         Container container = requireOwned(id);
         User target = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("No such user: " + userId));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchUser", userId)));
         shareService.revokeAccess(container, target);
         auditLogService.log(currentUserProvider.get(), AuditAction.UNSHARED, AuditTargetType.CONTAINER,
                 container.getId(), container.getName(), "from " + target.getUsername());
@@ -718,7 +721,7 @@ public class ContainerApiController {
         Container container = findOrThrow(id);
         User user = currentUserProvider.get();
         if (!container.getOwner().getId().equals(user.getId())) {
-            throw new AccessDeniedException("Only the owner may perform this action");
+            throw new AccessDeniedException(messages.get("error.web.onlyOwnerMayPerform"));
         }
         return container;
     }
@@ -750,7 +753,7 @@ public class ContainerApiController {
         if (containerShareRepository.existsByContainerAndUser(container, user)) {
             return container;
         }
-        throw new AccessDeniedException("Only the owner or a shared user may perform this action");
+        throw new AccessDeniedException(messages.get("error.web.onlyOwnerOrSharedMayPerform"));
     }
 
     /**
@@ -771,7 +774,7 @@ public class ContainerApiController {
         if (containerShareRepository.existsByContainerAndUser(container, user)) {
             return container;
         }
-        throw new AccessDeniedException("This container has not been shared with you.");
+        throw new AccessDeniedException(messages.get("error.web.notSharedWithYou"));
     }
 
     // Eager-fetch owner variant of findOrThrow - takeOwnership reads container.getOwner()
@@ -782,10 +785,10 @@ public class ContainerApiController {
     // take-ownership click, not caught by any of ApiExceptionHandler's typed handlers).
     private Container requireAdmin(Long id) {
         Container container = containerRepository.findByIdWithTemplate(id)
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + id));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", id)));
         User user = currentUserProvider.get();
         if (user.getRole() != Role.ADMIN) {
-            throw new AccessDeniedException("Only an admin may take ownership of a container");
+            throw new AccessDeniedException(messages.get("error.web.onlyAdminTakeOwnership"));
         }
         return container;
     }
@@ -797,7 +800,7 @@ public class ContainerApiController {
         try {
             return DesktopManager.valueOf(value.toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid desktop manager: " + value);
+            throw new IllegalArgumentException(messages.get("error.web.invalidDesktopManager", value));
         }
     }
 
@@ -805,12 +808,12 @@ public class ContainerApiController {
         try {
             return PackageManager.valueOf(value.toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid package manager: " + value);
+            throw new IllegalArgumentException(messages.get("error.web.invalidPackageManager", value));
         }
     }
 
     private Container findOrThrow(Long id) {
         return containerRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + id));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", id)));
     }
 }

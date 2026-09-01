@@ -362,6 +362,17 @@ mkdir -p "$ROOTFS/etc/nspawnmgr/auth-live" "$ROOTFS/etc/nspawnmgr/db-config"
 chroot "$ROOTFS" chown tomcat:tomcat /etc/nspawnmgr/auth-live /etc/nspawnmgr/db-config
 chmod 750 "$ROOTFS/etc/nspawnmgr/auth-live" "$ROOTFS/etc/nspawnmgr/db-config"
 
+# 8b. TranslationService's own lang/ dir - always reconciled from the package's own bundled copy
+#     (/usr/share/nspawnmgr/lang, see nspawnmgr-deb/pom.xml), same posture as refresh_wars() above:
+#     a package upgrade should deliver newer/fixed translations. An admin's own hand-added file for
+#     an extra language lives ONLY inside the machine's rootfs (never touched by the host-side
+#     package), so it survives this - only the shipped *.json files here get overwritten, nothing
+#     under this directory is ever deleted.
+mkdir -p "$ROOTFS/etc/nspawnmgr/lang"
+cp /usr/share/nspawnmgr/lang/*.json "$ROOTFS/etc/nspawnmgr/lang/"
+chroot "$ROOTFS" chown -R tomcat:tomcat /etc/nspawnmgr/lang
+chmod 750 "$ROOTFS/etc/nspawnmgr/lang"
+
 # 9. Pick the host-side port to forward into the container's Tomcat - see pick_host_port()'s own
 #    comment above for why this is preserved (not re-searched) on reconcile.
 HOST_PORT="$(pick_host_port)"

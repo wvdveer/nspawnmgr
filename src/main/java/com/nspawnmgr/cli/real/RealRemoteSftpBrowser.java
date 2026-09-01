@@ -5,6 +5,7 @@ import com.nspawnmgr.cli.FileEntry;
 import com.nspawnmgr.cli.RemoteAuthenticationException;
 import com.nspawnmgr.cli.RemotePermissionDeniedException;
 import com.nspawnmgr.cli.RemoteSftpBrowser;
+import com.nspawnmgr.service.UserMessages;
 import net.schmizz.sshj.SSHClient;
 import net.schmizz.sshj.common.IOUtils;
 import net.schmizz.sshj.sftp.OpenMode;
@@ -54,6 +55,12 @@ public class RealRemoteSftpBrowser implements RemoteSftpBrowser {
     // fast on a genuine wrong-password rejection.
     private static final int MAX_CONNECT_ATTEMPTS = 3;
 
+    private final UserMessages messages;
+
+    public RealRemoteSftpBrowser(UserMessages messages) {
+        this.messages = messages;
+    }
+
     @Override
     public List<FileEntry> list(String address, int port, String username, char[] password, String absoluteDir) {
         try (SSHClient ssh = connect(address, port, username, password); SFTPClient sftp = ssh.newSFTPClient()) {
@@ -62,9 +69,9 @@ public class RealRemoteSftpBrowser implements RemoteSftpBrowser {
                     .map(RealRemoteSftpBrowser::toFileEntry)
                     .toList();
         } catch (SFTPException e) {
-            throw translateSftpException(e, "list " + absoluteDir + " on " + address);
+            throw translateSftpException(e, "error.remote.failedToList", "error.remote.permissionDeniedList", absoluteDir, address);
         } catch (IOException e) {
-            throw new ContainerCliException("Failed to list " + absoluteDir + " on " + address, e);
+            throw new ContainerCliException(messages.get("error.remote.failedToList", absoluteDir, address), e);
         }
     }
 
@@ -77,9 +84,9 @@ public class RealRemoteSftpBrowser implements RemoteSftpBrowser {
                 }
             }
         } catch (SFTPException e) {
-            throw translateSftpException(e, "download " + absolutePath + " from " + address);
+            throw translateSftpException(e, "error.remote.failedToDownload", "error.remote.permissionDeniedDownload", absolutePath, address);
         } catch (IOException e) {
-            throw new ContainerCliException("Failed to download " + absolutePath + " from " + address, e);
+            throw new ContainerCliException(messages.get("error.remote.failedToDownload", absolutePath, address), e);
         }
     }
 
@@ -88,7 +95,7 @@ public class RealRemoteSftpBrowser implements RemoteSftpBrowser {
         try (SSHClient ssh = connect(address, port, username, password); SFTPClient sftp = ssh.newSFTPClient()) {
             String target = absoluteDir.equals("/") ? "/" + filename : absoluteDir + "/" + filename;
             if (sftp.statExistence(target) != null) {
-                throw new IllegalArgumentException("A file or folder named '" + filename + "' already exists in this directory.");
+                throw new IllegalArgumentException(messages.get("error.validation.fileAlreadyExists", filename));
             }
             sftp.mkdirs(absoluteDir);
             try (RemoteFile file = sftp.open(target, EnumSet.of(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC))) {
@@ -97,9 +104,9 @@ public class RealRemoteSftpBrowser implements RemoteSftpBrowser {
                 }
             }
         } catch (SFTPException e) {
-            throw translateSftpException(e, "upload " + filename + " to " + address);
+            throw translateSftpException(e, "error.remote.failedToUpload", "error.remote.permissionDeniedUpload", filename, address);
         } catch (IOException e) {
-            throw new ContainerCliException("Failed to upload " + filename + " to " + address, e);
+            throw new ContainerCliException(messages.get("error.remote.failedToUpload", filename, address), e);
         }
     }
 
@@ -108,7 +115,7 @@ public class RealRemoteSftpBrowser implements RemoteSftpBrowser {
         try (SSHClient ssh = connect(address, port, username, password); SFTPClient sftp = ssh.newSFTPClient()) {
             return sftp.canonicalize(".");
         } catch (IOException e) {
-            throw new ContainerCliException("Could not connect to " + address + ":" + port + " as " + username, e);
+            throw new ContainerCliException(messages.get("error.remote.couldNotConnectAs", address, port, username), e);
         }
     }
 
@@ -116,11 +123,11 @@ public class RealRemoteSftpBrowser implements RemoteSftpBrowser {
      *  permission-denied response from the target (another user's home, a root-owned path) is an
      *  expected, routine thing to hit - surfaced as {@link RemotePermissionDeniedException} (a
      *  clear 403) rather than lumped in with a genuine connection/protocol failure. */
-    private static RuntimeException translateSftpException(SFTPException e, String action) {
+    private RuntimeException translateSftpException(SFTPException e, String failedKey, String permissionDeniedKey, Object... args) {
         if (e.getStatusCode() == Response.StatusCode.PERMISSION_DENIED) {
-            return new RemotePermissionDeniedException("You do not have permission to " + action, e);
+            return new RemotePermissionDeniedException(messages.get(permissionDeniedKey, args), e);
         }
-        return new ContainerCliException("Failed to " + action, e);
+        return new ContainerCliException(messages.get(failedKey, args), e);
     }
 
     private static FileEntry toFileEntry(RemoteResourceInfo info) {
@@ -130,7 +137,7 @@ public class RealRemoteSftpBrowser implements RemoteSftpBrowser {
         return new FileEntry(info.getName(), directory, sizeBytes, mtimeEpochSeconds);
     }
 
-    private static SSHClient connect(String address, int port, String username, char[] password) {
+    private SSHClient connect(String address, int port, String username, char[] password) {
         IOException lastFailure = null;
         for (int attempt = 1; attempt <= MAX_CONNECT_ATTEMPTS; attempt++) {
             SSHClient ssh = new SSHClient();
@@ -163,12 +170,10 @@ public class RealRemoteSftpBrowser implements RemoteSftpBrowser {
         }
         if (isAuthenticationFailure(lastFailure)) {
             throw new RemoteAuthenticationException(
-                    "Wrong username or password for '" + username + "'@" + address + ":" + port
-                            + " (or the guest's own SSH policy rejects it - e.g. many images refuse a"
-                            + " root password login by default even when the password is correct)",
+                    messages.get("error.remote.wrongUsernameOrPassword", username, address, port),
                     lastFailure);
         }
-        throw new ContainerCliException("Failed to establish SSH connection to " + address + ":" + port, lastFailure);
+        throw new ContainerCliException(messages.get("error.remote.failedToEstablishSshConnection", address, port), lastFailure);
     }
 
     /** True for the specific sshj strict-KEX transport corruption class this retries (see

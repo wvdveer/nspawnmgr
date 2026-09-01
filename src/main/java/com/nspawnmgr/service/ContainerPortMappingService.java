@@ -24,20 +24,23 @@ public class ContainerPortMappingService {
     private final ContainerRepository containerRepository;
     private final ContainerPortMappingRepository portMappingRepository;
     private final ContainerFilesystemProvisioner filesystemProvisioner;
+    private final UserMessages messages;
 
     public ContainerPortMappingService(ContainerRepository containerRepository,
                                         ContainerPortMappingRepository portMappingRepository,
-                                        ContainerFilesystemProvisioner filesystemProvisioner) {
+                                        ContainerFilesystemProvisioner filesystemProvisioner,
+                                        UserMessages messages) {
         this.containerRepository = containerRepository;
         this.portMappingRepository = portMappingRepository;
         this.filesystemProvisioner = filesystemProvisioner;
+        this.messages = messages;
     }
 
     @Transactional
     public ContainerPortMapping addMapping(Container container, int hostPort, int containerPort, PortMappingProtocol protocol) {
         requireManaged(container);
         if (isHostPortInUse(hostPort, protocol)) {
-            throw new IllegalStateException("Host port " + hostPort + " is already in use");
+            throw new IllegalStateException(messages.get("error.portMapping.hostPortInUse", hostPort));
         }
         ContainerPortMapping mapping =
                 portMappingRepository.save(new ContainerPortMapping(container, hostPort, containerPort, protocol));
@@ -50,7 +53,7 @@ public class ContainerPortMappingService {
         requireManaged(container);
         ContainerPortMapping mapping = portMappingRepository.findById(mappingId)
                 .filter(m -> m.getContainer().getId().equals(container.getId()))
-                .orElseThrow(() -> new IllegalArgumentException("No such port mapping: " + mappingId));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.portMapping.noSuchMapping", mappingId)));
         portMappingRepository.delete(mapping);
         rewriteSettings(container);
     }
@@ -66,7 +69,7 @@ public class ContainerPortMappingService {
         // Same fix ProvisioningService.provision/TemplateService.createFromMachine already needed for
         // the identical reason.
         Container withTemplate = containerRepository.findByIdWithTemplate(container.getId())
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + container.getId()));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", container.getId())));
         filesystemProvisioner.writeNspawnSettings(withTemplate, portMappingRepository.findByContainer(container));
     }
 
@@ -76,8 +79,7 @@ public class ContainerPortMappingService {
 
     private void requireManaged(Container container) {
         if (container.getKind() != ContainerKind.MANAGED) {
-            throw new IllegalStateException(
-                    "'" + container.getName() + "' is an admin-configured external host; port mappings aren't supported");
+            throw new IllegalStateException(messages.get("error.portMapping.externalHostNotSupported", container.getName()));
         }
     }
 }

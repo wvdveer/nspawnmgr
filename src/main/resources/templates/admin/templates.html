@@ -8,32 +8,33 @@
 </head>
 <body th:attr="data-base-path=@{/},data-sudo-approval-required=${sudoApprovalRequired}">
 <div th:replace="~{fragments/app-shell :: shell(
-        title='Templates', subtitle='Manage container templates',
+        title=${t.get('nav.templates')}, subtitle=${t.get('page.adminTemplates.subtitle')},
         activeNav='templates', currentUser=${currentUser},
         addMenu=~{::#add-menu-items},
         content=~{::#page-content})}">
 <div id="add-menu-items">
-    <a th:href="@{/admin/templates/new}">New Nspawn Template</a>
+    <a th:href="@{/admin/templates/new}" th:text="${t.get('page.adminTemplates.newNspawnTemplate')}">New Nspawn Template</a>
     <button type="button" id="btn-new-pod" th:disabled="${!podmanInstalled}"
-            th:title="${podmanInstalled} ? '' : 'podman is not installed on this host - see the Diagnostics page.'">New Pod Template</button>
+            th:title="${podmanInstalled} ? '' : ${t.get('page.adminTemplates.podmanNotInstalledHint')}"
+            th:text="${t.get('page.adminTemplates.newPodTemplate')}">New Pod Template</button>
     <div th:if="${!existingTemplateNames.containsAll({'debian-minimal','fedora-minimal','arch-minimal'})}">
         <hr class="add-menu-divider"/>
-        <p class="hint" style="padding: 0 0.6rem;">Quick setup: downloads a real minirootfs and
+        <p class="hint" style="padding: 0 0.6rem;" th:text="${t.get('page.adminTemplates.quickSetupHint')}">Quick setup: downloads a real minirootfs and
             installs openssh-server, then registers it - a few dozen MB (Debian) to several
             hundred MB (Arch).</p>
         <div th:if="${sudoApprovalRequired}" class="field" id="podman-sudo-field" style="padding: 0 0.6rem;">
-            <label for="podmanSudoPassword">Sudo password (New Pod / convert)</label>
+            <label for="podmanSudoPassword" th:text="${t.get('page.adminTemplates.sudoPasswordNewPod')}">Sudo password (New Pod / convert)</label>
             <input type="password" id="podmanSudoPassword"/>
         </div>
         <p id="podman-action-status" class="hint" style="padding: 0 0.6rem;"></p>
         <div th:if="${sudoApprovalRequired}" class="field" style="padding: 0 0.6rem;">
-            <label for="minimalSudoPassword">Sudo password (minimal setup)</label>
+            <label for="minimalSudoPassword" th:text="${t.get('page.adminTemplates.sudoPasswordMinimalSetup')}">Sudo password (minimal setup)</label>
             <input type="password" id="minimalSudoPassword"/>
         </div>
         <button type="button" th:each="flavor : ${minimalFlavors}"
                 th:unless="${existingTemplateNames.contains(flavor.templateName())}"
                 th:id="'btn-create-' + ${flavor.templateName()}"
-                th:text="'Set up ' + ${flavor.templateName()}"
+                th:text="${t.get('page.adminTemplates.setUpFlavor', flavor.templateName())}"
                 th:attr="data-flavor=${flavor.templateName()}"
                 class="btn-create-minimal">Set up X-minimal</button>
         <p id="create-minimal-status" class="hint" style="padding: 0 0.6rem;"></p>
@@ -41,21 +42,21 @@
 </div>
 <div id="page-content">
 <div th:if="${#lists.isEmpty(templates)}" class="card" id="no-templates-card">
-    <p>No templates are configured yet — use the + button above to create one.</p>
+    <p th:text="${t.get('page.adminTemplates.noTemplates')}">No templates are configured yet — use the + button above to create one.</p>
 </div>
 <div class="machine-grid">
-    <a class="machine-card" th:each="t : ${templates}" th:href="@{/admin/templates/{id}(id=${t.id})}" th:attr="data-template-id=${t.id}"
-       th:with="kindKey=${t.backend.name()}, kindLabel=${t.backend.name() == 'SYSTEMD_NSPAWN'} ? 'NSPAWN' : ${t.backend.name()}">
+    <a class="machine-card" th:each="tpl : ${templates}" th:href="@{/admin/templates/{id}(id=${tpl.id})}" th:attr="data-template-id=${tpl.id}"
+       th:with="kindKey=${tpl.backend.name()}, kindLabel=${tpl.backend.name() == 'SYSTEMD_NSPAWN'} ? 'NSPAWN' : ${tpl.backend.name()}">
         <div class="machine-card-header">
-            <span class="machine-card-name" th:text="${t.name}">name</span>
+            <span class="machine-card-name" th:text="${tpl.name}">name</span>
             <span class="badge badge-backend" th:classappend="${kindKey}" th:text="${kindLabel}">NSPAWN</span>
-            <span class="badge badge-bool" th:classappend="${t.active}" th:text="${t.active} ? 'Active' : 'Inactive'">Active</span>
+            <span class="badge badge-bool" th:classappend="${tpl.active}" th:text="${tpl.active} ? ${t.get('page.adminTemplates.active')} : ${t.get('page.adminTemplates.inactive')}">Active</span>
         </div>
-        <p class="machine-card-desc" th:if="${t.description != null and t.description != ''}" th:text="${t.description}">description</p>
-        <p class="machine-card-meta" th:text="${t.packageManager}">package manager</p>
-        <p class="machine-card-meta">SSH <span th:text="${t.sshState.label()}">ssh</span> ·
-            RDP <span th:text="${t.rdpState.label()}">rdp</span> ·
-            VNC <span th:text="${t.vncState.label()}">vnc</span></p>
+        <p class="machine-card-desc" th:if="${tpl.description != null and tpl.description != ''}" th:text="${tpl.description}">description</p>
+        <p class="machine-card-meta" th:text="${tpl.packageManager}">package manager</p>
+        <p class="machine-card-meta">SSH <span th:text="${t.get('state.templateFeature.' + tpl.sshState.name())}">ssh</span> ·
+            RDP <span th:text="${t.get('state.templateFeature.' + tpl.rdpState.name())}">rdp</span> ·
+            VNC <span th:text="${t.get('state.templateFeature.' + tpl.vncState.name())}">vnc</span></p>
     </a>
 </div>
 </div>

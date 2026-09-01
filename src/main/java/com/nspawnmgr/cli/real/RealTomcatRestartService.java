@@ -3,6 +3,7 @@ package com.nspawnmgr.cli.real;
 import com.nspawnmgr.cli.ContainerCliException;
 import com.nspawnmgr.cli.TomcatRestartService;
 import com.nspawnmgr.service.SettingsService;
+import com.nspawnmgr.service.UserMessages;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -24,10 +25,12 @@ public class RealTomcatRestartService implements TomcatRestartService {
 
     private final SettingsService settingsService;
     private final SshRemoteExecutor ssh;
+    private final UserMessages messages;
 
-    public RealTomcatRestartService(SettingsService settingsService, SshRemoteExecutor ssh) {
+    public RealTomcatRestartService(SettingsService settingsService, SshRemoteExecutor ssh, UserMessages messages) {
         this.settingsService = settingsService;
         this.ssh = ssh;
+        this.messages = messages;
     }
 
     @Override
@@ -35,7 +38,7 @@ public class RealTomcatRestartService implements TomcatRestartService {
         String script = Path.of(settingsService.nspawnPrivilegedScriptsDir(), "nspawnmgr-restart-tomcat.sh").toString();
         var result = ssh.execNoPasswordSudo(Duration.ofSeconds(10), List.of(script));
         if (!result.success()) {
-            throw new ContainerCliException("Failed to trigger Tomcat restart: " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToTriggerTomcatRestart", result.stderr()));
         }
     }
 }

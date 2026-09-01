@@ -8,33 +8,33 @@
 </head>
 <body th:attr="data-base-path=@{/},data-container-id=${container.id},data-needs-credentials=${needsCredentials}">
 <div th:replace="~{fragments/app-shell :: shell(
-        title=${container.name + ' — Files'}, subtitle=null,
+        title=${container.name + ' — ' + t.get('page.files.title')}, subtitle=null,
         activeNav='machines', currentUser=${currentUser}, addMenu=null,
         content=~{::#page-content})}">
 <div id="page-content">
-<p><a th:href="@{/containers/{id}(id=${container.id})}">&laquo; Back to <span th:text="${container.name}">container</span></a></p>
+<p><a th:href="@{/containers/{id}(id=${container.id})}" th:text="${t.get('page.files.backTo') + ' ' + container.name}">&laquo; Back to <span th:text="${container.name}">container</span></a></p>
 
 <div id="connect-panel" class="panel panel-narrow" th:if="${needsCredentials}">
-    <h2>Connect</h2>
-    <p class="hint">This container has no host-visible filesystem - browsing it goes over SFTP against its
+    <h2 th:text="${t.get('page.detail.connectHeading')}">Connect</h2>
+    <p class="hint" th:text="${t.get('page.files.sftpHint')}">This container has no host-visible filesystem - browsing it goes over SFTP against its
         own SSH server instead. Enter a credential that can log in over SSH; it's held only for this
         browser session and is never saved.</p>
     <div class="panel-section">
         <div class="inline-controls">
-            <input type="text" id="connect-username" placeholder="Username"/>
-            <input type="password" id="connect-password" placeholder="Password"/>
-            <button id="btn-connect" class="btn-primary">Connect</button>
+            <input type="text" id="connect-username" th:placeholder="${t.get('page.files.usernamePlaceholder')}"/>
+            <input type="password" id="connect-password" th:placeholder="${t.get('page.files.passwordPlaceholder')}"/>
+            <button id="btn-connect" class="btn-primary" th:text="${t.get('button.connect')}">Connect</button>
         </div>
         <p id="connect-status" class="status-message"></p>
     </div>
 </div>
 
 <div id="browse-panel" th:style="${needsCredentials} ? 'display:none' : ''">
-<p class="hint" th:if="${needsCredentials}">Browses over SFTP as the connected account - not capped at
+<p class="hint" th:if="${needsCredentials}" th:text="${t.get('page.files.sftpBrowseHint')}">Browses over SFTP as the connected account - not capped at
     its home directory, bounded only by that account's own permissions, same as any real SFTP client.
     Click a folder to open it, double-click a file to download it, or drag and drop a file onto the
     list below to upload it into the current folder (up to 200MB).</p>
-<p class="hint" th:unless="${needsCredentials}">Browses this container's filesystem directly - works
+<p class="hint" th:unless="${needsCredentials}" th:text="${t.get('page.files.directBrowseHint')}">Browses this container's filesystem directly - works
     whether or not the container is running. Click a folder to open it, double-click a file to
     download it, or drag and drop a file onto the list below to upload it into the current folder
     (up to 200MB).</p>
@@ -42,15 +42,15 @@
 <div class="inline-controls">
 <nav id="breadcrumb" class="inline-controls"></nav>
 <span id="connected-username" class="hint" th:if="${needsCredentials}"></span>
-<button id="btn-disconnect" class="btn-primary" th:if="${needsCredentials}">Disconnect</button>
+<button id="btn-disconnect" class="btn-primary" th:if="${needsCredentials}" th:text="${t.get('button.disconnect')}">Disconnect</button>
 </div>
 
 <table id="file-table">
     <thead>
     <tr>
-        <th>Name</th>
-        <th>Size</th>
-        <th>Modified</th>
+        <th th:text="${t.get('field.name')}">Name</th>
+        <th th:text="${t.get('page.files.sizeColumn')}">Size</th>
+        <th th:text="${t.get('page.files.modifiedColumn')}">Modified</th>
     </tr>
     </thead>
     <tbody id="file-tbody"></tbody>

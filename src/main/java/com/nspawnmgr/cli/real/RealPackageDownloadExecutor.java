@@ -5,6 +5,7 @@ import com.nspawnmgr.cli.ContainerCliException;
 import com.nspawnmgr.cli.PackageDownloadExecutor;
 import com.nspawnmgr.cli.PackageDownloadUnitStatus;
 import com.nspawnmgr.service.SettingsService;
+import com.nspawnmgr.service.UserMessages;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
@@ -24,10 +25,12 @@ public class RealPackageDownloadExecutor implements PackageDownloadExecutor {
 
     private final SettingsService settingsService;
     private final SshRemoteExecutor ssh;
+    private final UserMessages messages;
 
-    public RealPackageDownloadExecutor(SettingsService settingsService, SshRemoteExecutor ssh) {
+    public RealPackageDownloadExecutor(SettingsService settingsService, SshRemoteExecutor ssh, UserMessages messages) {
         this.settingsService = settingsService;
         this.ssh = ssh;
+        this.messages = messages;
     }
 
     @Override
@@ -60,7 +63,7 @@ public class RealPackageDownloadExecutor implements PackageDownloadExecutor {
         String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(), "nspawnmgr-download-package-start.sh").toString();
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15), List.of(scriptPath, downloadId, url, targetPath));
         if (!result.success()) {
-            throw new ContainerCliException("Failed to start download " + downloadId + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToStartDownload", downloadId, result.stderr()));
         }
     }
 

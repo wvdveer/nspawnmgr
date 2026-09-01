@@ -14,7 +14,7 @@ document.body.addEventListener('click', () => guacFrame.focus());
 (async () => {
     const response = await fetch(`${basePath}/api/containers/${containerId}/session/${protocol}`, { method: 'POST' });
     if (!response.ok) {
-        document.body.textContent = 'Failed to start session: ' + await response.text();
+        document.body.textContent = t('page.session.failedToStart', await response.text());
         return;
     }
     const { url } = await response.json();

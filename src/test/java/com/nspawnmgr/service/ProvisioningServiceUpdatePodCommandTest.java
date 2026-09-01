@@ -47,7 +47,7 @@ class ProvisioningServiceUpdatePodCommandTest {
                 filesystemProvisioner, mock(ContainerOutboundAccessManager.class), mock(TemplateService.class),
                 mock(GuacamoleAdminClient.class), mock(ShareService.class), mock(SecretEncryptionService.class),
                 mock(SshKeyPairGenerator.class), mock(SettingsService.class), mock(PackageCacheService.class),
-                mock(PamCredentialAuthService.class));
+                mock(PamCredentialAuthService.class), TestUserMessages.create());
     }
 
     private Container pod(ContainerState state) {

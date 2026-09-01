@@ -9,7 +9,7 @@
          same Tomcat instance rather than as part of the main reactor). -->
     <groupId>com.nspawnmgr</groupId>
     <artifactId>nspawnmgr-root-wizard</artifactId>
-    <version>0.3.0-SNAPSHOT</version>
+    <version>0.4.0</version>
     <packaging>war</packaging>
     <name>nspawnmgr-root-wizard</name>
     <description>

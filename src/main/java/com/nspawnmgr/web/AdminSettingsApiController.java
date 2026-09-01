@@ -36,15 +36,17 @@ public class AdminSettingsApiController {
     private final TomcatRestartService tomcatRestartService;
     private final TomcatConfigService tomcatConfigService;
     private final AuditLogService auditLogService;
+    private final GuacamolePropertiesSchema guacamolePropertiesSchema;
 
     public AdminSettingsApiController(SettingsService settingsService, CurrentUserProvider currentUserProvider,
                                        TomcatRestartService tomcatRestartService, TomcatConfigService tomcatConfigService,
-                                       AuditLogService auditLogService) {
+                                       AuditLogService auditLogService, GuacamolePropertiesSchema guacamolePropertiesSchema) {
         this.settingsService = settingsService;
         this.currentUserProvider = currentUserProvider;
         this.tomcatRestartService = tomcatRestartService;
         this.tomcatConfigService = tomcatConfigService;
         this.auditLogService = auditLogService;
+        this.guacamolePropertiesSchema = guacamolePropertiesSchema;
     }
 
     @GetMapping("/api/admin/settings")
@@ -81,9 +83,9 @@ public class AdminSettingsApiController {
                 status.path(), status.fileExists(), status.lastModified(),
                 settingsService.detectGuacamolePropertiesDatabaseType(),
                 settingsService.readGuacamoleProperties(),
-                GuacamolePropertiesSchema.GUACD_GROUPS,
-                GuacamolePropertiesSchema.MYSQL_GROUPS,
-                GuacamolePropertiesSchema.POSTGRESQL_GROUPS);
+                guacamolePropertiesSchema.guacdGroups(),
+                guacamolePropertiesSchema.mysqlGroups(),
+                guacamolePropertiesSchema.postgresqlGroups());
     }
 
     @PutMapping("/api/admin/settings/guacamole-properties")

@@ -7,7 +7,7 @@
     <!-- Standalone POM (see tools/fake-machinectl/pom.xml for why there's no <parent>). -->
     <groupId>com.nspawnmgr</groupId>
     <artifactId>nspawnmgr-fake-guacamole-server</artifactId>
-    <version>0.3.0-SNAPSHOT</version>
+    <version>0.4.0</version>
     <packaging>war</packaging>
     <name>nspawnmgr-fake-guacamole-server</name>
     <description>In-memory stand-in for Guacamole's REST API, deployed as guacamole.war alongside nspawnmgr.war</description>

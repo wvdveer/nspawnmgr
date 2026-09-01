@@ -21,7 +21,7 @@ import javax.validation.constraints.Size;
  * mounting boot media is orthogonal to where the disk itself came from.
  */
 public record CreateQemuVmRequest(
-        @NotBlank @Pattern(regexp = "^[a-z0-9][a-z0-9-]{1,62}$", message = "lowercase alphanumeric and hyphens only") String name,
+        @NotBlank @Pattern(regexp = "^[a-z0-9][a-z0-9-]{1,62}$", message = "{validation.name.lowercaseAlphanumericHyphens}") String name,
         @Min(1) @Max(2000) Integer diskSizeGb,
         /** A QEMU-backed Template id to clone the disk from, or null for empty-disk mode. */
         Long templateId,

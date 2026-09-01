@@ -43,7 +43,7 @@ class ContainerFileBrowserServiceTest {
         cliExecutor = mock(ContainerCliExecutor.class);
         when(settingsService.nspawnMachinesDir()).thenReturn("/var/lib/machines");
         service = new ContainerFileBrowserService(settingsService, browser,
-                mock(ContainerFilesystemProvisioner.class), remoteBrowser, cliExecutor);
+                mock(ContainerFilesystemProvisioner.class), remoteBrowser, cliExecutor, TestUserMessages.create());
     }
 
     private Container container() {

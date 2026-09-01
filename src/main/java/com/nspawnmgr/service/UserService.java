@@ -17,12 +17,17 @@ public class UserService {
     private final UserRepository userRepository;
     private final SettingsService settingsService;
     private final ContainerDiscoveryService containerDiscoveryService;
+    private final TranslationService translationService;
+    private final UserMessages messages;
 
     public UserService(UserRepository userRepository, SettingsService settingsService,
-                        ContainerDiscoveryService containerDiscoveryService) {
+                        ContainerDiscoveryService containerDiscoveryService, TranslationService translationService,
+                        UserMessages messages) {
         this.userRepository = userRepository;
         this.settingsService = settingsService;
         this.containerDiscoveryService = containerDiscoveryService;
+        this.translationService = translationService;
+        this.messages = messages;
     }
 
     /**
@@ -105,18 +110,32 @@ public class UserService {
     @Transactional
     public User setRole(Long targetUserId, Role newRole, User actingAdmin) {
         if (isExternalRoleManaged()) {
-            throw new IllegalStateException("Role is externally managed in this deployment and cannot be changed manually");
+            throw new IllegalStateException(messages.get("error.user.roleExternallyManaged"));
         }
         User target = userRepository.findById(targetUserId)
-                .orElseThrow(() -> new IllegalArgumentException("No such user: " + targetUserId));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchUser", targetUserId)));
         if (target.getId().equals(actingAdmin.getId()) && newRole != Role.ADMIN) {
-            throw new IllegalStateException("Cannot remove your own admin status");
+            throw new IllegalStateException(messages.get("error.user.cannotRemoveOwnAdmin"));
         }
         if (target.getRole() == Role.ADMIN && newRole == Role.USER && userRepository.countByRole(Role.ADMIN) <= 1) {
-            throw new IllegalStateException("Cannot remove the last remaining admin");
+            throw new IllegalStateException(messages.get("error.user.cannotRemoveLastAdmin"));
         }
         target.setRole(newRole);
         target.touch();
         return userRepository.save(target);
+    }
+
+    /** {@code language}: a 2-letter code matching one of {@link TranslationService#availableLocales()},
+     *  or blank/null to clear the override and go back to auto-detecting from the browser's own
+     *  Accept-Language header on every request - see LocaleResolutionService. */
+    @Transactional
+    public User updatePreferredLanguage(User user, String language) {
+        String normalized = (language == null || language.isBlank()) ? null : language.toLowerCase();
+        if (normalized != null && !translationService.isAvailable(normalized)) {
+            throw new IllegalArgumentException(messages.get("error.user.languageNotAvailable", language));
+        }
+        user.setPreferredLanguage(normalized);
+        user.touch();
+        return userRepository.save(user);
     }
 }

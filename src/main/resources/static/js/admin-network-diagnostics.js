@@ -26,7 +26,7 @@ function renderChecks(checks) {
         header.appendChild(label);
         const status = document.createElement('span');
         status.className = `diag-status ${check.status}`;
-        status.textContent = check.status;
+        status.textContent = t('diag.status.' + check.status);
         header.appendChild(status);
         card.appendChild(header);
 
@@ -51,14 +51,14 @@ function renderChecks(checks) {
             if (sshApprovalRequired) {
                 passwordInput = document.createElement('input');
                 passwordInput.type = 'password';
-                passwordInput.placeholder = 'sudo password';
+                passwordInput.placeholder = t('page.diagnostics.sudoPasswordPlaceholder');
                 footer.appendChild(passwordInput);
             }
 
             const fixButton = document.createElement('button');
             fixButton.type = 'button';
             fixButton.className = 'btn-primary';
-            fixButton.textContent = 'Fix';
+            fixButton.textContent = t('button.fix');
             fixButton.addEventListener('click', () => applyFix(check.id, passwordInput, fixButton, card));
             footer.appendChild(fixButton);
             card.appendChild(footer);
@@ -73,7 +73,7 @@ async function applyFix(checkId, passwordInput, fixButton, card) {
     if (!endpoint) {
         return;
     }
-    if (!await window.appDialog.confirm('This changes host configuration (network/firewall/installed packages). Continue?')) {
+    if (!await window.appDialog.confirm(t('page.diagnostics.confirmFix'))) {
         return;
     }
     const sudoPassword = passwordInput ? passwordInput.value : null;
@@ -86,7 +86,7 @@ async function applyFix(checkId, passwordInput, fixButton, card) {
     fixButton.disabled = true;
     const runningLog = document.createElement('pre');
     runningLog.className = 'diag-log';
-    runningLog.textContent = 'Running...';
+    runningLog.textContent = t('js.status.running');
     card.appendChild(runningLog);
     const response = await fetch(`${basePath}/api/admin/network-diagnostics/fix/${endpoint}`, {
         method: 'POST',
@@ -94,7 +94,7 @@ async function applyFix(checkId, passwordInput, fixButton, card) {
         body: JSON.stringify({ sudoPassword }),
     });
     if (!response.ok) {
-        await window.appDialog.alert('Fix failed: ' + await response.text());
+        await window.appDialog.alert(t('page.diagnostics.fixFailedPrefix', await response.text()));
         fixButton.disabled = false;
         runningLog.remove();
         return;
@@ -112,10 +112,10 @@ function mergeCheck(updated) {
 
 async function runDiagnostics() {
     const runStatus = document.getElementById('run-status');
-    runStatus.textContent = 'Running...';
+    runStatus.textContent = t('js.status.running');
     const response = await fetch(`${basePath}/api/admin/network-diagnostics/run`, { method: 'POST' });
     if (!response.ok) {
-        runStatus.textContent = 'Failed: ' + await response.text();
+        runStatus.textContent = t('general.failedPrefix', await response.text());
         return;
     }
     lastChecks = await response.json();

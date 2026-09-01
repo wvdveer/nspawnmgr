@@ -7,7 +7,7 @@
 </head>
 <body th:data-container-id="${container.id}" th:data-protocol="${protocol}"
       th:attr="data-base-path=@{/}">
-<iframe id="guac-frame" title="Guacamole session"></iframe>
+<iframe id="guac-frame" th:title="${t.get('page.session.iframeTitle')}"></iframe>
 <script th:src="@{/js/session.js}"></script>
 </body>
 </html>

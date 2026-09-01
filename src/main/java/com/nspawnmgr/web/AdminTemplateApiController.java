@@ -11,6 +11,7 @@ import com.nspawnmgr.domain.TemplateFeatureState;
 import com.nspawnmgr.security.CurrentUserProvider;
 import com.nspawnmgr.service.AuditLogService;
 import com.nspawnmgr.service.TemplateService;
+import com.nspawnmgr.service.UserMessages;
 import com.nspawnmgr.web.dto.ConvertTemplateRequest;
 import com.nspawnmgr.web.dto.CreateMinimalTemplateRequest;
 import com.nspawnmgr.web.dto.CreateOrUpdateTemplateRequest;
@@ -34,12 +35,14 @@ public class AdminTemplateApiController {
     private final TemplateService templateService;
     private final AuditLogService auditLogService;
     private final CurrentUserProvider currentUserProvider;
+    private final UserMessages messages;
 
     public AdminTemplateApiController(TemplateService templateService, AuditLogService auditLogService,
-                                       CurrentUserProvider currentUserProvider) {
+                                       CurrentUserProvider currentUserProvider, UserMessages messages) {
         this.templateService = templateService;
         this.auditLogService = auditLogService;
         this.currentUserProvider = currentUserProvider;
+        this.messages = messages;
     }
 
     @GetMapping("/api/admin/templates")
@@ -172,7 +175,7 @@ public class AdminTemplateApiController {
         try {
             return ContainerBackend.valueOf(value.toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid backend: " + value);
+            throw new IllegalArgumentException(messages.get("error.web.invalidBackend", value));
         }
     }
 
@@ -187,7 +190,7 @@ public class AdminTemplateApiController {
         try {
             return PackageManager.valueOf(value.toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid package manager: " + value);
+            throw new IllegalArgumentException(messages.get("error.web.invalidPackageManager", value));
         }
     }
 
@@ -203,7 +206,7 @@ public class AdminTemplateApiController {
         try {
             return TemplateFeatureState.valueOf(value.toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid state: " + value);
+            throw new IllegalArgumentException(messages.get("error.web.invalidState", value));
         }
     }
 
@@ -216,7 +219,7 @@ public class AdminTemplateApiController {
         try {
             return PrivateUsersMode.valueOf(value.toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid PrivateUsers mode: " + value);
+            throw new IllegalArgumentException(messages.get("error.web.invalidPrivateUsersMode", value));
         }
     }
 

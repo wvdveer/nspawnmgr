@@ -44,7 +44,7 @@ class ShareServiceTest {
         when(userRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         service = new ShareService(containerShareRepository, userRepository, guacamoleUserSecretRepository,
-                guacamoleAdminClient, secretEncryptionService, guacamoleUserSecretWriter);
+                guacamoleAdminClient, secretEncryptionService, guacamoleUserSecretWriter, TestUserMessages.create());
     }
 
     private User user(Long id, String username, String existingGuacUsername) {

@@ -80,16 +80,19 @@ public class PackageCacheService {
     private final ContainerFilesystemProvisioner filesystemProvisioner;
     private final SettingsService settingsService;
     private final ContainerRepository containerRepository;
+    private final UserMessages messages;
 
     public PackageCacheService(CachedPackageRepository repository, PackageCacheFilesystem filesystem,
                                 ContainerCliExecutor cliExecutor, ContainerFilesystemProvisioner filesystemProvisioner,
-                                SettingsService settingsService, ContainerRepository containerRepository) {
+                                SettingsService settingsService, ContainerRepository containerRepository,
+                                UserMessages messages) {
         this.repository = repository;
         this.filesystem = filesystem;
         this.cliExecutor = cliExecutor;
         this.filesystemProvisioner = filesystemProvisioner;
         this.settingsService = settingsService;
         this.containerRepository = containerRepository;
+        this.messages = messages;
     }
 
     @Transactional
@@ -130,7 +133,7 @@ public class PackageCacheService {
         CachedPackage cachedPackage = getById(id);
         if (containerRepository.existsByMountedIso_Id(id)) {
             throw new IllegalStateException(
-                    "Cannot delete '" + cachedPackage.getOriginalFilename() + "': still mounted on a container. Eject it first.");
+                    messages.get("error.packages.cannotDeleteMounted", cachedPackage.getOriginalFilename()));
         }
         filesystem.delete(uploadedDir(cachedPackage.getPackageManager()) + "/" + cachedPackage.getStoredFilename());
         repository.delete(cachedPackage);
@@ -138,7 +141,7 @@ public class PackageCacheService {
 
     public CachedPackage getById(Long id) {
         return repository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("No such cached package: " + id));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.packages.noSuchCachedPackage", id)));
     }
 
     public List<CachedPackage> listFor(PackageManager packageManager) {
@@ -186,16 +189,15 @@ public class PackageCacheService {
         // controller (open-in-view is off) - re-fetch with template eagerly joined in this method's
         // own transaction rather than trust that reference.
         Container freshContainer = containerRepository.findByIdWithTemplate(container.getId())
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + container.getId()));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", container.getId())));
         CachedPackage cachedPackage = getById(cachedPackageId);
         PackageManager containerPackageManager = freshContainer.effectivePackageManager();
         if (containerPackageManager == null) {
-            throw new IllegalStateException(freshContainer.getName() + " has no template and no package manager set - "
-                    + "set one on the container detail page before installing a package.");
+            throw new IllegalStateException(messages.get("error.packages.noPackageManagerSet", freshContainer.getName()));
         }
         if (cachedPackage.getPackageManager() != containerPackageManager) {
-            throw new IllegalArgumentException("Package '" + cachedPackage.getOriginalFilename() + "' is for "
-                    + cachedPackage.getPackageManager() + ", but " + freshContainer.getName() + " uses " + containerPackageManager);
+            throw new IllegalArgumentException(messages.get("error.packages.packageManagerMismatch",
+                    cachedPackage.getOriginalFilename(), cachedPackage.getPackageManager(), freshContainer.getName(), containerPackageManager));
         }
         String sourcePath = uploadedDir(cachedPackage.getPackageManager()) + "/" + cachedPackage.getStoredFilename();
         String inContainerPath = "/root/" + IN_CONTAINER_SUBDIR + "/" + cachedPackage.getStoredFilename();

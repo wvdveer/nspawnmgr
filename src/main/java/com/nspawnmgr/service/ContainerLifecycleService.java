@@ -49,6 +49,7 @@ public class ContainerLifecycleService {
     private final GuacamoleAdminClient guacamoleAdminClient;
     private final ShareService shareService;
     private final SecretEncryptionService secretEncryptionService;
+    private final UserMessages messages;
 
     public ContainerLifecycleService(ContainerRepository containerRepository,
                                       ContainerCredentialRepository containerCredentialRepository,
@@ -62,7 +63,8 @@ public class ContainerLifecycleService {
                                       PackageCacheService packageCacheService,
                                       GuacamoleAdminClient guacamoleAdminClient,
                                       ShareService shareService,
-                                      SecretEncryptionService secretEncryptionService) {
+                                      SecretEncryptionService secretEncryptionService,
+                                      UserMessages messages) {
         this.containerRepository = containerRepository;
         this.containerCredentialRepository = containerCredentialRepository;
         this.outboundAllowlistRepository = outboundAllowlistRepository;
@@ -76,6 +78,7 @@ public class ContainerLifecycleService {
         this.guacamoleAdminClient = guacamoleAdminClient;
         this.shareService = shareService;
         this.secretEncryptionService = secretEncryptionService;
+        this.messages = messages;
     }
 
     @Transactional
@@ -119,7 +122,7 @@ public class ContainerLifecycleService {
     public void restart(Container container) {
         requireManaged(container);
         if (container.getState() != ContainerState.RUNNING) {
-            throw new IllegalStateException("Container must be RUNNING to restart");
+            throw new IllegalStateException(messages.get("error.lifecycle.mustBeRunningToRestart"));
         }
         cliExecutor.restart(container.getName(), container.getBackend());
         if (container.getBackend() == ContainerBackend.PODMAN) {
@@ -214,7 +217,7 @@ public class ContainerLifecycleService {
     public void pause(Container container) {
         requireManaged(container);
         if (container.getState() != ContainerState.RUNNING) {
-            throw new IllegalStateException("Container must be RUNNING to pause");
+            throw new IllegalStateException(messages.get("error.lifecycle.mustBeRunningToPause"));
         }
         cliExecutor.pause(container.getName(), container.getBackend());
         container.setState(ContainerState.PAUSED);
@@ -227,7 +230,7 @@ public class ContainerLifecycleService {
     public void resume(Container container) {
         requireManaged(container);
         if (container.getState() != ContainerState.PAUSED) {
-            throw new IllegalStateException("Container must be PAUSED to resume");
+            throw new IllegalStateException(messages.get("error.lifecycle.mustBePausedToResume"));
         }
         cliExecutor.resume(container.getName(), container.getBackend());
         container.setState(ContainerState.RUNNING);
@@ -252,7 +255,7 @@ public class ContainerLifecycleService {
     public void setPackageManager(Container container, PackageManager packageManager) {
         requireManaged(container);
         if (container.getTemplate() != null) {
-            throw new IllegalStateException(container.getName() + " has a template - its package manager comes from that instead.");
+            throw new IllegalStateException(messages.get("error.lifecycle.hasTemplatePackageManagerFromThat", container.getName()));
         }
         container.setPackageManager(packageManager);
         container.touch();
@@ -289,10 +292,10 @@ public class ContainerLifecycleService {
         String requires = (requested == null || requested.isBlank()) ? null : requested;
         if (requires != null) {
             if (requires.equals(container.getName())) {
-                throw new IllegalArgumentException("A machine can't require itself");
+                throw new IllegalArgumentException(messages.get("error.lifecycle.machineCantRequireItself"));
             }
             containerRepository.findByName(requires)
-                    .orElseThrow(() -> new IllegalArgumentException("No such machine: '" + requires + "'"));
+                    .orElseThrow(() -> new IllegalArgumentException(messages.get("error.lifecycle.noSuchMachine", requires)));
         }
         cliExecutor.setAutoStart(container.getName(), autoStart);
         cliExecutor.setRequiresMachine(container.getName(), requires);
@@ -319,7 +322,7 @@ public class ContainerLifecycleService {
         requireManaged(container);
         ContainerOutboundAllowlistEntry entry = outboundAllowlistRepository.findById(entryId)
                 .filter(e -> e.getContainer().getId().equals(container.getId()))
-                .orElseThrow(() -> new IllegalArgumentException("No such outbound allowlist entry: " + entryId));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.lifecycle.noSuchOutboundAllowlistEntry", entryId)));
         outboundAllowlistRepository.delete(entry);
         resyncOutboundAccess(container);
     }
@@ -383,7 +386,7 @@ public class ContainerLifecycleService {
         // Same fix ProvisioningService.provision/TemplateService.createFromMachine already needed for
         // the identical reason.
         Container withTemplate = containerRepository.findByIdWithTemplate(container.getId())
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + container.getId()));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", container.getId())));
         filesystemProvisioner.writeNspawnSettings(withTemplate, portMappingRepository.findByContainer(container));
     }
 
@@ -471,8 +474,7 @@ public class ContainerLifecycleService {
 
     private void requireManaged(Container container) {
         if (container.getKind() != ContainerKind.MANAGED) {
-            throw new IllegalStateException(
-                    "'" + container.getName() + "' is an admin-configured external host; nspawnmgr doesn't control its lifecycle");
+            throw new IllegalStateException(messages.get("error.lifecycle.isExternalHost", container.getName()));
         }
     }
 }

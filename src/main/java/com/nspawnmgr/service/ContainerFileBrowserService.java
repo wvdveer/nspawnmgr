@@ -48,15 +48,18 @@ public class ContainerFileBrowserService {
     private final ContainerFilesystemProvisioner filesystemProvisioner;
     private final RemoteSftpBrowser remoteBrowser;
     private final ContainerCliExecutor cliExecutor;
+    private final UserMessages messages;
 
     public ContainerFileBrowserService(SettingsService settingsService, ContainerFilesystemBrowser browser,
                                         ContainerFilesystemProvisioner filesystemProvisioner,
-                                        RemoteSftpBrowser remoteBrowser, ContainerCliExecutor cliExecutor) {
+                                        RemoteSftpBrowser remoteBrowser, ContainerCliExecutor cliExecutor,
+                                        UserMessages messages) {
         this.settingsService = settingsService;
         this.browser = browser;
         this.filesystemProvisioner = filesystemProvisioner;
         this.remoteBrowser = remoteBrowser;
         this.cliExecutor = cliExecutor;
+        this.messages = messages;
     }
 
     /** A QEMU VM or an EXTERNAL host - no host-visible rootfs, needs a real SFTP connection and a
@@ -132,7 +135,7 @@ public class ContainerFileBrowserService {
     private GuestSftpSessionStore.Credential requireCredential(GuestSftpSessionStore.Credential credential) {
         if (credential == null) {
             // Maps to 409 via ApiExceptionHandler - the frontend re-shows the Connect prompt on this.
-            throw new IllegalStateException("Not connected - use the Connect form to enter credentials first.");
+            throw new IllegalStateException(messages.get("error.files.notConnected"));
         }
         return credential;
     }
@@ -148,7 +151,7 @@ public class ContainerFileBrowserService {
         if (container.getBackend() == ContainerBackend.QEMU) {
             String address = cliExecutor.getInternalAddress(container.getName(), ContainerBackend.QEMU);
             if (address.isBlank()) {
-                throw new IllegalStateException("This VM has no address yet - it may still be booting.");
+                throw new IllegalStateException(messages.get("error.files.vmNoAddressYet"));
             }
             return new RemoteTarget(address, QEMU_GUEST_SSH_PORT);
         }
@@ -187,7 +190,7 @@ public class ContainerFileBrowserService {
         }
         Path resolved = root.resolve(segmentChecked).normalize();
         if (!resolved.equals(root) && !resolved.startsWith(root)) {
-            throw new IllegalArgumentException("Invalid path: escapes the container's filesystem");
+            throw new IllegalArgumentException(messages.get("error.files.pathEscapes"));
         }
         return root.relativize(resolved).toString();
     }
@@ -210,17 +213,17 @@ public class ContainerFileBrowserService {
      */
     private String validateRemoteAbsolutePath(String path) {
         if (path == null) {
-            throw new IllegalArgumentException("Invalid path: must be absolute");
+            throw new IllegalArgumentException(messages.get("error.files.pathMustBeAbsolute"));
         }
         if (path.indexOf('\0') >= 0) {
-            throw new IllegalArgumentException("Invalid path: contains a null byte");
+            throw new IllegalArgumentException(messages.get("error.files.pathNullByte"));
         }
         if (!path.startsWith("/")) {
-            throw new IllegalArgumentException("Invalid path: must be absolute");
+            throw new IllegalArgumentException(messages.get("error.files.pathMustBeAbsolute"));
         }
         for (String segment : path.split("/")) {
             if (segment.equals("..")) {
-                throw new IllegalArgumentException("Invalid path: '..' is not allowed");
+                throw new IllegalArgumentException(messages.get("error.files.pathDotDotNotAllowed"));
             }
         }
         return path;
@@ -231,14 +234,14 @@ public class ContainerFileBrowserService {
             return "";
         }
         if (relativePath.indexOf('\0') >= 0) {
-            throw new IllegalArgumentException("Invalid path: contains a null byte");
+            throw new IllegalArgumentException(messages.get("error.files.pathNullByte"));
         }
         if (relativePath.startsWith("/") || relativePath.startsWith("\\")) {
-            throw new IllegalArgumentException("Invalid path: must be relative");
+            throw new IllegalArgumentException(messages.get("error.files.pathMustBeRelative"));
         }
         for (String segment : relativePath.split("[/\\\\]")) {
             if (segment.equals("..")) {
-                throw new IllegalArgumentException("Invalid path: '..' is not allowed");
+                throw new IllegalArgumentException(messages.get("error.files.pathDotDotNotAllowed"));
             }
         }
         return relativePath;
@@ -250,7 +253,7 @@ public class ContainerFileBrowserService {
     private String validateFilename(String filename) {
         if (filename == null || filename.isBlank() || !SAFE_FILENAME.matcher(filename).matches()
                 || filename.equals(".") || filename.equals("..")) {
-            throw new IllegalArgumentException("Invalid filename: " + filename);
+            throw new IllegalArgumentException(messages.get("error.files.invalidFilename", filename));
         }
         return filename;
     }

@@ -34,9 +34,11 @@ public class LogService {
     private static final int DEFAULT_TAIL_LINES = 100;
 
     private final TomcatProperties tomcatProperties;
+    private final UserMessages messages;
 
-    public LogService(TomcatProperties tomcatProperties) {
+    public LogService(TomcatProperties tomcatProperties, UserMessages messages) {
         this.tomcatProperties = tomcatProperties;
+        this.messages = messages;
     }
 
     public List<String> tailCurrentLog(int lines) {
@@ -81,7 +83,7 @@ public class LogService {
             // filename is a user-controlled URL path segment — reject anything that isn't exactly
             // the expected shape before it ever reaches the filesystem, same reasoning as the
             // container-username validation earlier this session (path traversal via a crafted name).
-            throw new IllegalArgumentException("Invalid log filename: " + filename);
+            throw new IllegalArgumentException(messages.get("error.logs.invalidFilename", filename));
         }
         return logDir().resolve(filename);
     }
@@ -95,7 +97,7 @@ public class LogService {
         if (Files.exists(plain)) {
             return plain;
         }
-        throw new IllegalStateException("No current Tomcat log found in " + logDir());
+        throw new IllegalStateException(messages.get("error.logs.noCurrentLogFound", logDir()));
     }
 
     /** Ascending by filename (= chronological, since the date suffix string-sorts correctly). */

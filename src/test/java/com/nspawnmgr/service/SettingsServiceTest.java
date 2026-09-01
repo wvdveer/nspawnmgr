@@ -9,6 +9,7 @@ import com.nspawnmgr.config.ProvisioningProperties;
 import com.nspawnmgr.config.SshProperties;
 import com.nspawnmgr.domain.AppSettings;
 import com.nspawnmgr.domain.User;
+import com.nspawnmgr.guacamole.GuacamolePropertiesSchema;
 import com.nspawnmgr.repository.AppSettingsRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,7 +51,8 @@ class SettingsServiceTest {
                 new ProvisioningProperties(null, 0),
                 new SshProperties(null, 0, null, null, null, 0, false),
                 new NspawnProperties(null, null, null, null),
-                dnsProperties);
+                dnsProperties, TestUserMessages.create(),
+                new GuacamolePropertiesSchema(TestUserMessages.create()));
     }
 
     @Test

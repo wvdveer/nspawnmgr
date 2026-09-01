@@ -6,7 +6,7 @@ import javax.validation.constraints.Size;
 
 public record StartPackageDownloadRequest(
         @NotBlank String packageManager,
-        @NotBlank @Pattern(regexp = "^https?://.+", message = "must be an http(s) URL") String url,
+        @NotBlank @Pattern(regexp = "^https?://.+", message = "{validation.url.mustBeHttp}") String url,
         @Size(max = 500) String description
 ) {
 }

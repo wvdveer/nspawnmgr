@@ -79,6 +79,12 @@ nspawnmgr:
     # rotatelogs invocation (packaging/nspawnmgr-deb/tomcat9.service), so this isn't live-editable
     # via /admin/settings, same reasoning as nspawn.privileged-scripts-dir.
     log-dir: ${TOMCAT_LOG_DIR:/opt/tomcat9/logs}
+  lang:
+    # See TranslationService's own javadoc — one *.json file per language, admin-droppable, picked
+    # up on the next Tomcat restart. Populated at install time from the repo's own top-level lang/
+    # directory (see nspawnmgr-bootstrap-app-machine.sh) inside the self-hosted machine's rootfs -
+    # not the bare host, same reasoning as nspawn.privileged-scripts-dir.
+    dir: ${LANG_DIR:/etc/nspawnmgr/lang}
   dns:
     # Coupled 1:1 to dnsmasq's own addn-hosts= directive (packaging/nspawnmgr-deb/dnsmasq-nspawnmgr.conf)
     # — not live-editable via /admin/settings, same reasoning as nspawn.privileged-scripts-dir.

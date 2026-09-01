@@ -63,13 +63,16 @@ public class NetworkDiagnosticsService {
     private final SettingsService settingsService;
     private final AuditLogService auditLogService;
     private final ContainerPortMappingRepository portMappingRepository;
+    private final UserMessages messages;
 
     public NetworkDiagnosticsService(NetworkDiagnosticsExecutor executor, SettingsService settingsService,
-                                      AuditLogService auditLogService, ContainerPortMappingRepository portMappingRepository) {
+                                      AuditLogService auditLogService, ContainerPortMappingRepository portMappingRepository,
+                                      UserMessages messages) {
         this.executor = executor;
         this.settingsService = settingsService;
         this.auditLogService = auditLogService;
         this.portMappingRepository = portMappingRepository;
+        this.messages = messages;
     }
 
     public List<DiagnosticCheck> runChecks() {
@@ -131,7 +134,7 @@ public class NetworkDiagnosticsService {
         String detected = detectHostAddress();
         if (detected == null) {
             DiagnosticCheck failure = new DiagnosticCheck("host-address", "HOST_PUBLIC_ADDRESS", Status.FAIL,
-                    "Could not auto-detect a non-loopback address on this host - set it manually in Settings.", false);
+                    messages.get("diag.hostAddress.couldNotAutoDetect"), false);
             logIfNotOk(failure);
             return failure;
         }
@@ -241,11 +244,9 @@ public class NetworkDiagnosticsService {
     private DiagnosticCheck checkNetworkd() {
         CommandResult result = executor.networkdStatus();
         boolean active = "active".equals(result.stdout().trim());
-        return new DiagnosticCheck("networkd", "systemd-networkd active",
+        return new DiagnosticCheck("networkd", messages.get("diag.networkd.label"),
                 active ? Status.OK : Status.FAIL,
-                active ? "systemd-networkd is active."
-                        : "systemd-networkd is not active - a container's SSH/RDP port forward will never be "
-                        + "populated without it (confirmed live: the NAT map stays permanently empty).",
+                active ? messages.get("diag.networkd.ok") : messages.get("diag.networkd.fail"),
                 !active);
     }
 
@@ -260,26 +261,25 @@ public class NetworkDiagnosticsService {
         CommandResult result = executor.ufwStatus();
         String stdout = result.stdout();
         if (!stdout.contains("Status: active")) {
-            return new DiagnosticCheck("ufw-ports", "ufw forwarded-port coverage", Status.OK,
-                    "ufw is not active on this host - nothing to check.", false);
+            return new DiagnosticCheck("ufw-ports", messages.get("diag.ufw.label"), Status.OK,
+                    messages.get("diag.ufw.inactive"), false);
         }
         List<ContainerPortMapping> mappings = portMappingRepository.findAllWithContainer();
         List<String> uncovered = new ArrayList<>();
         for (ContainerPortMapping mapping : mappings) {
             if (!coversPort(stdout, mapping.getHostPort(), mapping.getProtocol())) {
                 String containerName = mapping.getContainer().getName();
-                uncovered.add(containerName + " (host port " + mapping.getHostPort() + "/"
-                        + mapping.getProtocol().name().toLowerCase() + ")");
+                uncovered.add(messages.get("diag.ufw.uncoveredEntry", containerName, mapping.getHostPort(),
+                        mapping.getProtocol().name().toLowerCase()));
                 log.warn("Network diagnostics: ufw has no rule covering forwarded port {}/{} for container '{}'",
                         mapping.getHostPort(), mapping.getProtocol().name().toLowerCase(), containerName);
             }
         }
         boolean covered = uncovered.isEmpty();
-        return new DiagnosticCheck("ufw-ports", "ufw forwarded-port coverage",
+        return new DiagnosticCheck("ufw-ports", messages.get("diag.ufw.label"),
                 covered ? Status.OK : Status.FAIL,
-                covered ? "ufw allows all " + mappings.size() + " currently-mapped container port(s)."
-                        : "ufw is active but has no rule covering: " + String.join(", ", uncovered)
-                        + " - a default-reject policy will silently block these forwards.",
+                covered ? messages.get("diag.ufw.ok", mappings.size())
+                        : messages.get("diag.ufw.fail", String.join(", ", uncovered)),
                 false);
     }
 
@@ -309,17 +309,13 @@ public class NetworkDiagnosticsService {
         boolean broken = loopback || bridgeInternal;
         String detail;
         if (loopback) {
-            detail = "HOST_PUBLIC_ADDRESS is '" + address + "' - some hosts (confirmed live: systemd-networkd's "
-                    + "own NAT table) refuse to hairpin loopback-destined traffic back into a container, even "
-                    + "though the port forward itself is configured correctly.";
+            detail = messages.get("diag.hostAddress.loopback", address);
         } else if (bridgeInternal) {
-            detail = "HOST_PUBLIC_ADDRESS is '" + address + "' - that's nspawnbr0's own internal bridge address, "
-                    + "only reachable from inside the container network, not from a real client outside this "
-                    + "host. Re-run the fix, or set a real external address in Settings.";
+            detail = messages.get("diag.hostAddress.bridgeInternal", address);
         } else {
-            detail = "HOST_PUBLIC_ADDRESS is '" + address + "', not loopback.";
+            detail = messages.get("diag.hostAddress.ok", address);
         }
-        return new DiagnosticCheck("host-address", "HOST_PUBLIC_ADDRESS not loopback",
+        return new DiagnosticCheck("host-address", messages.get("diag.hostAddress.label"),
                 broken ? Status.WARN : Status.OK, detail, broken);
     }
 
@@ -355,13 +351,9 @@ public class NetworkDiagnosticsService {
     private DiagnosticCheck checkBridge() {
         CommandResult result = executor.checkBridge();
         boolean ok = "ok".equals(result.stdout().trim());
-        return new DiagnosticCheck("bridge", "Shared container bridge (nspawnbr0)",
+        return new DiagnosticCheck("bridge", messages.get("diag.bridge.label"),
                 ok ? Status.OK : Status.FAIL,
-                ok ? "nspawnbr0 is up with address 10.100.0.1/24 - containers can resolve each other by name."
-                        : "nspawnbr0 doesn't exist yet or doesn't have the expected address - containers can't "
-                        + "resolve each other by name. Check that systemd-networkd is active (see the check above) "
-                        + "and that /etc/systemd/network/70-nspawnmgr-bridge.netdev/.network are present; "
-                        + "reinstalling the .deb re-applies them.",
+                ok ? messages.get("diag.bridge.ok") : messages.get("diag.bridge.fail"),
                 false);
     }
 
@@ -370,10 +362,8 @@ public class NetworkDiagnosticsService {
     private DiagnosticCheck checkPodman() {
         CommandResult result = executor.checkPodman();
         boolean ok = "ok".equals(result.stdout().trim());
-        return new DiagnosticCheck("podman", "podman installed", ok ? Status.OK : Status.FAIL,
-                ok ? "podman is installed on this host."
-                        : "podman is not installed - needed for the podman container/VM backend (not yet available "
-                        + "to use, still being built).",
+        return new DiagnosticCheck("podman", messages.get("diag.podman.label"), ok ? Status.OK : Status.FAIL,
+                ok ? messages.get("diag.podman.ok") : messages.get("diag.podman.fail"),
                 !ok);
     }
 
@@ -395,10 +385,8 @@ public class NetworkDiagnosticsService {
     private DiagnosticCheck checkQemu() {
         CommandResult result = executor.checkQemu();
         boolean ok = "ok".equals(result.stdout().trim());
-        return new DiagnosticCheck("qemu", "QEMU installed", ok ? Status.OK : Status.FAIL,
-                ok ? "qemu-system-x86_64 is installed on this host."
-                        : "QEMU is not installed - needed for the QEMU container/VM backend (not yet available to "
-                        + "use, still being built).",
+        return new DiagnosticCheck("qemu", messages.get("diag.qemu.label"), ok ? Status.OK : Status.FAIL,
+                ok ? messages.get("diag.qemu.ok") : messages.get("diag.qemu.fail"),
                 !ok);
     }
 
@@ -429,17 +417,14 @@ public class NetworkDiagnosticsService {
     private DiagnosticCheck checkPodmanNetwork() {
         CommandResult result = executor.checkPodmanNetwork();
         String state = result.stdout().trim();
+        String label = messages.get("diag.podmanNetwork.label");
         return switch (state) {
-            case "ok" -> new DiagnosticCheck("podman-network", "podman uses nspawnbr0", Status.OK,
-                    "A podman network is attached to nspawnbr0.", false);
-            case "too-old" -> new DiagnosticCheck("podman-network", "podman uses nspawnbr0", Status.WARN,
-                    "This host's netavark is older than the 1.14 that podman needs to attach to nspawnbr0 "
-                    + "(bridge mode=unmanaged) - and there's no reliable way to install a newer podman on this "
-                    + "host's own Linux distribution/release today. No fix available here; podman container "
-                    + "creation will need a newer host once that's actually built.", false);
-            default -> new DiagnosticCheck("podman-network", "podman uses nspawnbr0", Status.FAIL,
-                    "No podman network is attached to nspawnbr0 yet - this host's podman/netavark looks new enough "
-                    + "to support it (bridge mode=unmanaged) - try Fix.", true);
+            case "ok" -> new DiagnosticCheck("podman-network", label, Status.OK,
+                    messages.get("diag.podmanNetwork.ok"), false);
+            case "too-old" -> new DiagnosticCheck("podman-network", label, Status.WARN,
+                    messages.get("diag.podmanNetwork.tooOld"), false);
+            default -> new DiagnosticCheck("podman-network", label, Status.FAIL,
+                    messages.get("diag.podmanNetwork.fail"), true);
         };
     }
 
@@ -448,10 +433,8 @@ public class NetworkDiagnosticsService {
     private DiagnosticCheck checkQemuBridge() {
         CommandResult result = executor.checkQemuBridge();
         boolean ok = "ok".equals(result.stdout().trim());
-        return new DiagnosticCheck("qemu-bridge", "QEMU allowed to use nspawnbr0", ok ? Status.OK : Status.FAIL,
-                ok ? "/etc/qemu/bridge.conf allows nspawnbr0."
-                        : "QEMU's own bridge-helper ACL (/etc/qemu/bridge.conf) doesn't allow nspawnbr0 yet - "
-                        + "\"-netdev bridge,br=nspawnbr0\" would be refused until it does.",
+        return new DiagnosticCheck("qemu-bridge", messages.get("diag.qemuBridge.label"), ok ? Status.OK : Status.FAIL,
+                ok ? messages.get("diag.qemuBridge.ok") : messages.get("diag.qemuBridge.fail"),
                 !ok);
     }
 
@@ -480,28 +463,23 @@ public class NetworkDiagnosticsService {
         Map<String, String> props = settingsService.readGuacamoleProperties();
         String hostname = props.getOrDefault("guacd-hostname", "").trim();
         String portText = props.getOrDefault("guacd-port", "").trim();
+        String label = messages.get("diag.guacd.label");
         if (hostname.isEmpty() || portText.isEmpty()) {
-            return new DiagnosticCheck("guacd-connectivity", "guacd reachable from Guacamole", Status.WARN,
-                    "guacd-hostname/guacd-port aren't configured yet in guacamole.properties.", false);
+            return new DiagnosticCheck("guacd-connectivity", label, Status.WARN,
+                    messages.get("diag.guacd.notConfigured"), false);
         }
         int port;
         try {
             port = Integer.parseInt(portText);
         } catch (NumberFormatException e) {
-            return new DiagnosticCheck("guacd-connectivity", "guacd reachable from Guacamole", Status.FAIL,
-                    "guacd-port ('" + portText + "') is not a valid number.", false);
+            return new DiagnosticCheck("guacd-connectivity", label, Status.FAIL,
+                    messages.get("diag.guacd.invalidPort", portText), false);
         }
         String failure = trySelectProtocol(hostname, port, GUACD_TEST_PROTOCOL);
-        return new DiagnosticCheck("guacd-connectivity", "guacd reachable from Guacamole",
+        return new DiagnosticCheck("guacd-connectivity", label,
                 failure == null ? Status.OK : Status.FAIL,
-                failure == null ? "Connected to guacd at " + hostname + ":" + port
-                        + " and it loaded the \"" + GUACD_TEST_PROTOCOL + "\" protocol plugin successfully."
-                        : "guacd at " + hostname + ":" + port + " - " + failure + ". Since guacamole.war runs in the "
-                        + "same Tomcat instance as nspawnmgr, it would hit this same failure. Check that guacd is "
-                        + "actually running ('systemctl status guacd'), that guacd-hostname/guacd-port here match "
-                        + "what it's actually bound to ('ss -tlnp | grep guacd'), and - if it connected but the "
-                        + "protocol load itself failed - guacd's own log for the dlopen() error "
-                        + "('journalctl -u guacd').",
+                failure == null ? messages.get("diag.guacd.ok", hostname, port, GUACD_TEST_PROTOCOL)
+                        : messages.get("diag.guacd.fail", hostname, port, failure),
                 false);
     }
 
@@ -520,26 +498,22 @@ public class NetworkDiagnosticsService {
             byte[] buffer = new byte[256];
             int read = socket.getInputStream().read(buffer);
             if (read <= 0) {
-                return "connected, but the connection closed with no response to selecting \"" + protocol + "\"";
+                return messages.get("diag.guacd.protocolClosedNoResponse", protocol);
             }
             String response = new String(buffer, 0, read, StandardCharsets.US_ASCII);
             if (response.startsWith("4.args,")) {
                 return null;
             }
-            return "connected, but selecting \"" + protocol + "\" got an unexpected response instead of the usual "
-                    + "parameter list: " + response;
+            return messages.get("diag.guacd.protocolUnexpectedResponse", protocol, response);
         } catch (IOException e) {
-            return "could not connect (" + e.getMessage() + ")";
+            return messages.get("diag.guacd.couldNotConnect", e.getMessage());
         }
     }
 
     private DiagnosticCheck checkSudoers() {
         CommandResult result = executor.visudoCheck();
-        return new DiagnosticCheck("sudoers", "sudoers file validity", result.success() ? Status.OK : Status.FAIL,
-                result.success() ? "/etc/sudoers.d/nspawnmgr_exec parses cleanly."
-                        : "visudo -cf failed: " + result.stderr()
-                        + " - check for a colliding Cmnd_Alias name in another file under /etc/sudoers.d/ "
-                        + "(no safe automatic fix; this needs to be resolved by hand).",
+        return new DiagnosticCheck("sudoers", messages.get("diag.sudoers.label"), result.success() ? Status.OK : Status.FAIL,
+                result.success() ? messages.get("diag.sudoers.ok") : messages.get("diag.sudoers.fail", result.stderr()),
                 false);
     }
 

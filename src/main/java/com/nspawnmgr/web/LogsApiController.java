@@ -3,6 +3,7 @@ package com.nspawnmgr.web;
 import com.nspawnmgr.domain.Role;
 import com.nspawnmgr.security.CurrentUserProvider;
 import com.nspawnmgr.service.LogService;
+import com.nspawnmgr.service.UserMessages;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -26,10 +27,12 @@ public class LogsApiController {
 
     private final LogService logService;
     private final CurrentUserProvider currentUserProvider;
+    private final UserMessages messages;
 
-    public LogsApiController(LogService logService, CurrentUserProvider currentUserProvider) {
+    public LogsApiController(LogService logService, CurrentUserProvider currentUserProvider, UserMessages messages) {
         this.logService = logService;
         this.currentUserProvider = currentUserProvider;
+        this.messages = messages;
     }
 
     @GetMapping("/api/logs/tail")
@@ -63,7 +66,7 @@ public class LogsApiController {
     @DeleteMapping("/api/logs/rotated/{filename}")
     public void deleteRotated(@PathVariable String filename) {
         if (currentUserProvider.get().getRole() != Role.ADMIN) {
-            throw new AccessDeniedException("Only an admin may delete a log file");
+            throw new AccessDeniedException(messages.get("error.web.onlyAdminDeleteLogFile"));
         }
         logService.deleteRotatedLog(filename);
     }

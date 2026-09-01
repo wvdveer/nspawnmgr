@@ -40,7 +40,7 @@ class TemplateServiceTest {
         filesystemProvisioner = mock(ContainerFilesystemProvisioner.class);
         settingsService = mock(SettingsService.class);
         service = new TemplateService(templateRepository, containerRepository,
-                filesystemProvisioner, settingsService);
+                filesystemProvisioner, settingsService, TestUserMessages.create());
         when(templateRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 

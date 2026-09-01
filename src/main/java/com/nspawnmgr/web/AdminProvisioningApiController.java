@@ -10,6 +10,7 @@ import com.nspawnmgr.repository.ContainerRepository;
 import com.nspawnmgr.security.CurrentUserProvider;
 import com.nspawnmgr.service.AuditLogService;
 import com.nspawnmgr.service.ProvisioningService;
+import com.nspawnmgr.service.UserMessages;
 import com.nspawnmgr.web.dto.ApproveProvisioningRequest;
 import com.nspawnmgr.web.dto.PendingContainerResponse;
 import javax.validation.Valid;
@@ -34,13 +35,16 @@ public class AdminProvisioningApiController {
     private final ProvisioningService provisioningService;
     private final AuditLogService auditLogService;
     private final CurrentUserProvider currentUserProvider;
+    private final UserMessages messages;
 
     public AdminProvisioningApiController(ContainerRepository containerRepository, ProvisioningService provisioningService,
-                                           AuditLogService auditLogService, CurrentUserProvider currentUserProvider) {
+                                           AuditLogService auditLogService, CurrentUserProvider currentUserProvider,
+                                           UserMessages messages) {
         this.containerRepository = containerRepository;
         this.provisioningService = provisioningService;
         this.auditLogService = auditLogService;
         this.currentUserProvider = currentUserProvider;
+        this.messages = messages;
     }
 
     @GetMapping("/api/admin/containers/pending")
@@ -54,7 +58,7 @@ public class AdminProvisioningApiController {
     public void approve(@PathVariable Long id, @Valid @RequestBody ApproveProvisioningRequest request) {
         char[] password = request.sudoPassword().toCharArray();
         Container container = containerRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + id));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", id)));
         provisioningService.approve(id);
         provisioningService.provisionAsync(id, password);
         auditLogService.log(currentUserProvider.get(), AuditAction.APPROVED, AuditTargetType.CONTAINER,
@@ -64,10 +68,10 @@ public class AdminProvisioningApiController {
     @PostMapping("/api/requests/containers/{id}/deny")
     public void deny(@PathVariable Long id) {
         Container container = containerRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + id));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", id)));
         User currentUser = currentUserProvider.get();
         if (currentUser.getRole() != Role.ADMIN && !container.getOwner().getId().equals(currentUser.getId())) {
-            throw new AccessDeniedException("Not your request");
+            throw new AccessDeniedException(messages.get("error.web.notYourRequest"));
         }
         provisioningService.deny(id);
         auditLogService.log(currentUser, AuditAction.DENIED, AuditTargetType.CONTAINER,

@@ -34,7 +34,7 @@ async function onSaveClick() {
         body: JSON.stringify({ name, scriptBody }),
     });
     if (!response.ok) {
-        showStatus('Failed: ' + await response.text(), true);
+        showStatus(t('general.failedPrefix', await response.text()), true);
         return;
     }
     const result = await response.json();
@@ -45,16 +45,16 @@ async function onSaveClick() {
         window.location.href = `${basePath}/containers/${containerId}/scripts/${result.id}`;
         return;
     }
-    showStatus('Saved.', false);
+    showStatus(t('js.status.saved'), false);
 }
 
 async function onDeleteClick() {
-    if (!await window.appDialog.confirm('Delete this script? This cannot be undone.')) {
+    if (!await window.appDialog.confirm(t('js.confirm.deleteScript'))) {
         return;
     }
     const response = await fetch(scriptsUrl(''), { method: 'DELETE' });
     if (!response.ok) {
-        showStatus('Failed: ' + await response.text(), true);
+        showStatus(t('general.failedPrefix', await response.text()), true);
         return;
     }
     window.location.href = `${basePath}/containers/${containerId}`;
@@ -68,7 +68,7 @@ function ensureDeleteButtonExists() {
     deleteButton.id = 'btn-delete';
     deleteButton.type = 'button';
     deleteButton.className = 'btn-danger';
-    deleteButton.textContent = 'Delete';
+    deleteButton.textContent = t('button.delete');
     deleteButton.addEventListener('click', onDeleteClick);
     document.getElementById('script-form').appendChild(deleteButton);
 }
@@ -86,7 +86,7 @@ function setRunningUi(running) {
 async function onExecuteClick() {
     const name = nameInput.value;
     const scriptBody = bodyInput.value;
-    showStatus('Running...', false);
+    showStatus(t('js.status.running'), false);
     setRunningUi(true);
     // Always saves the current body first (create if this is a brand-new script, else update) -
     // the single Execute button never runs stale content, and there's no separate save-then-run
@@ -98,7 +98,7 @@ async function onExecuteClick() {
     });
     if (!response.ok) {
         setRunningUi(false);
-        showStatus('Failed: ' + await response.text(), true);
+        showStatus(t('general.failedPrefix', await response.text()), true);
         return;
     }
     const { runId, scriptId: newScriptId } = await response.json();
@@ -126,7 +126,7 @@ async function pollRunStatus(runId) {
     if (currentRunId === runId) {
         currentRunId = null;
     }
-    const message = status.state === 'ABORTED' ? 'Aborted.' : `Finished (exit ${status.exitCode}).`;
+    const message = status.state === 'ABORTED' ? t('js.status.aborted') : t('js.status.finished', status.exitCode);
     showStatus(message, status.state !== 'COMPLETED' || status.exitCode !== 0);
     renderOutput(status.lines);
 }
@@ -135,7 +135,7 @@ async function onAbortClick() {
     if (!currentRunId) {
         return;
     }
-    if (!await window.appDialog.confirm('Abort the running script?')) {
+    if (!await window.appDialog.confirm(t('js.confirm.abortScript'))) {
         return;
     }
     await fetch(runStatusUrl(currentRunId) + '/abort', { method: 'POST' });
@@ -173,7 +173,7 @@ function renderOutput(lines) {
         lineEl.className = 'output-line output-' + line.source.toLowerCase();
         const tag = document.createElement('span');
         tag.className = 'output-tag';
-        tag.textContent = line.source === 'STDOUT' ? 'out' : 'err';
+        tag.textContent = line.source === 'STDOUT' ? t('js.outputTag.stdout') : t('js.outputTag.stderr');
         const text = document.createElement('span');
         text.className = 'output-text';
         text.textContent = line.text;

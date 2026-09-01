@@ -39,22 +39,25 @@ public class ContainerSessionService {
     private final ContainerCliExecutor cliExecutor;
     private final ContainerCredentialRepository credentialRepository;
     private final ProvisioningService provisioningService;
+    private final UserMessages messages;
 
     public ContainerSessionService(ShareService shareService, GuacamoleSessionService guacamoleSessionService,
                                     GuacamoleAdminClient guacamoleAdminClient, ContainerCliExecutor cliExecutor,
-                                    ContainerCredentialRepository credentialRepository, ProvisioningService provisioningService) {
+                                    ContainerCredentialRepository credentialRepository, ProvisioningService provisioningService,
+                                    UserMessages messages) {
         this.shareService = shareService;
         this.guacamoleSessionService = guacamoleSessionService;
         this.guacamoleAdminClient = guacamoleAdminClient;
         this.cliExecutor = cliExecutor;
         this.credentialRepository = credentialRepository;
         this.provisioningService = provisioningService;
+        this.messages = messages;
     }
 
     @Transactional
     public String startSshSession(Container container, User user, String browserOrigin) {
         if (container.getGuacSshConnectionId() == null) {
-            throw new IllegalStateException("No managed SSH access configured for container " + container.getName());
+            throw new IllegalStateException(messages.get("error.session.noManagedSshAccess", container.getName()));
         }
         if (container.getKind() == ContainerKind.EXTERNAL) {
             String address = cliExecutor.resolveHostname(container.getHostname());
@@ -67,7 +70,7 @@ public class ContainerSessionService {
     @Transactional
     public String startRdpSession(Container container, User user, String browserOrigin) {
         if (!container.isRdpEnabled() || container.getGuacRdpConnectionId() == null) {
-            throw new IllegalStateException("RDP is not enabled for container " + container.getName());
+            throw new IllegalStateException(messages.get("error.session.rdpNotEnabled", container.getName()));
         }
         if (container.getKind() == ContainerKind.EXTERNAL) {
             String address = cliExecutor.resolveHostname(container.getHostname());
@@ -89,7 +92,7 @@ public class ContainerSessionService {
     @Transactional
     public String startVncSession(Container container, User user, String browserOrigin) {
         if (!container.isVncEnabled() || container.getGuacVncConnectionId() == null) {
-            throw new IllegalStateException("VNC is not enabled for container " + container.getName());
+            throw new IllegalStateException(messages.get("error.session.vncNotEnabled", container.getName()));
         }
         if (container.getKind() == ContainerKind.EXTERNAL) {
             String address = cliExecutor.resolveHostname(container.getHostname());

@@ -64,10 +64,10 @@ document.getElementById('settings-form').addEventListener('submit', async (event
         body: JSON.stringify(body),
     });
     if (!response.ok) {
-        status.textContent = 'Error: ' + await response.text();
+        status.textContent = t('general.failedPrefix', await response.text());
         return;
     }
-    status.textContent = 'Saved.';
+    status.textContent = t('js.status.saved');
     window.location.reload();
 });
 
@@ -76,11 +76,11 @@ document.getElementById('download-report').addEventListener('click', () => {
 });
 
 document.getElementById('restart-tomcat').addEventListener('click', async () => {
-    if (!await window.appDialog.confirm('This restarts Tomcat now, ending your current session. Continue?')) {
+    if (!await window.appDialog.confirm(t('page.adminSettings.confirmRestartTomcat'))) {
         return;
     }
     const restartStatus = document.getElementById('restart-status');
-    restartStatus.textContent = 'Restart requested — Tomcat will be back shortly. Redirecting to login in 5 seconds...';
+    restartStatus.textContent = t('page.adminSettings.restartRequested');
     try {
         await fetch(`${basePath}/api/admin/settings/restart-tomcat`, { method: 'POST' });
     } catch (e) {
@@ -117,7 +117,7 @@ function renderGuacField(field, values) {
     if (field.type === 'SELECT') {
         const options = field.options.map((opt) => {
             const selected = (current !== null ? current === opt : field.defaultValue === opt) ? 'selected' : '';
-            const optLabel = opt === '' ? '(default)' : opt;
+            const optLabel = opt === '' ? t('page.adminSettings.defaultOption') : opt;
             return `<option value="${escapeHtml(opt)}" ${selected}>${escapeHtml(optLabel)}</option>`;
         }).join('');
         return `<div class="field">
@@ -217,13 +217,13 @@ async function loadGuacamoleConfig() {
     const status = document.getElementById('guacamole-status');
     const response = await fetch(`${basePath}/api/admin/settings/guacamole-properties`);
     if (!response.ok) {
-        status.textContent = 'Could not load current configuration: ' + await response.text();
+        status.textContent = t('page.adminSettings.couldNotLoadConfig', await response.text());
         return;
     }
     guacamoleConfig = await response.json();
     status.textContent = guacamoleConfig.fileExists
-        ? `Existing file found at ${guacamoleConfig.path}, last modified ${guacamoleConfig.lastModified}.`
-        : `No file found yet at ${guacamoleConfig.path} — it will be created on first save.`;
+        ? t('page.adminSettings.existingFileFound', guacamoleConfig.path, guacamoleConfig.lastModified)
+        : t('page.adminSettings.noFileFoundYet', guacamoleConfig.path);
     const guacdFields = document.getElementById('guacamole-guacd-fields');
     guacdFields.innerHTML = renderGuacGroups(guacamoleConfig.guacdGroups, guacamoleConfig.values);
     attachPasswordTogglesWithin(guacdFields);
@@ -275,10 +275,10 @@ if (guacamoleDbTypeSelect) {
             body: JSON.stringify({ databaseType: dbType, values }),
         });
         if (!response.ok) {
-            status.textContent = 'Error: ' + await response.text();
+            status.textContent = t('general.failedPrefix', await response.text());
             return;
         }
-        status.textContent = 'Saved. Remember: Guacamole will not see this until Tomcat is restarted.';
+        status.textContent = t('page.adminSettings.savedGuacamoleNeedsRestart');
         loadGuacamoleConfig();
     });
 
@@ -295,46 +295,45 @@ if (guacamoleDbTypeSelect) {
         const username = fieldValue('username', '');
         const password = fieldValue('password', '');
 
-        status.textContent = 'Testing...';
+        status.textContent = t('js.status.testing');
         const testResponse = await fetch(`${basePath}/api/admin/settings/guacamole-properties/test-database`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ databaseType: dbType, hostname, port, database, username, password }),
         });
         if (!testResponse.ok) {
-            status.textContent = 'Error: ' + await testResponse.text();
+            status.textContent = t('general.failedPrefix', await testResponse.text());
             return;
         }
         const result = await testResponse.json();
         if (!result.connected) {
-            status.textContent = 'Connection failed: ' + result.error;
+            status.textContent = t('page.adminSettings.connectionFailed', result.error);
             return;
         }
         if (result.schemaExists) {
-            status.textContent = 'Connected — Guacamole schema is already set up.';
+            status.textContent = t('page.adminSettings.connectedSchemaAlreadySetUp');
             return;
         }
         const scriptsDirectory = document.getElementById('guacamoleSchemaScriptsDirectory').value;
         if (!scriptsDirectory) {
-            status.textContent = 'Connected, but the Guacamole schema does not appear to be set up yet. '
-                + 'Enter a schema scripts directory above and test again to be offered to run it.';
+            status.textContent = t('page.adminSettings.connectedSchemaNotSetUpEnterDirectory');
             return;
         }
-        if (!await window.appDialog.confirm(`Guacamole's database schema doesn't appear to be set up yet. Run every .sql file in "${scriptsDirectory}" against this database now?`)) {
-            status.textContent = 'Connected, but the Guacamole schema does not appear to be set up yet.';
+        if (!await window.appDialog.confirm(t('page.adminSettings.confirmRunSchemaScripts', scriptsDirectory))) {
+            status.textContent = t('page.adminSettings.connectedSchemaNotSetUp');
             return;
         }
-        status.textContent = 'Running schema scripts...';
+        status.textContent = t('page.adminSettings.runningSchemaScripts');
         const runResponse = await fetch(`${basePath}/api/admin/settings/guacamole-properties/run-schema-scripts`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ databaseType: dbType, hostname, port, database, username, password, scriptsDirectory }),
         });
         if (!runResponse.ok) {
-            status.textContent = 'Error running schema scripts: ' + await runResponse.text();
+            status.textContent = t('page.adminSettings.errorRunningSchemaScripts', await runResponse.text());
             return;
         }
-        status.textContent = 'Schema scripts ran successfully — Guacamole\'s database is now set up.';
+        status.textContent = t('page.adminSettings.schemaScriptsRanSuccessfully');
     });
 }
 
@@ -346,14 +345,14 @@ async function loadTomcatConfig() {
     const status = document.getElementById('tomcat-status');
     const response = await fetch(`${basePath}/api/admin/settings/tomcat-config`);
     if (!response.ok) {
-        status.textContent = 'Could not load current configuration: ' + await response.text();
+        status.textContent = t('page.adminSettings.couldNotLoadConfig', await response.text());
         return;
     }
     tomcatConfig = await response.json();
     if (tomcatConfig.error) {
-        status.textContent = `Warning: ${tomcatConfig.error} (path: ${tomcatConfig.path})`;
+        status.textContent = t('page.adminSettings.tomcatConfigWarning', tomcatConfig.error, tomcatConfig.path);
     } else {
-        status.textContent = `Read from ${tomcatConfig.path}.`;
+        status.textContent = t('page.adminSettings.tomcatConfigReadFrom', tomcatConfig.path);
     }
     document.getElementById('tomcatHttpPort').value = tomcatConfig.httpPort || '';
     document.getElementById('tomcatHttpsEnabled').value = String(tomcatConfig.httpsEnabled);
@@ -409,10 +408,10 @@ if (tomcatSaveButton) {
             body: JSON.stringify(body),
         });
         if (!response.ok) {
-            status.textContent = 'Error: ' + await response.text();
+            status.textContent = t('general.failedPrefix', await response.text());
             return;
         }
-        status.textContent = 'Saved. Remember: takes effect only after a Tomcat restart.';
+        status.textContent = t('page.adminSettings.savedTomcatNeedsRestart');
         loadTomcatConfig();
     });
 }

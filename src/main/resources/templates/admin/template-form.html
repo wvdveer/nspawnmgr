@@ -2,17 +2,17 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"/>
-    <title th:text="${template != null} ? 'nspawnmgr — Edit Template' : 'nspawnmgr — New Template'">nspawnmgr — Template</title>
+    <title th:text="${template != null} ? ${t.get('page.templateForm.editTitleTag')} : ${t.get('page.templateForm.newTitleTag')}">nspawnmgr — Template</title>
     <link rel="stylesheet" th:href="@{/css/app.css}"/>
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/},data-template-id=${template != null ? template.id : ''}">
 <div th:replace="~{fragments/app-shell :: shell(
-        title=${template != null ? 'Edit template' : 'New template'}, subtitle=null,
+        title=${template != null ? t.get('page.templateForm.editTemplate') : t.get('page.templateForm.newTemplate')}, subtitle=null,
         activeNav='templates', currentUser=${currentUser}, addMenu=null,
         content=~{::#page-content})}">
 <div id="page-content">
-<p><a th:href="@{/admin/templates}">&laquo; Back to templates</a></p>
+<p><a th:href="@{/admin/templates}" th:text="${t.get('page.templateForm.backToTemplates')}">&laquo; Back to templates</a></p>
 <!-- Reused as-is by admin/template-detail.html (~{admin/template-form :: formCard}) - the Edit
      page used to be this file rendered standalone for an existing template; now this fragment is
      inserted directly under that page's own "Manage" panel instead. Relies on the calling page's
@@ -21,42 +21,42 @@
 <div th:fragment="formCard">
 <form id="template-form" class="card">
     <div class="field">
-        <label for="name">Name</label>
+        <label for="name" th:text="${t.get('field.name')}">Name</label>
         <input type="text" id="name" name="name" th:value="${template != null ? template.name : ''}" required/>
     </div>
     <div class="field">
-        <label for="description">Description</label>
+        <label for="description" th:text="${t.get('field.description')}">Description</label>
         <input type="text" id="description" name="description" th:value="${template != null ? template.description : ''}"/>
     </div>
     <div class="field">
-        <label for="backend">Backend</label>
+        <label for="backend" th:text="${t.get('field.backend')}">Backend</label>
         <select id="backend" name="backend">
             <option th:each="b : ${backends}" th:value="${b}" th:text="${b}"
                     th:selected="${template != null ? template.backend == b : b.name() == 'SYSTEMD_NSPAWN'}">backend</option>
         </select>
     </div>
     <div class="field">
-        <label for="sourcePath">Source name (bare name, no extension - resolves to TEMPLATES_DIR/&lt;backend&gt;/&lt;name&gt;.tar.gz; pick a suggestion below or type your own)</label>
+        <label for="sourcePath" th:utext="${t.get('page.templateForm.sourcePathLabel')}">Source name (bare name, no extension - resolves to TEMPLATES_DIR/&lt;backend&gt;/&lt;name&gt;.tar.gz; pick a suggestion below or type your own)</label>
         <input type="text" id="sourcePath" name="sourcePath" list="sourcePathOptions"
                th:value="${template != null ? template.sourcePath : ''}" required/>
         <datalist id="sourcePathOptions"></datalist>
     </div>
     <div class="field">
-        <label for="packageManager">Package manager (none = no way to install SSH/RDP/VNC/desktop
+        <label for="packageManager" th:text="${t.get('page.templateForm.packageManagerLabel')}">Package manager (none = no way to install SSH/RDP/VNC/desktop
             packages via this template - the options below that need one are disabled)</label>
         <select id="packageManager" name="packageManager">
             <option th:each="pm : ${packageManagers}" th:value="${pm}" th:text="${pm}"
                     th:selected="${template != null and template.packageManager == pm}">package manager</option>
-            <option value="" th:selected="${template != null and template.packageManager == null}">(none)</option>
+            <option value="" th:selected="${template != null and template.packageManager == null}" th:text="${t.get('option.none')}">(none)</option>
         </select>
     </div>
     <div class="field">
-        <label for="installSshCommand">Install-SSH command override (blank = package-manager default)</label>
+        <label for="installSshCommand" th:text="${t.get('page.templateForm.installCommandOverride', 'SSH')}">Install-SSH command override (blank = package-manager default)</label>
         <textarea id="installSshCommand" name="installSshCommand" rows="2"
                   th:text="${template != null ? template.installSshCommand : ''}"></textarea>
     </div>
     <div class="field">
-        <label for="sshPreDownloadPackages">SSH pre-fetch packages override (comma-separated package
+        <label for="sshPreDownloadPackages" th:text="${t.get('page.templateForm.sshPreFetchLabel')}">SSH pre-fetch packages override (comma-separated package
             names; blank = package-manager default. Lets a distro package rename be fixed here
             instead of a code change - e.g. Fedora's tigervnc-server &rarr; tigervnc-x11-server.)</label>
         <input type="text" id="sshPreDownloadPackages" name="sshPreDownloadPackages"
@@ -65,104 +65,104 @@
     <div class="field">
         <label for="sshState">SSH</label>
         <select id="sshState" name="sshState">
-            <option th:each="s : ${templateFeatureStates}" th:value="${s}" th:text="${s.label()}"
+            <option th:each="s : ${templateFeatureStates}" th:value="${s}" th:text="${t.get('state.templateFeature.' + s.name())}"
                     th:selected="${template != null ? template.sshState == s : s.name() == 'CAPABLE'}">state</option>
         </select>
-        <p class="hint">Preinstalled: the template's own image already has openssh installed and
+        <p class="hint" th:text="${t.get('page.templateForm.sshStateHint')}">Preinstalled: the template's own image already has openssh installed and
             enabled - skips the redundant install/enable step when a container is created from it.
             Not capable: there's no way to install it via this template (e.g. no package manager).</p>
     </div>
     <div class="field">
-        <label for="installXrdpCommand">Install-XRDP command override (blank = package-manager default)</label>
+        <label for="installXrdpCommand" th:text="${t.get('page.templateForm.installCommandOverride', 'XRDP')}">Install-XRDP command override (blank = package-manager default)</label>
         <textarea id="installXrdpCommand" name="installXrdpCommand" rows="2"
                   th:text="${template != null ? template.installXrdpCommand : ''}"></textarea>
     </div>
     <div class="field">
-        <label for="xrdpPreDownloadPackages">XRDP pre-fetch packages override (comma-separated; blank = default)</label>
+        <label for="xrdpPreDownloadPackages" th:text="${t.get('page.templateForm.preFetchOverride', 'XRDP')}">XRDP pre-fetch packages override (comma-separated; blank = default)</label>
         <input type="text" id="xrdpPreDownloadPackages" name="xrdpPreDownloadPackages"
                th:value="${template != null ? template.xrdpPreDownloadPackages : ''}"/>
     </div>
     <div class="field">
         <label for="rdpState">RDP</label>
         <select id="rdpState" name="rdpState">
-            <option th:each="s : ${templateFeatureStates}" th:value="${s}" th:text="${s.label()}"
+            <option th:each="s : ${templateFeatureStates}" th:value="${s}" th:text="${t.get('state.templateFeature.' + s.name())}"
                     th:selected="${template != null ? template.rdpState == s : s.name() == 'CAPABLE'}">state</option>
         </select>
     </div>
     <div class="field">
-        <label for="installVncCommand">Install-VNC command override (blank = package-manager default)</label>
+        <label for="installVncCommand" th:text="${t.get('page.templateForm.installCommandOverride', 'VNC')}">Install-VNC command override (blank = package-manager default)</label>
         <textarea id="installVncCommand" name="installVncCommand" rows="2"
                   th:text="${template != null ? template.installVncCommand : ''}"></textarea>
     </div>
     <div class="field">
-        <label for="vncPreDownloadPackages">VNC pre-fetch packages override (comma-separated; blank = default)</label>
+        <label for="vncPreDownloadPackages" th:text="${t.get('page.templateForm.preFetchOverride', 'VNC')}">VNC pre-fetch packages override (comma-separated; blank = default)</label>
         <input type="text" id="vncPreDownloadPackages" name="vncPreDownloadPackages"
                th:value="${template != null ? template.vncPreDownloadPackages : ''}"/>
     </div>
     <div class="field">
         <label for="vncState">VNC</label>
         <select id="vncState" name="vncState">
-            <option th:each="s : ${templateFeatureStates}" th:value="${s}" th:text="${s.label()}"
+            <option th:each="s : ${templateFeatureStates}" th:value="${s}" th:text="${t.get('state.templateFeature.' + s.name())}"
                     th:selected="${template != null ? template.vncState == s : s.name() == 'CAPABLE'}">state</option>
         </select>
     </div>
     <div class="field">
-        <label for="vncXstartupTemplate">VNC xstartup session command (blank = default)</label>
+        <label for="vncXstartupTemplate" th:text="${t.get('page.templateForm.vncXstartupLabel')}">VNC xstartup session command (blank = default)</label>
         <input type="text" id="vncXstartupTemplate" name="vncXstartupTemplate"
                th:value="${template != null ? template.vncXstartupTemplate : ''}"/>
-        <p class="hint">A shell command with a single %s for the desktop session command (e.g.
+        <p class="hint" th:text="${t.get('page.templateForm.vncXstartupHint')}">A shell command with a single %s for the desktop session command (e.g.
             startxfce4), used to write the .vnc/xstartup script. Default is a bare exec, TigerVNC's
             own natural behavior - logging out ends the VNC session (TigerVNC 1.12+ kills Xvnc the
             instant the xstartup script's own process exits); the next connection attempt starts a
             fresh one automatically.</p>
     </div>
     <div class="field">
-        <label for="vncProcessNamePattern">VNC server process-name pattern (blank = default)</label>
+        <label for="vncProcessNamePattern" th:text="${t.get('page.templateForm.vncProcessNamePatternLabel')}">VNC server process-name pattern (blank = default)</label>
         <input type="text" id="vncProcessNamePattern" name="vncProcessNamePattern"
                th:value="${template != null ? template.vncProcessNamePattern : ''}"/>
-        <p class="hint">Matches the VNC server binary's own process name, anchored as
+        <p class="hint" th:utext="${t.get('page.templateForm.vncProcessNamePatternHint')}">Matches the VNC server binary's own process name, anchored as
             "(^|/)&lt;pattern&gt; :0 " against a process's full command line (tolerating the
             absolute path it's normally invoked with) - used to find and kill a stale instance
             before starting a fresh one. Default X[a-z]*vnc matches both Xvnc and Xtigervnc (the
             actual binary name Debian's tigervnc-standalone-server execs).</p>
     </div>
     <div class="field">
-        <label for="installGnomeCommand">Install-GNOME command override (blank = package-manager default)</label>
+        <label for="installGnomeCommand" th:text="${t.get('page.templateForm.installCommandOverride', 'GNOME')}">Install-GNOME command override (blank = package-manager default)</label>
         <textarea id="installGnomeCommand" name="installGnomeCommand" rows="2"
                   th:text="${template != null ? template.installGnomeCommand : ''}"></textarea>
     </div>
     <div class="field">
-        <label for="gnomePreDownloadPackages">GNOME pre-fetch packages override (comma-separated; blank = default)</label>
+        <label for="gnomePreDownloadPackages" th:text="${t.get('page.templateForm.preFetchOverride', 'GNOME')}">GNOME pre-fetch packages override (comma-separated; blank = default)</label>
         <input type="text" id="gnomePreDownloadPackages" name="gnomePreDownloadPackages"
                th:value="${template != null ? template.gnomePreDownloadPackages : ''}"/>
     </div>
     <div class="field">
-        <label for="installKdeStandardCommand">Install-KDE command override (blank = package-manager default)</label>
+        <label for="installKdeStandardCommand" th:text="${t.get('page.templateForm.installCommandOverride', 'KDE')}">Install-KDE command override (blank = package-manager default)</label>
         <textarea id="installKdeStandardCommand" name="installKdeStandardCommand" rows="2"
                   th:text="${template != null ? template.installKdeStandardCommand : ''}"></textarea>
     </div>
     <div class="field">
-        <label for="kdeStandardPreDownloadPackages">KDE pre-fetch packages override (comma-separated; blank = default)</label>
+        <label for="kdeStandardPreDownloadPackages" th:text="${t.get('page.templateForm.preFetchOverride', 'KDE')}">KDE pre-fetch packages override (comma-separated; blank = default)</label>
         <input type="text" id="kdeStandardPreDownloadPackages" name="kdeStandardPreDownloadPackages"
                th:value="${template != null ? template.kdeStandardPreDownloadPackages : ''}"/>
     </div>
     <div class="field">
-        <label for="installXfce4Command">Install-Xfce command override (blank = package-manager default)</label>
+        <label for="installXfce4Command" th:text="${t.get('page.templateForm.installCommandOverride', 'Xfce')}">Install-Xfce command override (blank = package-manager default)</label>
         <textarea id="installXfce4Command" name="installXfce4Command" rows="2"
                   th:text="${template != null ? template.installXfce4Command : ''}"></textarea>
     </div>
     <div class="field">
-        <label for="xfce4PreDownloadPackages">Xfce pre-fetch packages override (comma-separated; blank = default)</label>
+        <label for="xfce4PreDownloadPackages" th:text="${t.get('page.templateForm.preFetchOverride', 'Xfce')}">Xfce pre-fetch packages override (comma-separated; blank = default)</label>
         <input type="text" id="xfce4PreDownloadPackages" name="xfce4PreDownloadPackages"
                th:value="${template != null ? template.xfce4PreDownloadPackages : ''}"/>
     </div>
     <div class="field">
-        <label for="privateUsersMode">PrivateUsers mode (blank = follow the host's own systemd-nspawn
+        <label for="privateUsersMode" th:utext="${t.get('page.templateForm.privateUsersModeLabel')}">PrivateUsers mode (blank = follow the host's own systemd-nspawn
             default; IDENTITY keeps a real per-container user namespace but without shifting container
             UID 0 away from host UID 0 - needed on Fedora for PAM helpers like unix_chkpwd to read
             /etc/shadow correctly)</label>
         <select id="privateUsersMode" name="privateUsersMode">
-            <option value="" th:selected="${template == null or template.privateUsersMode == null}">(use host default)</option>
+            <option value="" th:selected="${template == null or template.privateUsersMode == null}" th:text="${t.get('option.useHostDefault')}">(use host default)</option>
             <option th:each="m : ${privateUsersModes}" th:value="${m}" th:text="${m}"
                     th:selected="${template != null and template.privateUsersMode == m}">mode</option>
         </select>
@@ -170,9 +170,9 @@
     <div class="field field-inline">
         <input type="checkbox" id="active" name="active"
                th:checked="${template == null or template.active}"/>
-        <label for="active">Active</label>
+        <label for="active" th:text="${t.get('page.adminTemplates.active')}">Active</label>
     </div>
-    <button type="submit" class="btn-primary">Save</button>
+    <button type="submit" class="btn-primary" th:text="${t.get('button.save')}">Save</button>
 </form>
 <p id="status" class="status-message"></p>
 </div>

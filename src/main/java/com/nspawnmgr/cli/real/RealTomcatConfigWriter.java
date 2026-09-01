@@ -4,6 +4,7 @@ import com.nspawnmgr.cli.CommandResult;
 import com.nspawnmgr.cli.ContainerCliException;
 import com.nspawnmgr.cli.TomcatConfigWriter;
 import com.nspawnmgr.service.SettingsService;
+import com.nspawnmgr.service.UserMessages;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -24,10 +25,12 @@ public class RealTomcatConfigWriter implements TomcatConfigWriter {
 
     private final SettingsService settingsService;
     private final SshRemoteExecutor ssh;
+    private final UserMessages messages;
 
-    public RealTomcatConfigWriter(SettingsService settingsService, SshRemoteExecutor ssh) {
+    public RealTomcatConfigWriter(SettingsService settingsService, SshRemoteExecutor ssh, UserMessages messages) {
         this.settingsService = settingsService;
         this.ssh = ssh;
+        this.messages = messages;
     }
 
     @Override
@@ -35,7 +38,7 @@ public class RealTomcatConfigWriter implements TomcatConfigWriter {
         String wrapperScript = Path.of(settingsService.nspawnPrivilegedScriptsDir(), "nspawnmgr-write-file.sh").toString();
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15), List.of(wrapperScript, path), content);
         if (!result.success()) {
-            throw new ContainerCliException("Failed to write " + path + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToWrite", path, result.stderr()));
         }
     }
 }

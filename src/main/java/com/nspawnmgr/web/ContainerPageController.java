@@ -31,6 +31,7 @@ import com.nspawnmgr.service.PamCredentialAuthService;
 import com.nspawnmgr.service.SettingsService;
 import com.nspawnmgr.service.ShareService;
 import com.nspawnmgr.service.TemplateService;
+import com.nspawnmgr.service.UserMessages;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
@@ -64,6 +65,7 @@ public class ContainerPageController {
     private final NetworkDiagnosticsService networkDiagnosticsService;
     private final HostLivenessService hostLivenessService;
     private final ContainerFileBrowserService fileBrowserService;
+    private final UserMessages messages;
 
     public ContainerPageController(ContainerRepository containerRepository, TemplateService templateService,
                                     ShareService shareService, ContainerPortMappingService portMappingService,
@@ -78,7 +80,8 @@ public class ContainerPageController {
                                     SettingsService settingsService,
                                     NetworkDiagnosticsService networkDiagnosticsService,
                                     HostLivenessService hostLivenessService,
-                                    ContainerFileBrowserService fileBrowserService) {
+                                    ContainerFileBrowserService fileBrowserService,
+                                    UserMessages messages) {
         this.containerRepository = containerRepository;
         this.templateService = templateService;
         this.shareService = shareService;
@@ -95,6 +98,7 @@ public class ContainerPageController {
         this.settingsService = settingsService;
         this.networkDiagnosticsService = networkDiagnosticsService;
         this.fileBrowserService = fileBrowserService;
+        this.messages = messages;
     }
 
     @GetMapping("/")
@@ -263,7 +267,7 @@ public class ContainerPageController {
 
     private Container requireVisible(Long id) {
         Container container = containerRepository.findByIdWithTemplate(id)
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + id));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", id)));
         applyHostLiveness(container);
         return container;
     }
@@ -279,7 +283,7 @@ public class ContainerPageController {
 
     private Container requireVisibleByName(String name) {
         return containerRepository.findByNameWithTemplate(name)
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + name));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", name)));
     }
 
     /** Owner, or a user the container has been shared with — see ContainerApiController's twin. */
@@ -287,7 +291,7 @@ public class ContainerPageController {
         Container container = requireVisible(id);
         User user = currentUserProvider.get();
         if (!canManageScripts(container, user)) {
-            throw new AccessDeniedException("Only the owner or a shared user may perform this action");
+            throw new AccessDeniedException(messages.get("error.web.onlyOwnerOrSharedMayPerform"));
         }
         return container;
     }
@@ -300,7 +304,7 @@ public class ContainerPageController {
         Container container = requireVisibleByName(name);
         User user = currentUserProvider.get();
         if (!canManageScripts(container, user)) {
-            throw new AccessDeniedException("This container has not been shared with you.");
+            throw new AccessDeniedException(messages.get("error.web.notSharedWithYou"));
         }
         return container;
     }

@@ -2,17 +2,17 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"/>
-    <title>nspawnmgr — Admin: Diagnostics</title>
+    <title th:text="${t.get('page.diagnostics.title')}">nspawnmgr — Admin: Diagnostics</title>
     <link rel="stylesheet" th:href="@{/css/app.css}"/>
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/},data-ssh-approval-required=${sshApprovalRequired}">
 <div th:replace="~{fragments/app-shell :: shell(
-        title='Diagnostics', subtitle='Check host prerequisites for container networking',
+        title=${t.get('nav.diagnostics')}, subtitle=${t.get('page.diagnostics.subtitle')},
         activeNav='diagnostics', currentUser=${currentUser}, addMenu=null,
         content=~{::#page-content})}">
     <div id="page-content">
-        <p class="hint">Checks the host prerequisites most likely to silently break container
+        <p class="hint" th:text="${t.get('page.diagnostics.hint')}">Checks the host prerequisites most likely to silently break container
             networking (SSH/RDP never becoming reachable, containers stuck in BOOTING), plus whether
             optional container/VM backends (podman, QEMU) are installed. Runs automatically every
             time this page is opened. Some checks have a "Fix" button — applying a fix asks for

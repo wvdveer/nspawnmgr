@@ -51,7 +51,7 @@ document.getElementById('create-form').addEventListener('submit', async (event) 
         body: JSON.stringify(body),
     });
     if (!response.ok) {
-        status.textContent = 'Error: ' + await response.text();
+        status.textContent = t('general.failedPrefix', await response.text());
         return;
     }
     const created = await response.json();

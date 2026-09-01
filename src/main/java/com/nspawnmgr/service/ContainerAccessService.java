@@ -41,17 +41,20 @@ public class ContainerAccessService {
     private final ContainerPortProbe portProbe;
     private final GuacamoleAdminClient guacamoleAdminClient;
     private final SecretEncryptionService secretEncryptionService;
+    private final UserMessages messages;
 
     public ContainerAccessService(ContainerRepository containerRepository,
                                    ContainerCredentialRepository credentialRepository,
                                    ContainerPortProbe portProbe,
                                    GuacamoleAdminClient guacamoleAdminClient,
-                                   SecretEncryptionService secretEncryptionService) {
+                                   SecretEncryptionService secretEncryptionService,
+                                   UserMessages messages) {
         this.containerRepository = containerRepository;
         this.credentialRepository = credentialRepository;
         this.portProbe = portProbe;
         this.guacamoleAdminClient = guacamoleAdminClient;
         this.secretEncryptionService = secretEncryptionService;
+        this.messages = messages;
     }
 
     @Transactional
@@ -170,19 +173,17 @@ public class ContainerAccessService {
 
     private void requireNoCredential(Container container, CredentialType type) {
         if (credentialRepository.findByContainerAndType(container, type).isPresent()) {
-            throw new IllegalStateException(
-                    "nspawnmgr already manages " + type + " access for " + container.getName());
+            throw new IllegalStateException(messages.get("error.access.alreadyManages", type, container.getName()));
         }
     }
 
     private void requireReachable(Container container, int port, String label) {
         String address = container.getInternalAddress();
         if (address == null || address.isEmpty()) {
-            throw new IllegalStateException("No internal address known yet for " + container.getName());
+            throw new IllegalStateException(messages.get("error.access.noInternalAddress", container.getName()));
         }
         if (!portProbe.isOpen(address, port)) {
-            throw new IllegalStateException(
-                    label + " port " + port + " isn't reachable on " + container.getName() + " right now");
+            throw new IllegalStateException(messages.get("error.access.portNotReachable", label, port, container.getName()));
         }
     }
 }

@@ -2,38 +2,38 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"/>
-    <title th:text="${script != null} ? 'nspawnmgr — Edit Script' : 'nspawnmgr — New Script'">nspawnmgr — Script</title>
+    <title th:text="${script != null} ? 'nspawnmgr — ' + ${t.get('page.scriptForm.editTitle')} : 'nspawnmgr — ' + ${t.get('page.scriptForm.newTitle')}">nspawnmgr — Script</title>
     <link rel="stylesheet" th:href="@{/css/app.css}"/>
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/},data-container-id=${container.id},data-script-id=${script != null ? script.id : ''}">
 <div th:replace="~{fragments/app-shell :: shell(
-        title=${script != null ? 'Edit script' : 'New script'}, subtitle=null,
+        title=${script != null ? t.get('page.scriptForm.editTitle') : t.get('page.scriptForm.newTitle')}, subtitle=null,
         activeNav='machines', currentUser=${currentUser}, addMenu=null,
         content=~{::#page-content})}">
 <div id="page-content">
-<p><a th:href="@{/containers/{id}(id=${container.id})}">&laquo; Back to <span th:text="${container.name}">container</span></a></p>
+<p><a th:href="@{/containers/{id}(id=${container.id})}" th:text="${t.get('page.files.backTo') + ' ' + container.name}">&laquo; Back to <span th:text="${container.name}">container</span></a></p>
 
 <form id="script-form" class="card card-wide" onsubmit="return false;">
     <div class="field">
-        <label for="name">Name</label>
+        <label for="name" th:text="${t.get('field.name')}">Name</label>
         <input type="text" id="name" name="name" th:value="${script != null ? script.name : ''}" required/>
     </div>
     <div class="field">
-        <label for="scriptBody">Script</label>
+        <label for="scriptBody" th:text="${t.get('page.scriptForm.scriptLabel')}">Script</label>
         <textarea id="scriptBody" name="scriptBody" rows="16" class="script-textarea" spellcheck="false"
                   th:text="${script != null ? script.scriptBody : ''}" required></textarea>
     </div>
-    <button id="btn-save" type="button" class="btn-primary">Save</button>
-    <button id="btn-execute" type="button" class="btn-primary">Execute</button>
-    <button id="btn-abort" type="button" class="btn-danger" style="display:none;">Abort</button>
-    <button th:if="${script != null}" id="btn-delete" type="button" class="btn-danger">Delete</button>
+    <button id="btn-save" type="button" class="btn-primary" th:text="${t.get('button.save')}">Save</button>
+    <button id="btn-execute" type="button" class="btn-primary" th:text="${t.get('button.execute')}">Execute</button>
+    <button id="btn-abort" type="button" class="btn-danger" style="display:none;" th:text="${t.get('button.abort')}">Abort</button>
+    <button th:if="${script != null}" id="btn-delete" type="button" class="btn-danger" th:text="${t.get('button.delete')}">Delete</button>
 </form>
 <p id="status" class="status-message"></p>
 
 <div id="output-panel" class="panel" style="display:none;">
     <div class="panel-section">
-        <h3>Output</h3>
+        <h3 th:text="${t.get('page.scriptForm.outputHeading')}">Output</h3>
         <div id="output-lines" class="output-lines"></div>
     </div>
 </div>

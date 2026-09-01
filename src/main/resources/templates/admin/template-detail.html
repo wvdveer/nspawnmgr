@@ -15,26 +15,26 @@
      th:with="kindKey=${template.backend.name()}, kindLabel=${template.backend.name() == 'SYSTEMD_NSPAWN'} ? 'NSPAWN' : ${template.backend.name()}">
 <p>
     <span class="badge badge-backend" th:classappend="${kindKey}" th:text="${kindLabel}">NSPAWN</span>
-    <span class="badge badge-bool" th:classappend="${template.active}" th:text="${template.active} ? 'Active' : 'Inactive'">Active</span>
+    <span class="badge badge-bool" th:classappend="${template.active}" th:text="${template.active} ? ${t.get('page.adminTemplates.active')} : ${t.get('page.adminTemplates.inactive')}">Active</span>
 </p>
 <p th:if="${template.description != null and template.description != ''}" th:text="${template.description}">description</p>
-<p>Package manager: <span th:text="${template.packageManager}">apt</span></p>
-<p>SSH <span th:text="${template.sshState.label()}">ssh</span> ·
-    RDP <span th:text="${template.rdpState.label()}">rdp</span> ·
-    VNC <span th:text="${template.vncState.label()}">vnc</span></p>
+<p th:text="${t.get('page.templateDetail.packageManagerLine', template.packageManager)}">Package manager: <span th:text="${template.packageManager}">apt</span></p>
+<p>SSH <span th:text="${t.get('state.templateFeature.' + template.sshState.name())}">ssh</span> ·
+    RDP <span th:text="${t.get('state.templateFeature.' + template.rdpState.name())}">rdp</span> ·
+    VNC <span th:text="${t.get('state.templateFeature.' + template.vncState.name())}">vnc</span></p>
 
 <div class="panel panel-narrow">
-    <h2>Manage</h2>
+    <h2 th:text="${t.get('page.detail.manageHeading')}">Manage</h2>
     <div class="panel-section">
-        <button th:if="${template.active}" id="btn-deactivate" class="btn-primary">Deactivate</button>
-        <button th:unless="${template.active}" id="btn-reactivate" class="btn-primary">Reactivate</button>
-        <button th:if="${template.backend.name() == 'SYSTEMD_NSPAWN'}" id="btn-convert-to-podman" class="btn-primary">Create podman template</button>
-        <button th:if="${template.backend.name() == 'PODMAN'}" id="btn-convert-to-nspawn" class="btn-primary">Create nspawn template</button>
-        <button id="btn-delete" class="btn-danger">Delete</button>
+        <button th:if="${template.active}" id="btn-deactivate" class="btn-primary" th:text="${t.get('page.templateDetail.deactivate')}">Deactivate</button>
+        <button th:unless="${template.active}" id="btn-reactivate" class="btn-primary" th:text="${t.get('page.templateDetail.reactivate')}">Reactivate</button>
+        <button th:if="${template.backend.name() == 'SYSTEMD_NSPAWN'}" id="btn-convert-to-podman" class="btn-primary" th:text="${t.get('page.templateDetail.createPodmanTemplate')}">Create podman template</button>
+        <button th:if="${template.backend.name() == 'PODMAN'}" id="btn-convert-to-nspawn" class="btn-primary" th:text="${t.get('page.templateDetail.createNspawnTemplate')}">Create nspawn template</button>
+        <button id="btn-delete" class="btn-danger" th:text="${t.get('button.delete')}">Delete</button>
     </div>
     <div th:if="${sudoApprovalRequired and (template.backend.name() == 'SYSTEMD_NSPAWN' or template.backend.name() == 'PODMAN')}" class="panel-section">
         <div class="field">
-            <label for="convertSudoPassword">Sudo password (needed to create the converted template)</label>
+            <label for="convertSudoPassword" th:text="${t.get('page.templateDetail.convertSudoPasswordLabel')}">Sudo password (needed to create the converted template)</label>
             <input type="password" id="convertSudoPassword"/>
         </div>
     </div>

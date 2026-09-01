@@ -67,7 +67,8 @@ class PamCredentialAuthServiceTest {
         when(cliExecutor.getInternalAddress(anyString(), any())).thenReturn("");
         PamAuthProperties properties = new PamAuthProperties("http://10.100.0.1:8080/nspawnmgr");
         service = new PamCredentialAuthService(containerRepository, pamServiceRepository, credentialRepository,
-                outboundAllowlistRepository, cliExecutor, guacamoleAdminClient, secretEncryptionService, properties);
+                outboundAllowlistRepository, cliExecutor, guacamoleAdminClient, secretEncryptionService, properties,
+                TestUserMessages.create());
     }
 
     private Container runningContainer() {

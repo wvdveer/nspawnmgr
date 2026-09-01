@@ -3,6 +3,7 @@ package com.nspawnmgr.web;
 import com.nspawnmgr.domain.Role;
 import com.nspawnmgr.domain.User;
 import com.nspawnmgr.security.CurrentUserProvider;
+import com.nspawnmgr.service.UserMessages;
 import com.nspawnmgr.service.UserService;
 import com.nspawnmgr.web.dto.UpdateUserRoleRequest;
 import com.nspawnmgr.web.dto.UserSummaryResponse;
@@ -20,10 +21,12 @@ public class AdminUserApiController {
 
     private final UserService userService;
     private final CurrentUserProvider currentUserProvider;
+    private final UserMessages messages;
 
-    public AdminUserApiController(UserService userService, CurrentUserProvider currentUserProvider) {
+    public AdminUserApiController(UserService userService, CurrentUserProvider currentUserProvider, UserMessages messages) {
         this.userService = userService;
         this.currentUserProvider = currentUserProvider;
+        this.messages = messages;
     }
 
     @GetMapping("/api/admin/users")
@@ -45,7 +48,7 @@ public class AdminUserApiController {
         try {
             return Role.valueOf(value.toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid role: " + value);
+            throw new IllegalArgumentException(messages.get("error.web.invalidRole", value));
         }
     }
 }

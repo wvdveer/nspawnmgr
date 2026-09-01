@@ -12,10 +12,12 @@
             <p class="app-dialog-message"></p>
             <input type="text" class="app-dialog-input" style="display:none;"/>
             <div class="app-dialog-actions">
-                <button type="button" class="btn-primary app-dialog-cancel">Cancel</button>
-                <button type="button" class="btn-primary app-dialog-ok">OK</button>
+                <button type="button" class="btn-primary app-dialog-cancel"></button>
+                <button type="button" class="btn-primary app-dialog-ok"></button>
             </div>
         `;
+        dialogEl.querySelector('.app-dialog-cancel').textContent = t('dialog.cancel');
+        dialogEl.querySelector('.app-dialog-ok').textContent = t('dialog.ok');
         document.body.appendChild(dialogEl);
         return dialogEl;
     }

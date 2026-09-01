@@ -8,7 +8,7 @@ async function setRole(userId, role) {
         body: JSON.stringify({ role }),
     });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
@@ -48,7 +48,7 @@ document.querySelectorAll('.role-trigger').forEach((badge) => {
         allRoles.filter((role) => role !== currentRole).forEach((role) => {
             const item = document.createElement('button');
             item.type = 'button';
-            item.textContent = `Change to ${role}`;
+            item.textContent = t('js.changeRoleTo', t('role.' + role));
             item.addEventListener('click', () => {
                 closeMenu();
                 setRole(userId, role);

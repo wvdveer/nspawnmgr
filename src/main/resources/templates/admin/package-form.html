@@ -2,38 +2,38 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"/>
-    <title>nspawnmgr — Add a package</title>
+    <title th:text="${t.get('page.packageForm.title')}">nspawnmgr — Add a package</title>
     <link rel="stylesheet" th:href="@{/css/app.css}"/>
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/}">
 <div th:replace="~{fragments/app-shell :: shell(
-        title='Add a package', subtitle=null,
+        title=${t.get('page.packageForm.addAPackage')}, subtitle=null,
         activeNav='packages', currentUser=${currentUser}, addMenu=null,
         content=~{::#page-content})}">
 <div id="page-content">
 <div class="card">
     <div class="field">
-        <label><input type="radio" name="add-mode" id="mode-upload" value="upload" checked/> Upload a file</label>
-        <label><input type="radio" name="add-mode" id="mode-download" value="download"/> Download from a URL</label>
+        <label><input type="radio" name="add-mode" id="mode-upload" value="upload" checked/> <span th:text="${t.get('page.packageForm.uploadAFile')}">Upload a file</span></label>
+        <label><input type="radio" name="add-mode" id="mode-download" value="download"/> <span th:text="${t.get('page.packageForm.downloadFromUrl')}">Download from a URL</span></label>
     </div>
 
     <form id="upload-form" class="card" enctype="multipart/form-data">
         <div class="field">
-            <label for="packageManager">Package manager</label>
+            <label for="packageManager" th:text="${t.get('field.packageManager')}">Package manager</label>
             <select id="packageManager" name="packageManager">
                 <option th:each="pm : ${packageManagers}" th:value="${pm}" th:text="${pm}">package manager</option>
             </select>
         </div>
         <div class="field">
-            <label for="file">File (.deb / .rpm / .iso / etc.)</label>
+            <label for="file" th:text="${t.get('page.packageForm.fileLabel')}">File (.deb / .rpm / .iso / etc.)</label>
             <input type="file" id="file" name="file" required/>
         </div>
         <div class="field">
-            <label for="description">Description</label>
-            <input type="text" id="description" name="description" placeholder="What is this package for?"/>
+            <label for="description" th:text="${t.get('field.description')}">Description</label>
+            <input type="text" id="description" name="description" th:placeholder="${t.get('page.packageForm.descriptionPlaceholder')}"/>
         </div>
-        <button type="submit" class="btn-primary" id="btn-start-upload">Upload</button>
+        <button type="submit" class="btn-primary" id="btn-start-upload" th:text="${t.get('page.packageForm.upload')}">Upload</button>
     </form>
     <div id="upload-progress" style="display: none;">
         <progress id="upload-progress-bar" max="100" value="0"></progress>
@@ -42,23 +42,23 @@
 
     <form id="download-form" class="card" style="display: none;">
         <div class="field">
-            <label for="download-packageManager">Package manager</label>
+            <label for="download-packageManager" th:text="${t.get('field.packageManager')}">Package manager</label>
             <select id="download-packageManager">
                 <option th:each="pm : ${packageManagers}" th:value="${pm}" th:text="${pm}">package manager</option>
             </select>
         </div>
         <div class="field">
-            <label for="download-url">URL</label>
+            <label for="download-url" th:text="${t.get('field.url')}">URL</label>
             <input type="url" id="download-url" placeholder="https://..." required/>
         </div>
         <div class="field">
-            <label for="download-description">Description</label>
-            <input type="text" id="download-description" placeholder="What is this package for?"/>
+            <label for="download-description" th:text="${t.get('field.description')}">Description</label>
+            <input type="text" id="download-description" th:placeholder="${t.get('page.packageForm.descriptionPlaceholder')}"/>
         </div>
-        <p class="hint">Downloaded directly by the host in the background - large files (e.g. an
+        <p class="hint" th:text="${t.get('page.packageForm.downloadHint')}">Downloaded directly by the host in the background - large files (e.g. an
             install ISO) don't need to pass through your own browser upload at all.</p>
-        <button type="submit" class="btn-primary" id="btn-start-download">Download</button>
-        <button type="button" class="btn-danger" id="btn-abort-download" style="display: none;">Abort</button>
+        <button type="submit" class="btn-primary" id="btn-start-download" th:text="${t.get('page.packageForm.download')}">Download</button>
+        <button type="button" class="btn-danger" id="btn-abort-download" style="display: none;" th:text="${t.get('button.abort')}">Abort</button>
     </form>
     <div id="download-progress" style="display: none;">
         <progress id="download-progress-bar" max="100" value="0"></progress>

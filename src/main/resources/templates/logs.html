@@ -2,18 +2,18 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"/>
-    <title>nspawnmgr — Log</title>
+    <title th:text="${t.get('page.logs.titleTag')}">nspawnmgr — Log</title>
     <link rel="stylesheet" th:href="@{/css/app.css}"/>
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/}">
 <div th:replace="~{fragments/app-shell :: shell(
-        title='Log', subtitle='Last 100 lines of the application log',
+        title=${t.get('nav.log')}, subtitle=${t.get('page.logs.subtitle')},
         activeNav='log', currentUser=${currentUser}, addMenu=null,
         content=~{::#page-content})}">
     <div id="page-content">
-        <p><button id="btn-show-full" class="btn-primary">Show full log</button></p>
-        <pre id="log-content">Loading...</pre>
+        <p><button id="btn-show-full" class="btn-primary" th:text="${t.get('page.logs.showFullLog')}">Show full log</button></p>
+        <pre id="log-content" th:text="${t.get('js.status.loading')}">Loading...</pre>
     </div>
 </div>
 <script th:src="@{/js/theme-toggle.js}"></script>

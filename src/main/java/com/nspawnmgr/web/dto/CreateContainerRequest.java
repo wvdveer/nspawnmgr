@@ -6,7 +6,7 @@ import javax.validation.constraints.Pattern;
 import javax.validation.constraints.Size;
 
 public record CreateContainerRequest(
-        @NotBlank @Pattern(regexp = "^[a-z0-9][a-z0-9-]{1,62}$", message = "lowercase alphanumeric and hyphens only") String name,
+        @NotBlank @Pattern(regexp = "^[a-z0-9][a-z0-9-]{1,62}$", message = "{validation.name.lowercaseAlphanumericHyphens}") String name,
         @NotNull Long templateId,
         boolean rdpEnabled,
         boolean vncEnabled,

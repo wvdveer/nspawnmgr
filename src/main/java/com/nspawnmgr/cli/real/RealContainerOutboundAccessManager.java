@@ -5,6 +5,7 @@ import com.nspawnmgr.cli.ContainerCliException;
 import com.nspawnmgr.cli.ContainerOutboundAccessManager;
 import com.nspawnmgr.domain.ContainerOutboundAllowlistEntry;
 import com.nspawnmgr.service.SettingsService;
+import com.nspawnmgr.service.UserMessages;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -43,10 +44,12 @@ public class RealContainerOutboundAccessManager implements ContainerOutboundAcce
 
     private final SettingsService settingsService;
     private final SshRemoteExecutor ssh;
+    private final UserMessages messages;
 
-    public RealContainerOutboundAccessManager(SettingsService settingsService, SshRemoteExecutor ssh) {
+    public RealContainerOutboundAccessManager(SettingsService settingsService, SshRemoteExecutor ssh, UserMessages messages) {
         this.settingsService = settingsService;
         this.ssh = ssh;
+        this.messages = messages;
     }
 
     @Override
@@ -70,8 +73,7 @@ public class RealContainerOutboundAccessManager implements ContainerOutboundAcce
         CommandResult result = runWrapperRaw(Duration.ofSeconds(15), "nspawnmgr-outbound-discover-veth.sh", machineName);
         String veth = result.stdout().trim();
         if (!result.success() || veth.isEmpty()) {
-            throw new ContainerCliException(
-                    "Failed to discover host-side veth for " + machineName + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToDiscoverVeth", machineName, result.stderr()));
         }
         return veth;
     }
@@ -94,7 +96,7 @@ public class RealContainerOutboundAccessManager implements ContainerOutboundAcce
     private void runWrapper(Duration timeout, String scriptName, String... args) {
         CommandResult result = runWrapperRaw(timeout, scriptName, args);
         if (!result.success()) {
-            throw new ContainerCliException("Firewall command failed (" + scriptName + "): " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.firewallCommandFailed", scriptName, result.stderr()));
         }
     }
 

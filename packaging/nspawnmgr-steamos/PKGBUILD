@@ -42,7 +42,7 @@
 # motivated this variant; this package itself hasn't had its own real install/verify pass yet.
 
 pkgname=nspawnmgr-steamos
-pkgver=0.3.0
+pkgver=0.4.0
 pkgrel=1
 pkgdesc="Web manager for systemd-nspawn containers, podman pods, and QEMU/KVM virtual machines with Guacamole access (SteamOS variant - storage relocated under /home)"
 arch=('any')
@@ -117,6 +117,18 @@ package() {
         install -Dm644 "$f" "$pkgdir/usr/share/nspawnmgr/guacamole-jdbc-drivers/$(basename "$f")"
     done
 
+    # TranslationService's own source files - same "host-side fixed path, copied into the
+    # machine's rootfs at bootstrap" pattern as everything else above, see
+    # nspawnmgr-bootstrap-app-machine.sh's own lang/ dir step.
+    install -d -m755 "$pkgdir/usr/share/nspawnmgr/lang"
+    for f in "$reporoot/lang"/*.json; do
+        install -Dm644 "$f" "$pkgdir/usr/share/nspawnmgr/lang/$(basename "$f")"
+    done
+
     install -Dm644 "$debdir/vendor/README.md" "$pkgdir/usr/share/doc/nspawnmgr/guacd-bundle-README.md"
     install -Dm644 "$reporoot/docs/administrator-guide.md" "$pkgdir/usr/share/doc/nspawnmgr/administrator-guide.md"
+    # Translated copies - one subdirectory per language, English stays canonical at the top level.
+    for lang in es fr pt ja zh; do
+        install -Dm644 "$reporoot/docs/$lang/administrator-guide.md" "$pkgdir/usr/share/doc/nspawnmgr/$lang/administrator-guide.md"
+    done
 }

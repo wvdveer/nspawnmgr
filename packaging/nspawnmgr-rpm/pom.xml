@@ -52,7 +52,7 @@
     -->
     <groupId>com.nspawnmgr</groupId>
     <artifactId>nspawnmgr-rpm</artifactId>
-    <version>0.3.0-SNAPSHOT</version>
+    <version>0.4.0</version>
     <packaging>pom</packaging>
     <name>nspawnmgr-rpm</name>
     <description>RPM package for production nspawnmgr deployment (Fedora/RHEL)</description>
@@ -121,10 +121,11 @@
                          with no other value set. -->
                     <sourceEncoding>UTF-8</sourceEncoding>
                     <name>nspawnmgr</name>
-                    <!-- Must match this module's own <version> above (minus -SNAPSHOT) - same
-                         "keep these two in sync by hand" trap ../nspawnmgr-deb/pom.xml's own
-                         comment already warns about for the .deb's control-file Version:. -->
-                    <version>0.3.0</version>
+                    <!-- Must match this module's own <version> above (stripped of any -SNAPSHOT
+                         suffix during a dev cycle) - same "keep these two in sync by hand" trap
+                         ../nspawnmgr-deb/pom.xml's own comment already warns about for the .deb's
+                         control-file Version:. -->
+                    <version>0.4.0</version>
                     <release>1</release>
                     <group>Applications/Internet</group>
                     <packager>nspawnmgr packaging &lt;packaging@nspawnmgr.invalid&gt;</packager>
@@ -265,6 +266,66 @@
                             <sources>
                                 <source><location>${staging.dir}/guacd-bundle-README.md</location></source>
                                 <source><location>${project.basedir}/../../docs/administrator-guide.md</location></source>
+                            </sources>
+                        </mapping>
+                        <!-- Translated copies of the guide above - one subdirectory per language, English
+                             stays canonical at the top level. -->
+                        <mapping>
+                            <directory>/usr/share/doc/nspawnmgr/es</directory>
+                            <filemode>644</filemode>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <sources>
+                                <source><location>${project.basedir}/../../docs/es/administrator-guide.md</location></source>
+                            </sources>
+                        </mapping>
+                        <mapping>
+                            <directory>/usr/share/doc/nspawnmgr/fr</directory>
+                            <filemode>644</filemode>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <sources>
+                                <source><location>${project.basedir}/../../docs/fr/administrator-guide.md</location></source>
+                            </sources>
+                        </mapping>
+                        <mapping>
+                            <directory>/usr/share/doc/nspawnmgr/pt</directory>
+                            <filemode>644</filemode>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <sources>
+                                <source><location>${project.basedir}/../../docs/pt/administrator-guide.md</location></source>
+                            </sources>
+                        </mapping>
+                        <mapping>
+                            <directory>/usr/share/doc/nspawnmgr/ja</directory>
+                            <filemode>644</filemode>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <sources>
+                                <source><location>${project.basedir}/../../docs/ja/administrator-guide.md</location></source>
+                            </sources>
+                        </mapping>
+                        <mapping>
+                            <directory>/usr/share/doc/nspawnmgr/zh</directory>
+                            <filemode>644</filemode>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <sources>
+                                <source><location>${project.basedir}/../../docs/zh/administrator-guide.md</location></source>
+                            </sources>
+                        </mapping>
+                        <!-- TranslationService's own source files - same "host-side fixed path, copied
+                             into the machine's rootfs at bootstrap" pattern as everything else in
+                             /usr/share/nspawnmgr above, see nspawnmgr-bootstrap-app-machine.sh's own
+                             lang/ dir step. -->
+                        <mapping>
+                            <directory>/usr/share/nspawnmgr/lang</directory>
+                            <filemode>644</filemode>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <sources>
+                                <source><location>${project.basedir}/../../lang</location></source>
                             </sources>
                         </mapping>
                     </mappings>

@@ -9,6 +9,7 @@ import com.nspawnmgr.domain.User;
 import com.nspawnmgr.security.CurrentUserProvider;
 import com.nspawnmgr.service.AuditLogService;
 import com.nspawnmgr.service.ContainerUserService;
+import com.nspawnmgr.service.UserMessages;
 import com.nspawnmgr.web.dto.ApproveContainerUserActionRequest;
 import com.nspawnmgr.web.dto.PendingContainerUserActionResponse;
 import org.springframework.security.access.AccessDeniedException;
@@ -31,12 +32,14 @@ public class AdminContainerUserRequestApiController {
     private final ContainerUserService containerUserService;
     private final CurrentUserProvider currentUserProvider;
     private final AuditLogService auditLogService;
+    private final UserMessages messages;
 
     public AdminContainerUserRequestApiController(ContainerUserService containerUserService, CurrentUserProvider currentUserProvider,
-                                                    AuditLogService auditLogService) {
+                                                    AuditLogService auditLogService, UserMessages messages) {
         this.containerUserService = containerUserService;
         this.currentUserProvider = currentUserProvider;
         this.auditLogService = auditLogService;
+        this.messages = messages;
     }
 
     @GetMapping("/api/admin/container-user-requests/pending")
@@ -62,7 +65,7 @@ public class AdminContainerUserRequestApiController {
             boolean owns = containerUserService.listPendingRequests().stream()
                     .anyMatch(r -> r.getId().equals(id) && r.getRequestedBy().getId().equals(currentUser.getId()));
             if (!owns) {
-                throw new AccessDeniedException("Not your request");
+                throw new AccessDeniedException(messages.get("error.web.notYourRequest"));
             }
         }
         ContainerUserActionRequest resolved = containerUserService.denyRequest(id, currentUser);

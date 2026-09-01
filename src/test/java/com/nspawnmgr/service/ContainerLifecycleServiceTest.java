@@ -71,7 +71,8 @@ class ContainerLifecycleServiceTest {
                 packageCacheService,
                 guacamoleAdminClient,
                 shareService,
-                mock(SecretEncryptionService.class));
+                mock(SecretEncryptionService.class),
+                TestUserMessages.create());
     }
 
     private Container managedContainer(ContainerState state) {

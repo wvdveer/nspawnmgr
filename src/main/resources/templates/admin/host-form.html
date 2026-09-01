@@ -2,32 +2,32 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"/>
-    <title th:text="${host != null} ? 'nspawnmgr — Edit Host' : 'nspawnmgr — New Host'">nspawnmgr — Host</title>
+    <title th:text="${host != null} ? ${t.get('page.hostForm.editTitle')} : ${t.get('page.hostForm.newTitle')}">nspawnmgr — Host</title>
     <link rel="stylesheet" th:href="@{/css/app.css}"/>
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/},data-host-id=${host != null ? host.id : ''}">
 <div th:replace="~{fragments/app-shell :: shell(
-        title=${host != null ? 'Edit host' : 'New host'}, subtitle=null,
+        title=${host != null ? t.get('page.hostForm.editHost') : t.get('page.hostForm.newHost')}, subtitle=null,
         activeNav='machines', currentUser=${currentUser}, addMenu=null,
         content=~{::#page-content})}">
 <div id="page-content">
-<p><a th:if="${host != null}" th:href="@{/containers/{id}(id=${host.id})}">&laquo; Back to host</a></p>
-<p><a th:unless="${host != null}" th:href="@{/}">&laquo; Back to Machines</a></p>
+<p><a th:if="${host != null}" th:href="@{/containers/{id}(id=${host.id})}" th:text="${t.get('page.hostForm.backToHost')}">&laquo; Back to host</a></p>
+<p><a th:unless="${host != null}" th:href="@{/}" th:text="${t.get('page.hostForm.backToMachines')}">&laquo; Back to Machines</a></p>
 <form id="host-form" class="card">
     <div class="field">
-        <label for="name">Name</label>
+        <label for="name" th:text="${t.get('field.name')}">Name</label>
         <input type="text" id="name" name="name" th:value="${host != null ? host.name : ''}" required/>
     </div>
     <div class="field">
-        <label for="hostname">Hostname or IP address</label>
+        <label for="hostname" th:text="${t.get('field.hostnameOrIp')}">Hostname or IP address</label>
         <input type="text" id="hostname" name="hostname" th:value="${host != null ? host.hostname : ''}" required/>
     </div>
     <div class="field">
-        <label for="ownerUsername">Owner username</label>
+        <label for="ownerUsername" th:text="${t.get('field.ownerUsername')}">Owner username</label>
         <input type="text" id="ownerUsername" name="ownerUsername"
                th:value="${host != null ? host.owner.username : ''}" required/>
-        <p class="hint">Must belong to a user who has already logged in at least once.</p>
+        <p class="hint" th:text="${t.get('hint.ownerUsernameMustHaveLoggedIn')}">Must belong to a user who has already logged in at least once.</p>
     </div>
     <div class="field field-inline">
         <input type="checkbox" id="sshEnabled" name="sshEnabled"
@@ -35,7 +35,7 @@
         <label for="sshEnabled">SSH</label>
     </div>
     <div class="field">
-        <label for="sshPort">SSH port</label>
+        <label for="sshPort" th:text="${t.get('field.protocolPort', 'SSH')}">SSH port</label>
         <input type="number" id="sshPort" name="sshPort" min="1" max="65535"
                th:value="${host != null and host.externalSshPort != null ? host.externalSshPort : 22}"/>
     </div>
@@ -44,7 +44,7 @@
         <label for="rdpEnabled">RDP</label>
     </div>
     <div class="field">
-        <label for="rdpPort">RDP port</label>
+        <label for="rdpPort" th:text="${t.get('field.protocolPort', 'RDP')}">RDP port</label>
         <input type="number" id="rdpPort" name="rdpPort" min="1" max="65535"
                th:value="${host != null and host.externalRdpPort != null ? host.externalRdpPort : 3389}"/>
     </div>
@@ -53,11 +53,11 @@
         <label for="vncEnabled">VNC</label>
     </div>
     <div class="field">
-        <label for="vncPort">VNC port</label>
+        <label for="vncPort" th:text="${t.get('field.protocolPort', 'VNC')}">VNC port</label>
         <input type="number" id="vncPort" name="vncPort" min="1" max="65535"
                th:value="${host != null and host.externalVncPort != null ? host.externalVncPort : 5900}"/>
     </div>
-    <button type="submit" class="btn-primary">Save</button>
+    <button type="submit" class="btn-primary" th:text="${t.get('button.save')}">Save</button>
 </form>
 <p id="status" class="status-message"></p>
 </div>

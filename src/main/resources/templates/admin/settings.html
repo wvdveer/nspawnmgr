@@ -8,25 +8,25 @@
 </head>
 <body th:attr="data-base-path=@{/},data-auth-cookie-name=${settings.authCookieName()}">
 <div th:replace="~{fragments/app-shell :: shell(
-        title='Settings', subtitle='Global application configuration',
+        title=${t.get('nav.settings')}, subtitle=${t.get('page.adminSettings.subtitle')},
         activeNav='settings', currentUser=${currentUser}, addMenu=null,
         content=~{::#page-content})}">
 <div id="page-content">
 <form id="settings-form" class="card">
-    <h2>Host</h2>
+    <h2 th:text="${t.get('h2.host')}">Host</h2>
     <div class="field">
-        <label for="hostExternalHostname">External hostname</label>
+        <label for="hostExternalHostname" th:text="${t.get('field.hostExternalHostname')}">External hostname</label>
         <input type="text" id="hostExternalHostname" th:value="${settings.hostExternalHostname()}"/>
-        <p class="hint">The hostname/DNS name users <strong>outside</strong> this host should use —
+        <p class="hint" th:utext="${t.get('hint.hostExternalHostname')}">The hostname/DNS name users <strong>outside</strong> this host should use —
             what goes in a browser's address bar, and what the "Refresh" buttons below fill into
             every Guacamole/Auth URL (alongside the protocol/port they already pull from Tomcat).
             Seeded to this machine's actual hostname on <code>.deb</code> installs; defaults to
             <code>localhost</code> otherwise.</p>
     </div>
     <div class="field">
-        <label for="hostPublicAddress">Public address</label>
+        <label for="hostPublicAddress" th:text="${t.get('field.hostPublicAddress')}">Public address</label>
         <input type="text" id="hostPublicAddress" th:value="${settings.hostPublicAddress()}"/>
-        <p class="hint">Not the same as External hostname above — this is what Guacamole's
+        <p class="hint" th:utext="${t.get('hint.hostPublicAddress')}">Not the same as External hostname above — this is what Guacamole's
             <code>guacd</code> uses to reach a custom port mapping's host-forwarded port (ordinary
             SSH/RDP/VNC always dial a container's own internal address directly, bypassing this).
             <code>10.100.0.1</code> (<code>nspawnbr0</code>'s own address) on a packaged install,
@@ -34,200 +34,200 @@
             forwards are bound on the bare host's network stack, not any particular container's.</p>
     </div>
 
-    <h2>Auth</h2>
+    <h2 th:text="${t.get('h2.auth')}">Auth</h2>
     <div class="field">
-        <label for="authCookieName">Cookie name</label>
+        <label for="authCookieName" th:text="${t.get('field.authCookieName')}">Cookie name</label>
         <input type="text" id="authCookieName" th:value="${settings.authCookieName()}"/>
     </div>
     <div class="field">
-        <label for="authUserIdUrl">User-ID URL</label>
+        <label for="authUserIdUrl" th:text="${t.get('field.authUserIdUrl')}">User-ID URL</label>
         <input type="text" id="authUserIdUrl" th:value="${settings.authUserIdUrl()}"/>
-        <button type="button" id="authUserIdUrl-refresh" class="btn-primary btn-refresh">Refresh hostname/port/protocol</button>
+        <button type="button" id="authUserIdUrl-refresh" class="btn-primary btn-refresh" th:text="${t.get('button.refreshHostnamePortProtocol')}">Refresh hostname/port/protocol</button>
     </div>
     <div class="field">
-        <label for="authLoginUrl">Login URL</label>
+        <label for="authLoginUrl" th:text="${t.get('field.authLoginUrl')}">Login URL</label>
         <input type="text" id="authLoginUrl" th:value="${settings.authLoginUrl()}"/>
-        <button type="button" id="authLoginUrl-refresh" class="btn-primary btn-refresh">Refresh hostname/port/protocol</button>
+        <button type="button" id="authLoginUrl-refresh" class="btn-primary btn-refresh" th:text="${t.get('button.refreshHostnamePortProtocol')}">Refresh hostname/port/protocol</button>
     </div>
     <div class="field">
-        <label for="authUserIdJson">User-ID JsonPath</label>
+        <label for="authUserIdJson" th:text="${t.get('field.authUserIdJson')}">User-ID JsonPath</label>
         <input type="text" id="authUserIdJson" th:value="${settings.authUserIdJson()}"/>
     </div>
     <div class="field">
-        <label for="authUserUsernameJson">Username JsonPath</label>
+        <label for="authUserUsernameJson" th:text="${t.get('field.authUserUsernameJson')}">Username JsonPath</label>
         <input type="text" id="authUserUsernameJson" th:value="${settings.authUserUsernameJson()}"/>
     </div>
     <div class="field">
-        <label for="authUserEmailJson">Email JsonPath</label>
+        <label for="authUserEmailJson" th:text="${t.get('field.authUserEmailJson')}">Email JsonPath</label>
         <input type="text" id="authUserEmailJson" th:value="${settings.authUserEmailJson()}"/>
     </div>
     <div class="field">
-        <label for="authUserFullnameJson">Full-name JsonPath</label>
+        <label for="authUserFullnameJson" th:text="${t.get('field.authUserFullnameJson')}">Full-name JsonPath</label>
         <input type="text" id="authUserFullnameJson" th:value="${settings.authUserFullnameJson()}"/>
     </div>
     <div class="field">
-        <label for="authUserIsAdminJson">Admin-flag JsonPath (blank = app-managed roles)</label>
+        <label for="authUserIsAdminJson" th:text="${t.get('field.authUserIsAdminJson')}">Admin-flag JsonPath (blank = app-managed roles)</label>
         <input type="text" id="authUserIsAdminJson" th:value="${settings.authUserIsAdminJson()}"/>
     </div>
     <div class="field">
-        <label for="authCacheTtlSeconds">Identity cache TTL (seconds)</label>
+        <label for="authCacheTtlSeconds" th:text="${t.get('field.authCacheTtlSeconds')}">Identity cache TTL (seconds)</label>
         <input type="number" id="authCacheTtlSeconds" th:value="${settings.authCacheTtlSeconds()}"/>
     </div>
     <div class="field">
-        <label for="authHttpTimeoutMs">Identity HTTP timeout (ms)</label>
+        <label for="authHttpTimeoutMs" th:text="${t.get('field.authHttpTimeoutMs')}">Identity HTTP timeout (ms)</label>
         <input type="number" id="authHttpTimeoutMs" th:value="${settings.authHttpTimeoutMs()}"/>
     </div>
 
     <div th:if="${settings.isAuthDetected()}">
-        <h2>Auth (auth.war)</h2>
-        <p>auth.war was detected at the configured login URL. These settings are mirrored to a
+        <h2 th:text="${t.get('h2.authWar')}">Auth (auth.war)</h2>
+        <p th:text="${t.get('hint.authWarDetected')}">auth.war was detected at the configured login URL. These settings are mirrored to a
             shared file auth.war reads on every request — changes take effect immediately, no
             restart needed.</p>
         <div class="field">
-            <label for="authBackend">Backend</label>
+            <label for="authBackend" th:text="${t.get('field.authBackend')}">Backend</label>
             <select id="authBackend">
-                <option value="" th:selected="${settings.authBackend() == null}">(inherit auth.war's own default)</option>
-                <option value="pam" th:selected="${settings.authBackend() == 'pam'}">pam (local Linux accounts)</option>
-                <option value="smb" th:selected="${settings.authBackend() == 'smb'}">smb (remote Windows machine/domain)</option>
+                <option value="" th:selected="${settings.authBackend() == null}" th:text="${t.get('option.inheritDefault')}">(inherit auth.war's own default)</option>
+                <option value="pam" th:selected="${settings.authBackend() == 'pam'}" th:text="${t.get('option.pamBackend')}">pam (local Linux accounts)</option>
+                <option value="smb" th:selected="${settings.authBackend() == 'smb'}" th:text="${t.get('option.smbBackend')}">smb (remote Windows machine/domain)</option>
             </select>
         </div>
         <div class="field">
-            <label for="authSmbServer">SMB server (smb backend only)</label>
+            <label for="authSmbServer" th:text="${t.get('field.authSmbServer')}">SMB server (smb backend only)</label>
             <input type="text" id="authSmbServer" th:value="${settings.authSmbServer()}"/>
         </div>
         <div class="field">
-            <label for="authSmbDomain">SMB domain (smb backend only, optional)</label>
+            <label for="authSmbDomain" th:text="${t.get('field.authSmbDomain')}">SMB domain (smb backend only, optional)</label>
             <input type="text" id="authSmbDomain" th:value="${settings.authSmbDomain()}"/>
         </div>
         <div class="field">
-            <label for="authRequiredGroup">Required Unix group (pam backend only, optional)</label>
+            <label for="authRequiredGroup" th:text="${t.get('field.authRequiredGroup')}">Required Unix group (pam backend only, optional)</label>
             <input type="text" id="authRequiredGroup" th:value="${settings.authRequiredGroup()}"/>
         </div>
         <div class="field">
-            <label for="authSmbRequiredShare">Required SMB share (smb backend only, optional)</label>
+            <label for="authSmbRequiredShare" th:text="${t.get('field.authSmbRequiredShare')}">Required SMB share (smb backend only, optional)</label>
             <input type="text" id="authSmbRequiredShare" th:value="${settings.authSmbRequiredShare()}"/>
         </div>
     </div>
 
-    <h2>Provisioning</h2>
+    <h2 th:text="${t.get('h2.provisioning')}">Provisioning</h2>
     <div class="field">
-        <label for="provisioningAdminAccountName">In-container admin account name</label>
+        <label for="provisioningAdminAccountName" th:text="${t.get('field.provisioningAdminAccountName')}">In-container admin account name</label>
         <input type="text" id="provisioningAdminAccountName" th:value="${settings.provisioningAdminAccountName()}"/>
     </div>
     <div class="field">
-        <label for="provisioningRdpPasswordLength">Generated RDP password length</label>
+        <label for="provisioningRdpPasswordLength" th:text="${t.get('field.provisioningRdpPasswordLength')}">Generated RDP password length</label>
         <input type="number" id="provisioningRdpPasswordLength" th:value="${settings.provisioningRdpPasswordLength()}"/>
     </div>
 
-    <h2>SSH (sudo-capable local account)</h2>
-    <p>Changing these is tested with a real SSH connection before being accepted — see
+    <h2 th:text="${t.get('h2.sshAccount')}">SSH (sudo-capable local account)</h2>
+    <p th:utext="${t.get('hint.sshTested')}">Changing these is tested with a real SSH connection before being accepted — see
         <code>docs/administrator-guide.md</code> &sect;3 "The sudo-capable SSH account".</p>
     <div class="field">
-        <label for="sshHost">Host</label>
+        <label for="sshHost" th:text="${t.get('field.sshHost')}">Host</label>
         <input type="text" id="sshHost" th:value="${settings.sshHost()}"/>
     </div>
     <div class="field">
-        <label for="sshPort">Port</label>
+        <label for="sshPort" th:text="${t.get('field.port')}">Port</label>
         <input type="number" id="sshPort" th:value="${settings.sshPort()}"/>
     </div>
     <div class="field">
-        <label for="sshUsername">Username</label>
+        <label for="sshUsername" th:text="${t.get('field.sshUsername')}">Username</label>
         <input type="text" id="sshUsername" th:value="${settings.sshUsername()}"/>
     </div>
     <div class="field">
-        <label for="sshPassword">Password</label>
+        <label for="sshPassword" th:text="${t.get('field.sshPassword')}">Password</label>
         <input type="password" id="sshPassword" th:value="${settings.sshPassword()}"/>
     </div>
     <div class="field">
-        <label for="sshPrivateKeyPath">Private key path (used instead of password if set)</label>
+        <label for="sshPrivateKeyPath" th:text="${t.get('field.sshPrivateKeyPath')}">Private key path (used instead of password if set)</label>
         <input type="text" id="sshPrivateKeyPath" th:value="${settings.sshPrivateKeyPath()}"/>
     </div>
     <div class="field">
-        <label for="sshConnectTimeoutMs">Connect timeout (ms)</label>
+        <label for="sshConnectTimeoutMs" th:text="${t.get('field.sshConnectTimeoutMs')}">Connect timeout (ms)</label>
         <input type="number" id="sshConnectTimeoutMs" th:value="${settings.sshConnectTimeoutMs()}"/>
     </div>
     <div class="field field-inline">
         <input type="checkbox" id="sshStrictHostKeyChecking" th:checked="${settings.sshStrictHostKeyChecking()}"/>
-        <label for="sshStrictHostKeyChecking">Strict host key checking</label>
+        <label for="sshStrictHostKeyChecking" th:text="${t.get('field.sshStrictHostKeyChecking')}">Strict host key checking</label>
     </div>
 
-    <h2>Filesystem paths (nspawn)</h2>
+    <h2 th:text="${t.get('h2.filesystemPaths')}">Filesystem paths (nspawn)</h2>
     <div class="field">
-        <label for="nspawnTemplatesDir">Templates directory</label>
+        <label for="nspawnTemplatesDir" th:text="${t.get('field.nspawnTemplatesDir')}">Templates directory</label>
         <input type="text" id="nspawnTemplatesDir" th:value="${settings.nspawnTemplatesDir()}"/>
     </div>
     <div class="field">
-        <label for="nspawnMachinesDir">Machines directory</label>
+        <label for="nspawnMachinesDir" th:text="${t.get('field.nspawnMachinesDir')}">Machines directory</label>
         <input type="text" id="nspawnMachinesDir" th:value="${settings.nspawnMachinesDir()}"/>
     </div>
     <div class="field">
-        <label for="nspawnSettingsDir">.nspawn settings directory</label>
+        <label for="nspawnSettingsDir" th:text="${t.get('field.nspawnSettingsDir')}">.nspawn settings directory</label>
         <input type="text" id="nspawnSettingsDir" th:value="${settings.nspawnSettingsDir()}"/>
     </div>
     <div class="field">
-        <label for="nspawnPrivilegedScriptsDir">Privileged wrapper scripts directory</label>
+        <label for="nspawnPrivilegedScriptsDir" th:text="${t.get('field.nspawnPrivilegedScriptsDir')}">Privileged wrapper scripts directory</label>
         <input type="text" id="nspawnPrivilegedScriptsDir" th:value="${settings.nspawnPrivilegedScriptsDir()}"/>
-        <p class="hint"><strong>Must match <code>/etc/sudoers.d/nspawnmgr_exec</code>'s hardcoded
+        <p class="hint" th:utext="${t.get('hint.nspawnPrivilegedScriptsDir')}"><strong>Must match <code>/etc/sudoers.d/nspawnmgr_exec</code>'s hardcoded
             paths</strong>, or every privileged operation (container start/stop, outbound access,
             Restart Tomcat below) will start failing — sudo fails safe by simply refusing the new
             path, it does not follow this setting.</p>
     </div>
 
-    <h2>DNS</h2>
+    <h2 th:text="${t.get('h2.dns')}">DNS</h2>
     <div class="field">
-        <label for="dnsUpstreamServers">Upstream DNS servers</label>
+        <label for="dnsUpstreamServers" th:text="${t.get('field.dnsUpstreamServers')}">Upstream DNS servers</label>
         <input type="text" id="dnsUpstreamServers" th:value="${settings.dnsUpstreamServers()}"/>
-        <p class="hint">Comma-separated IP addresses (e.g. a corporate DNS server) that managed
+        <p class="hint" th:utext="${t.get('hint.dnsUpstreamServers')}">Comma-separated IP addresses (e.g. a corporate DNS server) that managed
             containers' non-<code>.internal</code> lookups (apt/dnf/pacman mirrors, etc.) are
             forwarded to. Defaults to <code>1.1.1.1,9.9.9.9</code>.</p>
     </div>
 
-    <h2>QEMU</h2>
+    <h2 th:text="${t.get('h2.qemuSettings')}">QEMU</h2>
     <div class="field">
-        <label for="qemuVncPortRangeStart">VNC port range start</label>
+        <label for="qemuVncPortRangeStart" th:text="${t.get('field.qemuVncPortRangeStart')}">VNC port range start</label>
         <input type="number" id="qemuVncPortRangeStart" th:value="${settings.qemuVncPortRangeStart()}"/>
     </div>
     <div class="field">
-        <label for="qemuVncPortRangeEnd">VNC port range end</label>
+        <label for="qemuVncPortRangeEnd" th:text="${t.get('field.qemuVncPortRangeEnd')}">VNC port range end</label>
         <input type="number" id="qemuVncPortRangeEnd" th:value="${settings.qemuVncPortRangeEnd()}"/>
-        <p class="hint">TCP ports on nspawnbr0's own address (10.100.0.1) that QEMU VMs' VNC
+        <p class="hint" th:text="${t.get('hint.qemuVncPortRange')}">TCP ports on nspawnbr0's own address (10.100.0.1) that QEMU VMs' VNC
             listeners are allocated from, one per VM. Must both be set (or both left blank to use
             the default) and be 5900 or higher. Defaults to 5900-5999.</p>
     </div>
 
-    <h2>Guacamole</h2>
+    <h2 th:text="${t.get('h2.guacamole')}">Guacamole</h2>
     <div class="field">
-        <label for="guacamoleBaseUrl">Base URL</label>
+        <label for="guacamoleBaseUrl" th:text="${t.get('field.guacamoleBaseUrl')}">Base URL</label>
         <input type="text" id="guacamoleBaseUrl" th:value="${settings.guacamoleBaseUrl()}"/>
-        <button type="button" id="guacamoleBaseUrl-refresh" class="btn-primary btn-refresh">Refresh hostname/port/protocol</button>
+        <button type="button" id="guacamoleBaseUrl-refresh" class="btn-primary btn-refresh" th:text="${t.get('button.refreshHostnamePortProtocol')}">Refresh hostname/port/protocol</button>
     </div>
     <div class="field">
-        <label for="guacamoleDataSource">Data source</label>
+        <label for="guacamoleDataSource" th:text="${t.get('field.guacamoleDataSource')}">Data source</label>
         <input type="text" id="guacamoleDataSource" th:value="${settings.guacamoleDataSource()}"/>
-        <button type="button" id="guacamoleDataSource-refresh" class="btn-primary btn-refresh">Refresh from Guacamole config</button>
-        <p class="hint">Must match whatever your <code>guacamole-auth-jdbc</code> extension calls
+        <button type="button" id="guacamoleDataSource-refresh" class="btn-primary btn-refresh" th:text="${t.get('button.refreshFromGuacamoleConfig')}">Refresh from Guacamole config</button>
+        <p class="hint" th:utext="${t.get('hint.guacamoleDataSource')}">Must match whatever your <code>guacamole-auth-jdbc</code> extension calls
             itself in <code>guacamole.properties</code> (see the Guacamole section below) — shown
             in red if it doesn't currently match. "Refresh" copies the detected value across.</p>
     </div>
 
-    <button type="submit" class="btn-primary">Save</button>
-    <button type="button" id="download-report" class="btn-primary">Download settings report</button>
+    <button type="submit" class="btn-primary" th:text="${t.get('button.save')}">Save</button>
+    <button type="button" id="download-report" class="btn-primary" th:text="${t.get('button.downloadSettingsReport')}">Download settings report</button>
 </form>
 <p id="status" class="status-message"></p>
 
 <div th:if="${settings.isGuacamoleDetected()}" class="card">
-    <h2>Guacamole (guacamole.properties)</h2>
-    <p><strong>Saving does not restart Tomcat.</strong> Guacamole will not see these changes until
+    <h2 th:text="${t.get('h2.guacamoleProperties')}">Guacamole (guacamole.properties)</h2>
+    <p th:utext="${t.get('hint.guacamolePropertiesIntro')}"><strong>Saving does not restart Tomcat.</strong> Guacamole will not see these changes until
         you run <code>sudo systemctl restart tomcat9</code>. Existing values are pulled from the
         file on this page load and shown below, including any already-configured password (shown
         masked, as usual for a password field) — field labels and descriptions are sourced from the
         <a href="https://guacamole.apache.org/doc/gug/configuring-guacamole.html" target="_blank" rel="noopener">Apache Guacamole manual</a>.</p>
-    <p id="guacamole-status">Loading current configuration&hellip;</p>
+    <p id="guacamole-status" th:text="${t.get('js.loadingConfiguration')}">Loading current configuration&hellip;</p>
 
     <div id="guacamole-guacd-fields"></div>
 
     <div class="field">
-        <label for="guacamoleDatabaseType">Database</label>
+        <label for="guacamoleDatabaseType" th:text="${t.get('field.guacamoleDatabaseType')}">Database</label>
         <select id="guacamoleDatabaseType">
             <option value="mysql">MySQL / MariaDB</option>
             <option value="postgresql">PostgreSQL</option>
@@ -236,9 +236,9 @@
     <div id="guacamole-db-fields"></div>
 
     <div class="field">
-        <label for="guacamoleSchemaScriptsDirectory">Schema scripts directory (for Test, below — not saved)</label>
+        <label for="guacamoleSchemaScriptsDirectory" th:text="${t.get('field.guacamoleSchemaScriptsDirectory')}">Schema scripts directory (for Test, below — not saved)</label>
         <input type="text" id="guacamoleSchemaScriptsDirectory"/>
-        <p class="hint">Only needed if Test reports the schema isn't set up yet — point this at the
+        <p class="hint" th:utext="${t.get('hint.guacamoleSchemaScripts')}">Only needed if Test reports the schema isn't set up yet — point this at the
             <code>schema/</code> folder from the <code>guacamole-auth-jdbc</code> extension
             (matching your database type above), and Test will offer to run every
             <code>.sql</code> file there, in order. Unlike <code>guacd</code>/<code>guacamole-tomcat</code>
@@ -250,45 +250,45 @@
             field if you extracted it somewhere else.</p>
     </div>
     <p id="guacamole-test-status"></p>
-    <button type="button" id="guacamole-test" class="btn-primary">Test database connection</button>
-    <button type="button" id="guacamole-save" class="btn-primary">Save</button>
+    <button type="button" id="guacamole-test" class="btn-primary" th:text="${t.get('button.testDatabaseConnection')}">Test database connection</button>
+    <button type="button" id="guacamole-save" class="btn-primary" th:text="${t.get('button.save')}">Save</button>
 </div>
 
 <div class="card">
-    <h2>Tomcat</h2>
-    <p><strong>Takes effect only after a restart</strong> — use the Restart Tomcat button below.
+    <h2 th:text="${t.get('h2.tomcat')}">Tomcat</h2>
+    <p th:utext="${t.get('hint.tomcatRestart')}"><strong>Takes effect only after a restart</strong> — use the Restart Tomcat button below.
         If you change the port or enable/disable HTTPS, use the "Refresh hostname/port/protocol"
         buttons above (Guacamole base URL, auth URLs) to update them to match — they pull the
         protocol/port from here and the hostname from External hostname above. See
         <code>docs/administrator-guide.md</code> &sect;6.</p>
-    <p id="tomcat-status">Loading current configuration&hellip;</p>
+    <p id="tomcat-status" th:text="${t.get('js.loadingConfiguration')}">Loading current configuration&hellip;</p>
     <div class="field">
-        <label for="tomcatHttpPort">HTTP port</label>
+        <label for="tomcatHttpPort" th:text="${t.get('field.tomcatHttpPort')}">HTTP port</label>
         <input type="number" id="tomcatHttpPort"/>
     </div>
     <div class="field">
-        <label for="tomcatHttpsEnabled">HTTPS</label>
+        <label for="tomcatHttpsEnabled" th:text="${t.get('field.tomcatHttpsEnabled')}">HTTPS</label>
         <select id="tomcatHttpsEnabled">
-            <option value="false">Disabled</option>
-            <option value="true">Enabled</option>
+            <option value="false" th:text="${t.get('option.disabled')}">Disabled</option>
+            <option value="true" th:text="${t.get('option.enabled')}">Enabled</option>
         </select>
     </div>
     <div class="field">
-        <label for="tomcatHttpsPort">HTTPS port</label>
+        <label for="tomcatHttpsPort" th:text="${t.get('field.tomcatHttpsPort')}">HTTPS port</label>
         <input type="number" id="tomcatHttpsPort"/>
     </div>
     <div class="field">
-        <label for="tomcatCertificateFile">Certificate file (PEM)</label>
+        <label for="tomcatCertificateFile" th:text="${t.get('field.tomcatCertificateFile')}">Certificate file (PEM)</label>
         <input type="text" id="tomcatCertificateFile"/>
     </div>
     <div class="field">
-        <label for="tomcatCertificateKeyFile">Certificate key file (PEM)</label>
+        <label for="tomcatCertificateKeyFile" th:text="${t.get('field.tomcatCertificateKeyFile')}">Certificate key file (PEM)</label>
         <input type="text" id="tomcatCertificateKeyFile"/>
-        <p class="hint">The <code>tomcat</code> system user needs read access to both files — see
+        <p class="hint" th:utext="${t.get('hint.tomcatCertificateKeyFile')}">The <code>tomcat</code> system user needs read access to both files — see
             &sect;6 "Enabling HTTPS" if you're using Let's Encrypt/Certbot.</p>
     </div>
-    <button type="button" id="tomcat-save" class="btn-primary">Save</button>
-    <button type="button" id="restart-tomcat" class="btn-primary">Restart Tomcat</button>
+    <button type="button" id="tomcat-save" class="btn-primary" th:text="${t.get('button.save')}">Save</button>
+    <button type="button" id="restart-tomcat" class="btn-primary" th:text="${t.get('button.restartTomcat')}">Restart Tomcat</button>
     <p id="restart-status" class="status-message"></p>
 </div>
 </div>

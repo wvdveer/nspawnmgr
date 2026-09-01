@@ -2,28 +2,28 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"/>
-    <title>nspawnmgr — Admin: Packages</title>
+    <title th:text="${t.get('page.adminPackages.title')}">nspawnmgr — Admin: Packages</title>
     <link rel="stylesheet" th:href="@{/css/app.css}"/>
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/}">
 <div th:replace="~{fragments/app-shell :: shell(
-        title='Packages', subtitle='Upload and manage installable packages and ISO images',
+        title=${t.get('nav.packages')}, subtitle=${t.get('page.adminPackages.subtitle')},
         activeNav='packages', currentUser=${currentUser},
         addMenu=~{::#add-menu-items},
         content=~{::#page-content})}">
 <div id="add-menu-items">
-    <a th:href="@{/admin/packages/new}">Add a package</a>
+    <a th:href="@{/admin/packages/new}" th:text="${t.get('page.adminPackages.addPackage')}">Add a package</a>
 </div>
 <div id="page-content">
-<p class="hint">Packages uploaded here can be installed by any owner onto a container using the
+<p class="hint" th:utext="${t.get('page.adminPackages.hint')}">Packages uploaded here can be installed by any owner onto a container using the
     matching package manager (see each container's own "Install package" section). No automatic
     dependency resolution — a missing dependency shows up as a visible error when installed, it's
     not fixed automatically. Choosing <strong>ISO</strong> as the package manager uploads a
     mountable ISO image instead — those show up under a container's "Removable media" section, to
     be mounted (not installed), one at a time, like a real CD drive.</p>
 <div th:if="${#lists.isEmpty(packages)}" class="card" id="no-packages-card">
-    <p>No packages uploaded yet — use the + button above to add one.</p>
+    <p th:text="${t.get('page.adminPackages.noPackages')}">No packages uploaded yet — use the + button above to add one.</p>
 </div>
 <div class="machine-grid" th:unless="${#lists.isEmpty(packages)}">
     <div class="machine-card" th:each="p : ${packages}" th:attr="data-package-id=${p.id}">
@@ -32,33 +32,33 @@
         </div>
         <p class="machine-card-desc" th:if="${p.description != null and p.description != ''}" th:text="${p.description}">description</p>
         <p class="machine-card-meta" th:text="${p.packageManager}">package manager</p>
-        <p class="machine-card-meta">Uploaded by <span th:text="${p.uploadedBy.username}">user</span> ·
+        <p class="machine-card-meta" th:text="${t.get('page.adminPackages.uploadedBySize', p.uploadedBy.username, p.sizeBytes)}">Uploaded by <span th:text="${p.uploadedBy.username}">user</span> ·
             <span th:text="${p.sizeBytes}">size</span> bytes</p>
         <div class="machine-card-footer">
-            <button class="btn-danger btn-delete" th:attr="data-package-id=${p.id}">Delete</button>
+            <button class="btn-danger btn-delete" th:attr="data-package-id=${p.id}" th:text="${t.get('button.delete')}">Delete</button>
         </div>
     </div>
 </div>
 <div class="card">
-    <h2>Transitive dependencies</h2>
-    <p class="hint">Installing a package with unresolved dependencies (APT/DNF/PACMAN) pre-fetches
+    <h2 th:text="${t.get('page.adminPackages.transitiveDependencies')}">Transitive dependencies</h2>
+    <p class="hint" th:text="${t.get('page.adminPackages.transitiveDependenciesHint')}">Installing a package with unresolved dependencies (APT/DNF/PACMAN) pre-fetches
         those dependencies onto the host too, but they're deliberately never listed in the table
         above individually - a single desktop-environment install can pull in ~450 of them, which
         would be noise, not a usable table. This generates a list on demand straight from the host's
         own cache directory instead; nothing here is stored in the database.</p>
     <div class="field">
-        <label for="autoCachePackageManager">Package manager</label>
+        <label for="autoCachePackageManager" th:text="${t.get('field.packageManager')}">Package manager</label>
         <select id="autoCachePackageManager">
             <option th:each="pm : ${dependencyPreFetchManagers}" th:value="${pm}" th:text="${pm}">package manager</option>
         </select>
     </div>
-    <button id="btn-show-auto-cache" type="button" class="btn-primary">Show transitive dependencies</button>
+    <button id="btn-show-auto-cache" type="button" class="btn-primary" th:text="${t.get('page.adminPackages.showTransitiveDependencies')}">Show transitive dependencies</button>
     <p id="auto-cache-status" class="status-message"></p>
     <table id="auto-cache-table" style="display: none;">
         <thead>
         <tr>
-            <th>Filename</th>
-            <th>Size</th>
+            <th th:text="${t.get('page.adminPackages.filename')}">Filename</th>
+            <th th:text="${t.get('page.adminPackages.size')}">Size</th>
         </tr>
         </thead>
         <tbody id="auto-cache-tbody"></tbody>

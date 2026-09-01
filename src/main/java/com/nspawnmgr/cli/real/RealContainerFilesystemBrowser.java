@@ -5,6 +5,7 @@ import com.nspawnmgr.cli.ContainerCliException;
 import com.nspawnmgr.cli.ContainerFilesystemBrowser;
 import com.nspawnmgr.cli.FileEntry;
 import com.nspawnmgr.service.SettingsService;
+import com.nspawnmgr.service.UserMessages;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -19,10 +20,12 @@ public class RealContainerFilesystemBrowser implements ContainerFilesystemBrowse
 
     private final SettingsService settingsService;
     private final SshRemoteExecutor ssh;
+    private final UserMessages messages;
 
-    public RealContainerFilesystemBrowser(SettingsService settingsService, SshRemoteExecutor ssh) {
+    public RealContainerFilesystemBrowser(SettingsService settingsService, SshRemoteExecutor ssh, UserMessages messages) {
         this.settingsService = settingsService;
         this.ssh = ssh;
+        this.messages = messages;
     }
 
     @Override
@@ -31,7 +34,7 @@ public class RealContainerFilesystemBrowser implements ContainerFilesystemBrowse
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15),
                 List.of(wrapperScript("nspawnmgr-list-rootfs-dir.sh"), targetDir));
         if (!result.success()) {
-            throw new ContainerCliException("Failed to list " + targetDir + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToList", targetDir, result.stderr()));
         }
         return FileEntry.parseLines(result.stdout());
     }
@@ -42,7 +45,7 @@ public class RealContainerFilesystemBrowser implements ContainerFilesystemBrowse
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofMinutes(2),
                 List.of(wrapperScript("nspawnmgr-download-rootfs-file.sh"), targetFile));
         if (!result.success()) {
-            throw new ContainerCliException("Failed to download " + targetFile + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToDownload", targetFile, result.stderr()));
         }
         return Base64.getDecoder().decode(result.stdout().trim());
     }
@@ -54,10 +57,10 @@ public class RealContainerFilesystemBrowser implements ContainerFilesystemBrowse
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofMinutes(2),
                 List.of(wrapperScript("nspawnmgr-upload-rootfs-file.sh"), targetFile), encoded);
         if (result.exitCode() == 2) {
-            throw new IllegalArgumentException("A file or folder named '" + filename + "' already exists in this directory.");
+            throw new IllegalArgumentException(messages.get("error.validation.fileAlreadyExists", filename));
         }
         if (!result.success()) {
-            throw new ContainerCliException("Failed to upload to " + targetFile + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToUploadTo", targetFile, result.stderr()));
         }
     }
 

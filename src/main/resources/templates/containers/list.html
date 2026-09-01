@@ -8,26 +8,26 @@
 </head>
 <body th:attr="data-base-path=@{/}">
 <div th:replace="~{fragments/app-shell :: shell(
-        title='Machines', subtitle='Manage your virtual machines and connections',
+        title=${t.get('nav.machines')}, subtitle=${t.get('page.machines.subtitle')},
         activeNav='machines', currentUser=${currentUser},
         addMenu=~{::#add-menu-items},
         content=~{::#page-content})}">
 <div id="add-menu-items">
-    <a th:if="${hasActiveNspawnTemplates}" th:href="@{/containers/new}">New Nspawn</a>
+    <a th:if="${hasActiveNspawnTemplates}" th:href="@{/containers/new}" th:text="${t.get('page.machines.newNspawn')}">New Nspawn</a>
     <button th:unless="${hasActiveNspawnTemplates}" disabled
-            title="No nspawn templates are configured yet - ask an admin to add one.">New Nspawn</button>
-    <a th:if="${hasActivePodmanTemplates}" th:href="@{/containers/new-pod}">New Pod</a>
+            th:title="${t.get('page.machines.newNspawnDisabledHint')}" th:text="${t.get('page.machines.newNspawn')}">New Nspawn</button>
+    <a th:if="${hasActivePodmanTemplates}" th:href="@{/containers/new-pod}" th:text="${t.get('page.machines.newPod')}">New Pod</a>
     <button th:unless="${hasActivePodmanTemplates}" disabled
-            title="No podman templates are configured yet - ask an admin to add one.">New Pod</button>
-    <a th:if="${qemuAvailable}" th:href="@{/containers/new-qemu}">New QEMU</a>
+            th:title="${t.get('page.machines.newPodDisabledHint')}" th:text="${t.get('page.machines.newPod')}">New Pod</button>
+    <a th:if="${qemuAvailable}" th:href="@{/containers/new-qemu}" th:text="${t.get('page.machines.newQemu')}">New QEMU</a>
     <button th:unless="${qemuAvailable}" disabled
-            title="QEMU is not installed on this host - see the Diagnostics page.">New QEMU</button>
-    <a th:if="${currentUser.role.name() == 'ADMIN'}" th:href="@{/admin/hosts/new}">New Host</a>
+            th:title="${t.get('page.machines.newQemuDisabledHint')}" th:text="${t.get('page.machines.newQemu')}">New QEMU</button>
+    <a th:if="${currentUser.role.name() == 'ADMIN'}" th:href="@{/admin/hosts/new}" th:text="${t.get('page.machines.newHost')}">New Host</a>
     <hr th:if="${currentUser.role.name() == 'ADMIN'}" class="add-menu-divider"/>
-    <button th:if="${currentUser.role.name() == 'ADMIN'}" type="button" id="discover-btn">Discover machines</button>
+    <button th:if="${currentUser.role.name() == 'ADMIN'}" type="button" id="discover-btn" th:text="${t.get('page.machines.discoverMachines')}">Discover machines</button>
 </div>
 <div id="page-content">
-<p th:if="${#lists.isEmpty(containers)}" class="hint">No machines yet - use the + button above to create one.</p>
+<p th:if="${#lists.isEmpty(containers)}" class="hint" th:text="${t.get('page.machines.empty')}">No machines yet - use the + button above to create one.</p>
 <div class="machine-grid">
     <div class="machine-card" th:each="c : ${containers}"
          th:with="kindKey=${c.kind.name() == 'EXTERNAL' ? 'HOST' : c.backend.name()},
@@ -35,7 +35,7 @@
         <div class="machine-card-header">
             <span class="status-dot" th:classappend="${c.state.name()}"></span>
             <a class="machine-card-name" th:href="@{/containers/{id}(id=${c.id})}" th:text="${c.name}">name</a>
-            <a class="badge badge-status" th:classappend="${c.state.name()}" th:text="${c.state}"
+            <a class="badge badge-status" th:classappend="${c.state.name()}" th:text="${t.get('state.' + c.state.name())}"
                th:href="@{/containers/{id}(id=${c.id})}">RUNNING</a>
             <span class="badge badge-backend" th:classappend="${kindKey}" th:text="${kindLabel}">NSPAWN</span>
         </div>
@@ -52,11 +52,11 @@
             <button class="access-pill VNC" th:data-container-name="${c.name}"
                     th:disabled="${c.state.name() != 'RUNNING' or !c.vncEnabled or c.guacVncConnectionId == null}">VNC</button>
             <a th:if="${c.kind.name() != 'EXTERNAL' and c.backend.name() != 'QEMU'}"
-               class="access-pill FILES" th:href="@{/containers/{name}/files(name=${c.name})}">FILES</a>
+               class="access-pill FILES" th:href="@{/containers/{name}/files(name=${c.name})}" th:text="${t.get('button.files')}">FILES</a>
             <a th:if="${(c.kind.name() == 'EXTERNAL' or c.backend.name() == 'QEMU') and c.state.name() == 'RUNNING' and c.guacSshConnectionId != null}"
-               class="access-pill FILES" th:href="@{/containers/{name}/files(name=${c.name})}">FILES</a>
+               class="access-pill FILES" th:href="@{/containers/{name}/files(name=${c.name})}" th:text="${t.get('button.files')}">FILES</a>
             <button th:if="${(c.kind.name() == 'EXTERNAL' or c.backend.name() == 'QEMU') and (c.state.name() != 'RUNNING' or c.guacSshConnectionId == null)}"
-                    class="access-pill FILES" disabled>FILES</button>
+                    class="access-pill FILES" disabled th:text="${t.get('button.files')}">FILES</button>
         </div>
     </div>
 </div>

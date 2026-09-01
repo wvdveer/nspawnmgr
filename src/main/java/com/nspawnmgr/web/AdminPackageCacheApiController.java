@@ -11,6 +11,7 @@ import com.nspawnmgr.security.CurrentUserProvider;
 import com.nspawnmgr.service.AuditLogService;
 import com.nspawnmgr.service.PackageCacheService;
 import com.nspawnmgr.service.PackageDownloadService;
+import com.nspawnmgr.service.UserMessages;
 import com.nspawnmgr.web.dto.AutoFetchedPackageResponse;
 import com.nspawnmgr.web.dto.CachedPackageResponse;
 import com.nspawnmgr.web.dto.PackageDownloadHandleResponse;
@@ -47,13 +48,16 @@ public class AdminPackageCacheApiController {
     private final PackageDownloadService packageDownloadService;
     private final AuditLogService auditLogService;
     private final CurrentUserProvider currentUserProvider;
+    private final UserMessages messages;
 
     public AdminPackageCacheApiController(PackageCacheService packageCacheService, PackageDownloadService packageDownloadService,
-                                           AuditLogService auditLogService, CurrentUserProvider currentUserProvider) {
+                                           AuditLogService auditLogService, CurrentUserProvider currentUserProvider,
+                                           UserMessages messages) {
         this.packageCacheService = packageCacheService;
         this.packageDownloadService = packageDownloadService;
         this.auditLogService = auditLogService;
         this.currentUserProvider = currentUserProvider;
+        this.messages = messages;
     }
 
     @GetMapping("/api/admin/packages")
@@ -131,7 +135,7 @@ public class AdminPackageCacheApiController {
 
     private void requireAdmin() {
         if (currentUserProvider.get().getRole() != Role.ADMIN) {
-            throw new AccessDeniedException("Only an admin may manage the package cache");
+            throw new AccessDeniedException(messages.get("error.web.onlyAdminManagePackageCache"));
         }
     }
 
@@ -139,7 +143,7 @@ public class AdminPackageCacheApiController {
         try {
             return PackageManager.valueOf(value.toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid package manager: " + value);
+            throw new IllegalArgumentException(messages.get("error.web.invalidPackageManager", value));
         }
     }
 

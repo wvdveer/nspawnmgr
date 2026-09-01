@@ -46,7 +46,7 @@ class ContainerScriptServiceTest {
         cliExecutor = mock(ContainerCliExecutor.class);
         taskExecutor = mock(TaskExecutor.class);
         auditLogService = mock(AuditLogService.class);
-        service = new ContainerScriptService(scriptRepository, cliExecutor, taskExecutor, auditLogService);
+        service = new ContainerScriptService(scriptRepository, cliExecutor, taskExecutor, auditLogService, TestUserMessages.create());
     }
 
     private Container container(Long id) {

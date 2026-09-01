@@ -36,7 +36,7 @@ class HostServiceTest {
         userRepository = mock(UserRepository.class);
         guacamoleAdminClient = mock(GuacamoleAdminClient.class);
         shareService = mock(ShareService.class);
-        service = new HostService(containerRepository, userRepository, guacamoleAdminClient, shareService);
+        service = new HostService(containerRepository, userRepository, guacamoleAdminClient, shareService, TestUserMessages.create());
         when(containerRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 

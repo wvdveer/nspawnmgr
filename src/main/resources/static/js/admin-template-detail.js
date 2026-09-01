@@ -12,7 +12,7 @@ function sudoPassword() {
 document.getElementById('btn-deactivate')?.addEventListener('click', async () => {
     const response = await fetch(`${basePath}/api/admin/templates/${templateId}/deactivate`, { method: 'POST' });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
@@ -21,29 +21,29 @@ document.getElementById('btn-deactivate')?.addEventListener('click', async () =>
 document.getElementById('btn-reactivate')?.addEventListener('click', async () => {
     const response = await fetch(`${basePath}/api/admin/templates/${templateId}/reactivate`, { method: 'POST' });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.reload();
 });
 
 async function convert(endpointSuffix) {
-    const newName = await window.appDialog.prompt('New template name:');
+    const newName = await window.appDialog.prompt(t('page.templateDetail.newTemplateNamePrompt'));
     if (!newName) {
         return;
     }
     if (sudoApprovalRequired && !sudoPassword()) {
-        status.textContent = 'Enter the sudo password above first.';
+        status.textContent = t('page.templateDetail.enterSudoPasswordFirst');
         return;
     }
-    status.textContent = `Creating ${newName}...`;
+    status.textContent = t('page.templateDetail.creatingX', newName);
     const response = await fetch(`${basePath}/api/admin/templates/${templateId}/${endpointSuffix}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ newName, sudoPassword: sudoPassword() }),
     });
     if (!response.ok) {
-        status.textContent = 'Failed: ' + await response.text();
+        status.textContent = t('general.failedPrefix', await response.text());
         return;
     }
     window.location.reload();
@@ -53,12 +53,12 @@ document.getElementById('btn-convert-to-podman')?.addEventListener('click', () =
 document.getElementById('btn-convert-to-nspawn')?.addEventListener('click', () => convert('convert-to-nspawn'));
 
 document.getElementById('btn-delete')?.addEventListener('click', async () => {
-    if (!await window.appDialog.confirm('Delete this template? This cannot be undone.')) {
+    if (!await window.appDialog.confirm(t('page.templateDetail.confirmDeleteTemplate'))) {
         return;
     }
     const response = await fetch(`${basePath}/api/admin/templates/${templateId}`, { method: 'DELETE' });
     if (!response.ok) {
-        await window.appDialog.alert('Failed: ' + await response.text());
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
         return;
     }
     window.location.href = `${basePath}/admin/templates`;

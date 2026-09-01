@@ -42,9 +42,11 @@ import java.nio.file.Path;
 public class TomcatConfigService {
 
     private final TomcatConfigWriter writer;
+    private final UserMessages messages;
 
-    public TomcatConfigService(TomcatConfigWriter writer) {
+    public TomcatConfigService(TomcatConfigWriter writer, UserMessages messages) {
         this.writer = writer;
+        this.messages = messages;
     }
 
     public static Path serverXmlPath() {
@@ -59,14 +61,14 @@ public class TomcatConfigService {
             content = Files.readString(path);
         } catch (IOException e) {
             return new TomcatConnectorStatus(path.toString(), false, 0, false, null, null, null,
-                    "Cannot read " + path + ": " + e.getMessage());
+                    messages.get("error.tomcat.cannotRead", path, e.getMessage()));
         }
         try {
             Document doc = parse(content);
             Element httpConnector = findHttpConnector(doc);
             if (httpConnector == null) {
                 return new TomcatConnectorStatus(path.toString(), true, 0, false, null, null, null,
-                        "No plain HTTP <Connector> found in " + path);
+                        messages.get("error.tomcat.noPlainHttpConnector", path));
             }
             int httpPort = Integer.parseInt(httpConnector.getAttribute("port"));
             Element sslConnector = findSslConnector(doc);
@@ -86,22 +88,22 @@ public class TomcatConfigService {
                     certificateFile, certificateKeyFile, null);
         } catch (Exception e) {
             return new TomcatConnectorStatus(path.toString(), true, 0, false, null, null, null,
-                    "Could not parse " + path + ": " + e.getMessage());
+                    messages.get("error.tomcat.couldNotParse", path, e.getMessage()));
         }
     }
 
     /** Takes effect only after a Tomcat restart — see the "Restart Tomcat" button on /admin/settings. */
     public void update(int httpPort, boolean httpsEnabled, Integer httpsPort, String certificateFile, String certificateKeyFile) {
         if (httpPort < 1 || httpPort > 65535) {
-            throw new IllegalArgumentException("HTTP port must be between 1 and 65535");
+            throw new IllegalArgumentException(messages.get("error.tomcat.httpPortRange"));
         }
         if (httpsEnabled) {
             if (httpsPort == null || httpsPort < 1 || httpsPort > 65535) {
-                throw new IllegalArgumentException("HTTPS port must be between 1 and 65535");
+                throw new IllegalArgumentException(messages.get("error.tomcat.httpsPortRange"));
             }
             if (certificateFile == null || certificateFile.isBlank()
                     || certificateKeyFile == null || certificateKeyFile.isBlank()) {
-                throw new IllegalArgumentException("Certificate file and certificate key file are required to enable HTTPS");
+                throw new IllegalArgumentException(messages.get("error.tomcat.certificateFilesRequired"));
             }
         }
         Path path = serverXmlPath();
@@ -109,7 +111,7 @@ public class TomcatConfigService {
         try {
             current = Files.readString(path);
         } catch (IOException e) {
-            throw new IllegalStateException("Cannot read " + path + ": " + e.getMessage(), e);
+            throw new IllegalStateException(messages.get("error.tomcat.cannotRead", path, e.getMessage()), e);
         }
 
         Document doc;
@@ -118,10 +120,10 @@ public class TomcatConfigService {
             doc = parse(current);
             httpConnector = findHttpConnector(doc);
         } catch (Exception e) {
-            throw new IllegalStateException("Could not parse " + path + ": " + e.getMessage(), e);
+            throw new IllegalStateException(messages.get("error.tomcat.couldNotParse", path, e.getMessage()), e);
         }
         if (httpConnector == null) {
-            throw new IllegalStateException("Could not find the plain HTTP <Connector> in " + path);
+            throw new IllegalStateException(messages.get("error.tomcat.couldNotFindHttpConnector", path));
         }
         httpConnector.setAttribute("port", String.valueOf(httpPort));
 
@@ -151,7 +153,7 @@ public class TomcatConfigService {
         try {
             updated = serialize(doc);
         } catch (Exception e) {
-            throw new IllegalStateException("Could not serialize updated " + path + ": " + e.getMessage(), e);
+            throw new IllegalStateException(messages.get("error.tomcat.couldNotSerialize", path, e.getMessage()), e);
         }
         writer.write(path.toString(), updated);
     }

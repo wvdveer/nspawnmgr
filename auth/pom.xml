@@ -7,7 +7,7 @@
     <!-- Standalone POM (see tools/fake-machinectl/pom.xml for why there's no <parent>). -->
     <groupId>com.nspawnmgr</groupId>
     <artifactId>nspawnmgr-auth</artifactId>
-    <version>0.3.0-SNAPSHOT</version>
+    <version>0.4.0</version>
     <packaging>war</packaging>
     <name>nspawnmgr-auth</name>
     <description>

@@ -43,6 +43,12 @@ nspawnmgr:
     # above. Unlike the packaged .deb, start-dev-stack.sh uses catalina.sh start (not "run"), so a
     # real catalina.out already exists here without any rotatelogs wiring.
     log-dir: ${catalina.base}/logs
+  lang:
+    # Points directly at the repo's own real, checked-in lang/ directory (same idea as
+    # nspawn.templates-dir pointing at site/templates) rather than a temp copy - dev doesn't need to
+    # simulate the packaged "admin drops a file into an external dir" scenario, just read the real
+    # source files.
+    dir: ${user.dir}/lang
   dns:
     hosts-file: ${java.io.tmpdir}/nspawnmgr-dev/dns-hosts
     upstream-servers-file: ${java.io.tmpdir}/nspawnmgr-dev/dns-upstream.conf

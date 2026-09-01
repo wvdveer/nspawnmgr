@@ -51,9 +51,11 @@ public class ContainerScriptService {
     private final TaskExecutor taskExecutor;
     private final AuditLogService auditLogService;
     private final Map<String, ActiveRun> activeRuns = new ConcurrentHashMap<>();
+    private final UserMessages messages;
 
     public ContainerScriptService(ContainerScriptRepository scriptRepository, ContainerCliExecutor cliExecutor,
-                                   TaskExecutor taskExecutor, AuditLogService auditLogService) {
+                                   TaskExecutor taskExecutor, AuditLogService auditLogService, UserMessages messages) {
+        this.messages = messages;
         this.scriptRepository = scriptRepository;
         this.cliExecutor = cliExecutor;
         this.taskExecutor = taskExecutor;
@@ -146,7 +148,7 @@ public class ContainerScriptService {
     private ActiveRun requireOwnRun(Container container, String runId) {
         ActiveRun activeRun = activeRuns.get(runId);
         if (activeRun == null || !activeRun.containerId.equals(container.getId())) {
-            throw new IllegalArgumentException("No such script run: " + runId);
+            throw new IllegalArgumentException(messages.get("error.scripts.noSuchRun", runId));
         }
         return activeRun;
     }
@@ -176,14 +178,14 @@ public class ContainerScriptService {
 
     private ContainerScript requireOwnScript(Container container, Long scriptId) {
         return scriptRepository.findByIdAndContainer(scriptId, container)
-                .orElseThrow(() -> new IllegalArgumentException("No such script: " + scriptId));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.scripts.noSuchScript", scriptId)));
     }
 
     private void requireUniqueName(Container container, String name, Long excludingId) {
         boolean taken = scriptRepository.findByContainerOrderByName(container).stream()
                 .anyMatch(s -> s.getName().equalsIgnoreCase(name) && !s.getId().equals(excludingId));
         if (taken) {
-            throw new IllegalStateException("A script named '" + name + "' already exists for this container");
+            throw new IllegalStateException(messages.get("error.scripts.nameAlreadyExists", name));
         }
     }
 }

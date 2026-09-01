@@ -33,7 +33,7 @@ class PackageDownloadServiceTest {
         filesystem = mock(PackageCacheFilesystem.class);
         packageCacheService = mock(PackageCacheService.class);
         when(packageCacheService.uploadedDir(PackageManager.ISO)).thenReturn("/var/cache/nspawnmgr/packages/iso/uploaded");
-        service = new PackageDownloadService(executor, filesystem, packageCacheService, mock(AuditLogService.class));
+        service = new PackageDownloadService(executor, filesystem, packageCacheService, mock(AuditLogService.class), TestUserMessages.create());
         admin = new User("admin-external-id");
         admin.setId(1L);
     }

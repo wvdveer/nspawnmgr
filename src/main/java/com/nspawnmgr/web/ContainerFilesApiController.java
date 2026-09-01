@@ -7,6 +7,7 @@ import com.nspawnmgr.repository.ContainerShareRepository;
 import com.nspawnmgr.security.CurrentUserProvider;
 import com.nspawnmgr.service.ContainerFileBrowserService;
 import com.nspawnmgr.service.GuestSftpSessionStore;
+import com.nspawnmgr.service.UserMessages;
 import com.nspawnmgr.web.dto.ConnectSftpRequest;
 import com.nspawnmgr.web.dto.ConnectSftpResponse;
 import com.nspawnmgr.web.dto.FileEntryResponse;
@@ -46,17 +47,19 @@ public class ContainerFilesApiController {
     private final ContainerFileBrowserService fileBrowserService;
     private final GuestSftpSessionStore sftpSessionStore;
     private final CurrentUserProvider currentUserProvider;
+    private final UserMessages messages;
 
     public ContainerFilesApiController(ContainerRepository containerRepository,
                                         ContainerShareRepository containerShareRepository,
                                         ContainerFileBrowserService fileBrowserService,
                                         GuestSftpSessionStore sftpSessionStore,
-                                        CurrentUserProvider currentUserProvider) {
+                                        CurrentUserProvider currentUserProvider, UserMessages messages) {
         this.containerRepository = containerRepository;
         this.containerShareRepository = containerShareRepository;
         this.fileBrowserService = fileBrowserService;
         this.sftpSessionStore = sftpSessionStore;
         this.currentUserProvider = currentUserProvider;
+        this.messages = messages;
     }
 
     @GetMapping("/api/containers/{id}/files")
@@ -88,7 +91,7 @@ public class ContainerFilesApiController {
         try {
             content = file.getBytes();
         } catch (IOException e) {
-            throw new UncheckedIOException("Failed to read uploaded file", e);
+            throw new UncheckedIOException(messages.get("error.web.failedToReadUploadedFile"), e);
         }
         fileBrowserService.upload(container, path, file.getOriginalFilename(), content, credential);
     }
@@ -121,7 +124,7 @@ public class ContainerFilesApiController {
     /** Owner, or a user the container has been shared with — see ContainerApiController's twin. */
     private Container requireOwnedOrShared(Long id) {
         Container container = containerRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("No such container: " + id));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", id)));
         User user = currentUserProvider.get();
         if (container.getOwner().getId().equals(user.getId())) {
             return container;
@@ -129,6 +132,6 @@ public class ContainerFilesApiController {
         if (containerShareRepository.existsByContainerAndUser(container, user)) {
             return container;
         }
-        throw new AccessDeniedException("Only the owner or a shared user may perform this action");
+        throw new AccessDeniedException(messages.get("error.web.onlyOwnerOrSharedMayPerform"));
     }
 }

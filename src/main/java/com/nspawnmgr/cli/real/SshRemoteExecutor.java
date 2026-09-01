@@ -7,6 +7,7 @@ import com.nspawnmgr.cli.OutputLine;
 import com.nspawnmgr.cli.OutputSource;
 import com.nspawnmgr.cli.ScriptRunResult;
 import com.nspawnmgr.service.SettingsService;
+import com.nspawnmgr.service.UserMessages;
 import net.schmizz.sshj.SSHClient;
 import net.schmizz.sshj.common.IOUtils;
 import net.schmizz.sshj.connection.ConnectionException;
@@ -68,9 +69,11 @@ import java.util.stream.Collectors;
 public class SshRemoteExecutor {
 
     private final SettingsService settingsService;
+    private final UserMessages messages;
 
-    public SshRemoteExecutor(SettingsService settingsService) {
+    public SshRemoteExecutor(SettingsService settingsService, UserMessages messages) {
         this.settingsService = settingsService;
+        this.messages = messages;
     }
 
     /** Runs {@code command} under {@code sudo -n} — never prompts, relies on a NOPASSWD sudoers grant. */
@@ -131,14 +134,14 @@ public class SshRemoteExecutor {
                     joinQuietly(stdoutReader, Duration.ofSeconds(5));
                     joinQuietly(stderrReader, Duration.ofSeconds(5));
                     if (timeoutCause != null) {
-                        throw new ContainerCliException("Command timed out: " + describe(command), timeoutCause);
+                        throw new ContainerCliException(messages.get("error.cli.commandTimedOut", describe(command)), timeoutCause);
                     }
                     Integer exitStatus = cmd.getExitStatus();
                     return new CommandResult(exitStatus == null ? -1 : exitStatus, stdout.toString(), stderr.toString());
                 }
             }
         } catch (IOException e) {
-            throw new ContainerCliException("SSH command failed: " + describe(command), e);
+            throw new ContainerCliException(messages.get("error.cli.sshCommandFailed", describe(command)), e);
         }
     }
 
@@ -176,7 +179,7 @@ public class SshRemoteExecutor {
             }
         } catch (IOException e) {
             closeQuietly(ssh);
-            throw new ContainerCliException("SSH command failed: " + describe(command), e);
+            throw new ContainerCliException(messages.get("error.cli.sshCommandFailed", describe(command)), e);
         }
         List<OutputLine> lines = Collections.synchronizedList(new ArrayList<>());
         Thread stdoutReader = startLineReader(cmd.getInputStream(), OutputSource.STDOUT, lines);
@@ -285,14 +288,14 @@ public class SshRemoteExecutor {
                     joinQuietly(stdoutReader, Duration.ofSeconds(5));
                     joinQuietly(stderrReader, Duration.ofSeconds(5));
                     if (timeoutCause != null) {
-                        throw new ContainerCliException("Command timed out: " + describe(command), timeoutCause);
+                        throw new ContainerCliException(messages.get("error.cli.commandTimedOut", describe(command)), timeoutCause);
                     }
                     Integer exitStatus = cmd.getExitStatus();
                     return new CommandResult(exitStatus == null ? -1 : exitStatus, stdout.toString(), stderr.toString());
                 }
             }
         } catch (IOException e) {
-            throw new ContainerCliException("SSH command failed: " + describe(command), e);
+            throw new ContainerCliException(messages.get("error.cli.sshCommandFailed", describe(command)), e);
         }
     }
 
@@ -347,7 +350,7 @@ public class SshRemoteExecutor {
             return ssh;
         } catch (IOException e) {
             closeQuietly(ssh);
-            throw new ContainerCliException("Failed to establish SSH connection to " + host + ":" + port, e);
+            throw new ContainerCliException(messages.get("error.remote.failedToEstablishSshConnection", host, port), e);
         }
     }
 

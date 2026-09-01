@@ -49,12 +49,13 @@ public class ContainerUserService {
     private final SecretEncryptionService secretEncryptionService;
     private final SettingsService settingsService;
     private final ProvisioningService provisioningService;
+    private final UserMessages messages;
 
     public ContainerUserService(ContainerRepository containerRepository, UserRepository userRepository,
                                  ContainerCliExecutor cliExecutor, ContainerUserRepository containerUserRepository,
                                  ContainerUserActionRequestRepository actionRequestRepository,
                                  SecretEncryptionService secretEncryptionService, SettingsService settingsService,
-                                 ProvisioningService provisioningService) {
+                                 ProvisioningService provisioningService, UserMessages messages) {
         this.containerRepository = containerRepository;
         this.userRepository = userRepository;
         this.cliExecutor = cliExecutor;
@@ -63,6 +64,7 @@ public class ContainerUserService {
         this.secretEncryptionService = secretEncryptionService;
         this.settingsService = settingsService;
         this.provisioningService = provisioningService;
+        this.messages = messages;
     }
 
     @Transactional
@@ -153,10 +155,10 @@ public class ContainerUserService {
     @Transactional
     public ContainerUserActionRequest approveRequest(Long requestId, User admin, char[] sudoPassword) {
         ContainerUserActionRequest request = actionRequestRepository.findByIdWithContainer(requestId)
-                .orElseThrow(() -> new IllegalArgumentException("No such request: " + requestId));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.containerUsers.noSuchRequest", requestId)));
         requirePending(request);
         if (request.getContainer().getState() != ContainerState.RUNNING) {
-            throw new IllegalStateException("Container must be running to apply this request");
+            throw new IllegalStateException(messages.get("error.containerUsers.mustBeRunningToApply"));
         }
         char[] sudoOverride = settingsService.sshApprovalRequired() ? requireSudoPassword(sudoPassword) : null;
         switch (request.getActionType()) {
@@ -179,7 +181,7 @@ public class ContainerUserService {
 
     private char[] requireSudoPassword(char[] sudoPassword) {
         if (sudoPassword == null || sudoPassword.length == 0) {
-            throw new IllegalArgumentException("A sudo password is required to approve this request");
+            throw new IllegalArgumentException(messages.get("error.containerUsers.sudoPasswordRequired"));
         }
         return sudoPassword;
     }
@@ -187,7 +189,7 @@ public class ContainerUserService {
     @Transactional
     public ContainerUserActionRequest denyRequest(Long requestId, User admin) {
         ContainerUserActionRequest request = actionRequestRepository.findByIdWithContainer(requestId)
-                .orElseThrow(() -> new IllegalArgumentException("No such request: " + requestId));
+                .orElseThrow(() -> new IllegalArgumentException(messages.get("error.containerUsers.noSuchRequest", requestId)));
         requirePending(request);
         resolve(request, ContainerUserActionState.DENIED, attachedUser(admin));
         return request;
@@ -195,7 +197,7 @@ public class ContainerUserService {
 
     private void requirePending(ContainerUserActionRequest request) {
         if (request.getState() != ContainerUserActionState.PENDING) {
-            throw new IllegalStateException("Request " + request.getId() + " is not pending (current state: " + request.getState() + ")");
+            throw new IllegalStateException(messages.get("error.containerUsers.requestNotPending", request.getId(), request.getState()));
         }
     }
 
@@ -223,7 +225,7 @@ public class ContainerUserService {
         CommandResult result = cliExecutor.runInMachine(container.getName(), container.getBackend(),
                 List.of("useradd", "-m", "-s", "/bin/bash", username), COMMAND_TIMEOUT, sudoPasswordOverride);
         if (!result.success()) {
-            throw new ContainerCliException("Failed to add user " + username + " in " + container.getName() + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.containerUsers.failedToAddUser", username, container.getName(), result.stderr()));
         }
         setPassword(container, username, password, sudoPasswordOverride);
         refreshAndListLive(container);
@@ -239,14 +241,14 @@ public class ContainerUserService {
         CommandResult result = cliExecutor.runInMachine(container.getName(), container.getBackend(), List.of("chpasswd"), COMMAND_TIMEOUT,
                 sudoPasswordOverride, username + ":" + password + "\n");
         if (!result.success()) {
-            throw new ContainerCliException("Failed to set password for " + username + " in " + container.getName() + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.containerUsers.failedToSetPassword", username, container.getName(), result.stderr()));
         }
     }
 
     private List<String> refreshAndListLive(Container container) {
         CommandResult result = cliExecutor.listContainerUsers(container.getName());
         if (!result.success()) {
-            throw new ContainerCliException("Failed to list users in " + container.getName() + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.containerUsers.failedToListUsers", container.getName(), result.stderr()));
         }
         List<String> usernames = parsePasswd(result.stdout());
         containerUserRepository.deleteByContainer(container);
@@ -280,9 +282,9 @@ public class ContainerUserService {
         return usernames;
     }
 
-    private static void validateUsername(String username) {
+    private void validateUsername(String username) {
         if (!USERNAME_PATTERN.matcher(username).matches()) {
-            throw new IllegalArgumentException("Invalid username '" + username + "' — must match " + USERNAME_PATTERN.pattern());
+            throw new IllegalArgumentException(messages.get("error.containerUsers.invalidUsername", username, USERNAME_PATTERN.pattern()));
         }
     }
 }

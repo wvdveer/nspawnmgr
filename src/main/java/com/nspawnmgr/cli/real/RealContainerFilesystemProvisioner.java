@@ -12,6 +12,7 @@ import com.nspawnmgr.domain.MinimalTemplateFlavor;
 import com.nspawnmgr.domain.PackageManager;
 import com.nspawnmgr.domain.Template;
 import com.nspawnmgr.service.SettingsService;
+import com.nspawnmgr.service.UserMessages;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
@@ -45,10 +46,12 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
 
     private final SettingsService settingsService;
     private final SshRemoteExecutor ssh;
+    private final UserMessages messages;
 
-    public RealContainerFilesystemProvisioner(SettingsService settingsService, SshRemoteExecutor ssh) {
+    public RealContainerFilesystemProvisioner(SettingsService settingsService, SshRemoteExecutor ssh, UserMessages messages) {
         this.settingsService = settingsService;
         this.ssh = ssh;
+        this.messages = messages;
     }
 
     @Override
@@ -61,8 +64,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
                 List.of(wrapperScript("nspawnmgr-clone-template.sh"), source.toString(), destination.toString()),
                 null, password);
         if (!result.success()) {
-            throw new ContainerCliException("Failed to clone template " + template.getName() + " to " + destination
-                    + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToCloneTemplate",
+                    template.getName(), destination, result.stderr()));
         }
     }
 
@@ -73,8 +76,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15),
                 List.of(wrapperScript("nspawnmgr-write-file.sh"), settingsFile.toString()), content);
         if (!result.success()) {
-            throw new ContainerCliException("Failed to write .nspawn settings for " + container.getName()
-                    + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToWriteNspawnSettings",
+                    container.getName(), result.stderr()));
         }
     }
 
@@ -101,8 +104,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
             // reason a command inside the container failed (e.g. apt-get's own error text) goes to
             // stdout - stderr alone gave a completely uninformative "error code 100" with nothing to
             // act on.
-            throw new ContainerCliException("Failed to create " + flavor.templateName() + " template at " + target
-                    + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToCreateMinimalTemplate",
+                    flavor.templateName(), target, result.exitCode(), result.stdout(), result.stderr()));
         }
     }
 
@@ -118,8 +121,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
                     List.of(wrapperScript("nspawnmgr-qemu-pack-disk-as-template.sh"), machineName, target.toString()),
                     null, password);
             if (!result.success()) {
-                throw new ContainerCliException("Failed to pack " + machineName + " as template " + templateName
-                        + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+                throw new ContainerCliException(messages.get("error.cli.failedToPackAsTemplate",
+                        machineName, templateName, result.exitCode(), result.stdout(), result.stderr()));
             }
             return;
         }
@@ -132,8 +135,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
                 List.of(wrapperScript("nspawnmgr-pack-machine-as-template.sh"), rootfs.toString(), target.toString()),
                 null, password);
         if (!result.success()) {
-            throw new ContainerCliException("Failed to pack " + machineName + " as template " + templateName
-                    + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToPackAsTemplate",
+                    machineName, templateName, result.exitCode(), result.stdout(), result.stderr()));
         }
     }
 
@@ -146,8 +149,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
                 List.of(wrapperScript("nspawnmgr-qemu-clone-template.sh"), source.toString(), containerName),
                 null, password);
         if (!result.success()) {
-            throw new ContainerCliException("Failed to clone QEMU template " + template.getName() + " to " + containerName
-                    + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToCloneQemuTemplate",
+                    template.getName(), containerName, result.exitCode(), result.stdout(), result.stderr()));
         }
     }
 
@@ -166,8 +169,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
                 List.of(wrapperScript("nspawnmgr-podman-pull-template.sh"), pullReference, target.toString()),
                 null, password);
         if (!result.success()) {
-            throw new ContainerCliException("Failed to pull '" + pullReference + "' as template " + templateName
-                    + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToPullAsTemplate",
+                    pullReference, templateName, result.exitCode(), result.stdout(), result.stderr()));
         }
     }
 
@@ -187,8 +190,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
                         source.toString(), "nspawnmgr-template-" + newTemplateName, target.toString()),
                 null, password);
         if (!result.success()) {
-            throw new ContainerCliException("Failed to convert " + nspawnTemplateName + " to podman template " + newTemplateName
-                    + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToConvertToPodmanTemplate",
+                    nspawnTemplateName, newTemplateName, result.exitCode(), result.stdout(), result.stderr()));
         }
     }
 
@@ -204,8 +207,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
                         source.toString(), target.toString()),
                 null, password);
         if (!result.success()) {
-            throw new ContainerCliException("Failed to convert " + podmanTemplateName + " to nspawn template " + newTemplateName
-                    + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToConvertToNspawnTemplate",
+                    podmanTemplateName, newTemplateName, result.exitCode(), result.stdout(), result.stderr()));
         }
     }
 
@@ -224,8 +227,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
                 List.of(wrapperScript("nspawnmgr-podman-create-container.sh"), source.toString(), containerName, commandArg),
                 null, password);
         if (!result.success()) {
-            throw new ContainerCliException("Failed to create podman container '" + containerName + "' from template "
-                    + templateSourcePath + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToCreatePodmanContainer",
+                    containerName, templateSourcePath, result.exitCode(), result.stdout(), result.stderr()));
         }
     }
 
@@ -282,8 +285,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
         try {
             CommandResult result = ssh.execWithSudoPassword(timeout, command, null, password);
             if (!result.success()) {
-                throw new ContainerCliException("Failed to download " + packageManager + " packages " + packages
-                        + " for " + machineName + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+                throw new ContainerCliException(messages.get("error.cli.failedToDownloadPackages",
+                        packageManager, packages, machineName, result.exitCode(), result.stdout(), result.stderr()));
             }
             return DownloadedPackage.parseLines(result.stdout());
         } finally {
@@ -303,7 +306,7 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
     public List<String> missingDependenciesFor(PackageManager packageManager, String machineName,
                                                  String localPackageHostPath, char[] sudoPasswordOverride) {
         if (SIMULATE_SCRIPT.get(packageManager) == null) {
-            throw new IllegalArgumentException("Dependency simulation isn't supported for " + packageManager);
+            throw new IllegalArgumentException(messages.get("error.validation.dependencySimulationNotSupported", packageManager));
         }
         char[] password = sudoPasswordOverride != null ? sudoPasswordOverride : settingsService.sshPassword().toCharArray();
         Path rootfs = Path.of(settingsService.nspawnMachinesDir(), machineName);
@@ -317,8 +320,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
         try {
             CommandResult result = ssh.execWithSudoPassword(Duration.ofMinutes(2), command, null, password);
             if (!result.success()) {
-                throw new ContainerCliException("Failed to simulate installing " + localPackageHostPath + " on " + machineName
-                        + " (exit " + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+                throw new ContainerCliException(messages.get("error.cli.failedToSimulateInstalling",
+                        localPackageHostPath, machineName, result.exitCode(), result.stdout(), result.stderr()));
             }
             return result.stdout().lines().map(String::trim).filter(s -> !s.isEmpty()).toList();
         } finally {
@@ -333,8 +336,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(30),
                 List.of(wrapperScript("nspawnmgr-delete-machine-files.sh"), machineDir.toString(), settingsFile.toString()));
         if (!result.success()) {
-            throw new ContainerCliException("Failed to delete files for machine " + machineName
-                    + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToDeleteMachineFiles",
+                    machineName, result.stderr()));
         }
     }
 
@@ -342,7 +345,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
     public String mountPodmanContainer(String containerName) {
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15), List.of("podman", "mount", containerName));
         if (!result.success()) {
-            throw new ContainerCliException("Failed to mount podman container '" + containerName + "': " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToMountPodmanContainer",
+                    containerName, result.stderr()));
         }
         return result.stdout().trim();
     }
@@ -354,8 +358,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
                 List.of(wrapperScript("nspawnmgr-qemu-create-disk.sh"), containerName, String.valueOf(diskSizeGb)),
                 null, password);
         if (!result.success()) {
-            throw new ContainerCliException("Failed to create QEMU disk for '" + containerName + "' (exit "
-                    + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToCreateQemuDisk",
+                    containerName, result.exitCode(), result.stdout(), result.stderr()));
         }
     }
 
@@ -373,8 +377,8 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
                 container.getQemuPointerDevice() != null ? container.getQemuPointerDevice().qemuArg() : "");
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15), command);
         if (!result.success()) {
-            throw new ContainerCliException("Failed to write QEMU unit for '" + containerName + "' (exit "
-                    + result.exitCode() + "): " + result.stdout() + " -- " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToWriteQemuUnit",
+                    containerName, result.exitCode(), result.stdout(), result.stderr()));
         }
     }
 

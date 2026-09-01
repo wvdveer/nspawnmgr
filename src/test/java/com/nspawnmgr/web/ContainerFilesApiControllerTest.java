@@ -7,6 +7,7 @@ import com.nspawnmgr.repository.ContainerShareRepository;
 import com.nspawnmgr.security.CurrentUserProvider;
 import com.nspawnmgr.service.ContainerFileBrowserService;
 import com.nspawnmgr.service.GuestSftpSessionStore;
+import com.nspawnmgr.service.TestUserMessages;
 import com.nspawnmgr.web.dto.ConnectSftpRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,7 +46,7 @@ class ContainerFilesApiControllerTest {
         sftpSessionStore = mock(GuestSftpSessionStore.class);
         currentUserProvider = mock(CurrentUserProvider.class);
         controller = new ContainerFilesApiController(containerRepository, containerShareRepository,
-                fileBrowserService, sftpSessionStore, currentUserProvider);
+                fileBrowserService, sftpSessionStore, currentUserProvider, TestUserMessages.create());
     }
 
     private static User user(long id, String username) {

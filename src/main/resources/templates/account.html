@@ -8,29 +8,42 @@
 </head>
 <body th:attr="data-base-path=@{/}">
 <div th:replace="~{fragments/app-shell :: shell(
-        title='Profile', subtitle=${'Signed in as ' + currentUser.username},
+        title=${t.get('nav.profile')}, subtitle=${t.get('page.account.subtitle', currentUser.username)},
         activeNav='profile', currentUser=${currentUser}, addMenu=null,
         content=~{::#page-content})}">
     <div id="page-content">
         <div class="panel">
-            <h2>Guacamole password</h2>
-            <p>Sets the password for your Guacamole account (used to connect to shared containers directly
-                through Guacamole's own login, outside of nspawnmgr's single sign-on). Creates the account
-                first if you don't have one yet.</p>
+            <h2 th:text="${t.get('page.account.languageHeading')}">Language</h2>
+            <p th:text="${t.get('page.account.languageHint')}">Choose which language the interface displays in.</p>
             <div class="panel-section">
                 <div class="inline-controls">
-                    <input type="password" id="guacamole-password" placeholder="New password" minlength="8"/>
-                    <button id="btn-save-guacamole-password" class="btn-primary">Update password</button>
+                    <select id="account-language">
+                        <option value="" th:text="${t.get('page.account.languageAutoDetect')}">Auto-detect from browser</option>
+                        <option th:each="entry : ${availableLanguages}" th:value="${entry.key}"
+                                th:selected="${currentUser.preferredLanguage == entry.key}"
+                                th:text="${entry.value}">Language name</option>
+                    </select>
+                    <button id="btn-save-language" class="btn-primary" th:text="${t.get('page.account.saveLanguage')}">Save</button>
+                </div>
+                <p id="language-status" class="status-message"></p>
+            </div>
+        </div>
+        <div class="panel">
+            <h2 th:text="${t.get('page.account.guacamolePasswordHeading')}">Guacamole password</h2>
+            <p th:text="${t.get('page.account.guacamolePasswordHint')}">Sets the password for your Guacamole account.</p>
+            <div class="panel-section">
+                <div class="inline-controls">
+                    <input type="password" id="guacamole-password" th:placeholder="${t.get('page.account.newPasswordPlaceholder')}" minlength="8"/>
+                    <button id="btn-save-guacamole-password" class="btn-primary" th:text="${t.get('page.account.updatePassword')}">Update password</button>
                 </div>
                 <p id="guacamole-password-status" class="status-message"></p>
             </div>
         </div>
         <div class="panel" th:if="${logoutUrl != null}">
-            <h2>Log out</h2>
-            <p>Ends your session with the login system (auth.war) - you'll need to log in again to
-                come back to nspawnmgr.</p>
+            <h2 th:text="${t.get('page.account.logoutHeading')}">Log out</h2>
+            <p th:text="${t.get('page.account.logoutHint')}">Ends your session with the login system.</p>
             <div class="panel-section">
-                <a th:href="${logoutUrl}" class="btn-danger">Log out</a>
+                <a th:href="${logoutUrl}" class="btn-danger" th:text="${t.get('page.account.logout')}">Log out</a>
             </div>
         </div>
     </div>

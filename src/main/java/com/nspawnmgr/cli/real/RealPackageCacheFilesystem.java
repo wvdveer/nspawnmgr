@@ -5,6 +5,7 @@ import com.nspawnmgr.cli.ContainerCliException;
 import com.nspawnmgr.cli.DownloadedPackage;
 import com.nspawnmgr.cli.PackageCacheFilesystem;
 import com.nspawnmgr.service.SettingsService;
+import com.nspawnmgr.service.UserMessages;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
@@ -25,10 +26,12 @@ public class RealPackageCacheFilesystem implements PackageCacheFilesystem {
 
     private final SettingsService settingsService;
     private final SshRemoteExecutor ssh;
+    private final UserMessages messages;
 
-    public RealPackageCacheFilesystem(SettingsService settingsService, SshRemoteExecutor ssh) {
+    public RealPackageCacheFilesystem(SettingsService settingsService, SshRemoteExecutor ssh, UserMessages messages) {
         this.settingsService = settingsService;
         this.ssh = ssh;
+        this.messages = messages;
     }
 
     // Loopback SSH (same host Tomcat runs on - see SshRemoteExecutor's own javadoc), so this is
@@ -56,7 +59,7 @@ public class RealPackageCacheFilesystem implements PackageCacheFilesystem {
                     }
                 });
         if (!result.success()) {
-            throw new ContainerCliException("Failed to upload package to " + targetPath + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToUploadPackageTo", targetPath, result.stderr()));
         }
     }
 
@@ -65,7 +68,7 @@ public class RealPackageCacheFilesystem implements PackageCacheFilesystem {
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15),
                 List.of(wrapperScript("nspawnmgr-delete-cached-package.sh"), path));
         if (!result.success()) {
-            throw new ContainerCliException("Failed to delete cached package " + path + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToDeleteCachedPackage", path, result.stderr()));
         }
     }
 
@@ -74,7 +77,7 @@ public class RealPackageCacheFilesystem implements PackageCacheFilesystem {
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(30),
                 List.of(wrapperScript("nspawnmgr-copy-into-container.sh"), sourcePath, destDir));
         if (!result.success()) {
-            throw new ContainerCliException("Failed to copy " + sourcePath + " into " + destDir + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToCopyInto", sourcePath, destDir, result.stderr()));
         }
     }
 
@@ -83,8 +86,8 @@ public class RealPackageCacheFilesystem implements PackageCacheFilesystem {
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(30),
                 List.of("podman", "cp", sourcePath, containerName + ":" + destPathInContainer));
         if (!result.success()) {
-            throw new ContainerCliException("Failed to copy " + sourcePath + " into " + containerName + ":"
-                    + destPathInContainer + ": " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.failedToCopyInto",
+                    sourcePath, containerName + ":" + destPathInContainer, result.stderr()));
         }
     }
 

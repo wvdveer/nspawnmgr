@@ -1,3 +1,34 @@
+nspawnmgr (0.4.0) stable; urgency=medium
+
+  * Multilingual UI: the entire interface (every template, JS-built message,
+    server-side validation/error message, and the Guacamole/database
+    settings form) is now available in English, Spanish, French,
+    Portuguese, Japanese, and Simplified Chinese, auto-detected from the
+    browser's Accept-Language header with a per-user override on the
+    Profile page. The administrator's guide is translated into all five
+    non-English languages too. Protocol/technology names (SSH, RDP, VNC,
+    NSPAWN, PODMAN, QEMU, and similar) are deliberately left untranslated
+    throughout, as universal technical terms.
+  * New host packaging: RPM (Fedora/RHEL, via dnf/rpmbuild), a plain Arch
+    Linux package, and a SteamOS-specific variant (relocates all storage
+    under /home for the Deck's small root partition, works around SteamOS's
+    default firewalld/Gaming Mode quirks) - alongside the existing .deb.
+  * Files browsing now works for QEMU VMs and any SSH-enabled Host, not just
+    managed nspawn/podman containers - goes over SFTP against the target's
+    own SSH server, with a per-session credential prompt (never stored) and
+    the connected username shown next to Disconnect.
+  * Package upgrades (upgrade-nspawnmgr.sh / a package manager's own
+    upgrade) now fully reconcile the self-hosted machine's contents (JRE,
+    WARs, guacd, systemd units, SSH credentials) on every run, not just a
+    narrow WAR refresh - closing a real gap where a release needing a
+    host-side change had no upgrade path short of a full reinstall.
+  * Numerous smaller reliability fixes (package-download false-failures,
+    dnsmasq/DHCP races on Arch-family installs, host-address/loopback
+    diagnostics accuracy, and more). See the project's git history for the
+    full list.
+
+ -- nspawnmgr packaging <packaging@nspawnmgr.invalid>  Wed, 02 Sep 2026 00:00:00 +1000
+
 nspawnmgr (0.3.0) stable; urgency=medium
 
   * Podman and QEMU join systemd-nspawn as full container/VM backends: pods

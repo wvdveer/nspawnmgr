@@ -38,7 +38,7 @@
                         <rect x="3" y="13" width="8" height="8" rx="1.5"></rect>
                         <rect x="13" y="13" width="8" height="8" rx="1.5"></rect>
                     </svg>
-                    <span>Machines</span>
+                    <span th:text="${t.get('nav.machines')}">Machines</span>
                 </a>
             </li>
             <li th:if="${currentUser.role.name() == 'ADMIN'}">
@@ -49,7 +49,7 @@
                         <path d="M16 5.5c1.7 0.3 3 1.9 3 3.5s-1.3 3.2-3 3.5"></path>
                         <path d="M18 14c1.7 0.5 3 2.1 3 4"></path>
                     </svg>
-                    <span>Users</span>
+                    <span th:text="${t.get('nav.users')}">Users</span>
                 </a>
             </li>
             <!-- Shown to every signed-in user, not just admins, while sshApprovalRequired is true
@@ -63,7 +63,7 @@
                         <path d="M4 4h16v10.5l-3 5.5H7l-3-5.5Z"></path>
                         <path d="M4 14.5h5l1 2h4l1-2h5"></path>
                     </svg>
-                    <span>Requests</span>
+                    <span th:text="${t.get('nav.requests')}">Requests</span>
                 </a>
             </li>
             <li th:if="${currentUser.role.name() == 'ADMIN'}">
@@ -73,7 +73,7 @@
                         <polyline points="3,13 12,18 21,13"></polyline>
                         <polyline points="3,17.5 12,22.5 21,17.5"></polyline>
                     </svg>
-                    <span>Templates</span>
+                    <span th:text="${t.get('nav.templates')}">Templates</span>
                 </a>
             </li>
             <li th:if="${currentUser.role.name() == 'ADMIN'}">
@@ -83,7 +83,7 @@
                         <polyline points="3,7.5 12,12 21,7.5"></polyline>
                         <line x1="12" y1="12" x2="12" y2="21"></line>
                     </svg>
-                    <span>Packages</span>
+                    <span th:text="${t.get('nav.packages')}">Packages</span>
                 </a>
             </li>
             <li th:if="${currentUser.role.name() == 'ADMIN'}">
@@ -100,7 +100,7 @@
                         <rect x="3.3" y="17.9" width="2.8" height="2.8" rx="0.6" fill="currentColor" stroke="none" transform="rotate(-45 4.7 19.3)"></rect>
                         <rect x="17.9" y="17.9" width="2.8" height="2.8" rx="0.6" fill="currentColor" stroke="none" transform="rotate(45 19.3 19.3)"></rect>
                     </svg>
-                    <span>Settings</span>
+                    <span th:text="${t.get('nav.settings')}">Settings</span>
                 </a>
             </li>
             <li th:if="${currentUser.role.name() == 'ADMIN'}">
@@ -108,7 +108,7 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="3,12 8,12 10,6 14,18 16,12 21,12"></polyline>
                     </svg>
-                    <span>Diagnostics</span>
+                    <span th:text="${t.get('nav.diagnostics')}">Diagnostics</span>
                 </a>
             </li>
             <li>
@@ -119,7 +119,7 @@
                         <line x1="7.5" y1="12" x2="16.5" y2="12"></line>
                         <line x1="7.5" y1="16" x2="13" y2="16"></line>
                     </svg>
-                    <span>Log</span>
+                    <span th:text="${t.get('nav.log')}">Log</span>
                 </a>
             </li>
         </ul>
@@ -132,7 +132,7 @@
             </div>
             <div class="topbar-actions">
                 <div th:if="${addMenu != null}" class="add-menu" id="add-menu">
-                    <button type="button" class="add-menu-btn" id="add-menu-btn" aria-haspopup="true" aria-expanded="false" title="Add">+</button>
+                    <button type="button" class="add-menu-btn" id="add-menu-btn" aria-haspopup="true" aria-expanded="false" th:title="${t.get('topbar.addButton')}">+</button>
                     <div class="add-menu-list" th:insert="${addMenu}"></div>
                 </div>
                 <div th:replace="~{fragments/theme-toggle :: widget}"></div>
@@ -149,5 +149,11 @@
             Page content
         </main>
     </div>
+    <script th:inline="javascript">
+        /*<![CDATA[*/
+        window.NSPAWNMGR_I18N = /*[[${translations}]]*/ {};
+        /*]]>*/
+    </script>
+    <script th:src="@{/js/i18n.js}"></script>
     <script th:src="@{/js/app-shell.js}"></script>
 </div>

@@ -91,6 +91,7 @@ export CATALINA_OPTS="-DSPRING_PROFILES_ACTIVE=prod \
   -DDB_URL='jdbc:h2:file:$tomcat_dir/temp/realtest-db;AUTO_SERVER=TRUE' -DDB_USERNAME=sa -DDB_PASSWORD= -DDB_VENDOR=h2 \
   -DAPP_SECRET_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY= \
   -DTEMPLATES_DIR='$root/site/templates' \
+  -DLANG_DIR='$root/lang' \
   -DSSH_HOST='$SSH_HOST' -DSSH_PORT='$SSH_PORT' -DSSH_USERNAME='$SSH_USERNAME' -DSSH_PASSWORD='$SSH_PASSWORD' \
   -DGUACAMOLE_BASE_URL='http://localhost:${TOMCAT_HTTP_PORT}/guacamole' -DGUACAMOLE_DATA_SOURCE=fake \
   -DUSER_ID_URL='http://localhost:${TOMCAT_HTTP_PORT}/auth/userinfo' \

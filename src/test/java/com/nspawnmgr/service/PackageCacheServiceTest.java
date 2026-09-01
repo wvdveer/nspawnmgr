@@ -52,7 +52,7 @@ class PackageCacheServiceTest {
         when(settingsService.nspawnMachinesDir()).thenReturn("/var/lib/machines");
         when(filesystemProvisioner.missingDependenciesFor(any(), any(), any(), any())).thenReturn(List.of());
         service = new PackageCacheService(repository, filesystem, cliExecutor, filesystemProvisioner,
-                settingsService, containerRepository);
+                settingsService, containerRepository, TestUserMessages.create());
         when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 

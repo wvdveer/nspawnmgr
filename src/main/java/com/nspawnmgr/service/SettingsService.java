@@ -72,6 +72,8 @@ public class SettingsService {
     private final SshProperties sshProperties;
     private final NspawnProperties nspawnProperties;
     private final DnsProperties dnsProperties;
+    private final UserMessages messages;
+    private final GuacamolePropertiesSchema guacamolePropertiesSchema;
     private final RestTemplate probeRestTemplate = restTemplateWithTimeout(PROBE_TIMEOUT);
 
     private static RestTemplate restTemplateWithTimeout(Duration timeout) {
@@ -87,7 +89,8 @@ public class SettingsService {
                             GuacamoleProperties guacamoleProperties,
                             HostProperties hostProperties, AuthProperties authProperties,
                             ProvisioningProperties provisioningProperties, SshProperties sshProperties,
-                            NspawnProperties nspawnProperties, DnsProperties dnsProperties) {
+                            NspawnProperties nspawnProperties, DnsProperties dnsProperties, UserMessages messages,
+                            GuacamolePropertiesSchema guacamolePropertiesSchema) {
         this.appSettingsRepository = appSettingsRepository;
         this.guacamoleProperties = guacamoleProperties;
         this.hostProperties = hostProperties;
@@ -96,6 +99,8 @@ public class SettingsService {
         this.sshProperties = sshProperties;
         this.nspawnProperties = nspawnProperties;
         this.dnsProperties = dnsProperties;
+        this.messages = messages;
+        this.guacamolePropertiesSchema = guacamolePropertiesSchema;
         this.snapshot = appSettingsRepository.findById(1L)
                 .orElseThrow(() -> new IllegalStateException("app_settings row (id=1) is missing — check V4 migration ran"));
     }
@@ -404,8 +409,8 @@ public class SettingsService {
      *  present, falling back to nspawnmgr's own guacamole.data-source, then "mysql". */
     public String detectGuacamolePropertiesDatabaseType() {
         Map<String, String> current = readGuacamoleProperties();
-        long mysqlCount = GuacamolePropertiesSchema.mysqlKeys().stream().filter(k -> hasValue(current, k)).count();
-        long postgresqlCount = GuacamolePropertiesSchema.postgresqlKeys().stream().filter(k -> hasValue(current, k)).count();
+        long mysqlCount = guacamolePropertiesSchema.mysqlKeys().stream().filter(k -> hasValue(current, k)).count();
+        long postgresqlCount = guacamolePropertiesSchema.postgresqlKeys().stream().filter(k -> hasValue(current, k)).count();
         if (mysqlCount > postgresqlCount) {
             return "mysql";
         }
@@ -435,11 +440,11 @@ public class SettingsService {
         readGuacamoleProperties().forEach(props::setProperty);
 
         List<String> otherDbKeys = "postgresql".equals(databaseType)
-                ? GuacamolePropertiesSchema.mysqlKeys() : GuacamolePropertiesSchema.postgresqlKeys();
+                ? guacamolePropertiesSchema.mysqlKeys() : guacamolePropertiesSchema.postgresqlKeys();
         otherDbKeys.forEach(props::remove);
 
-        List<String> editableKeys = new ArrayList<>(GuacamolePropertiesSchema.guacdKeys());
-        editableKeys.addAll(GuacamolePropertiesSchema.groupsFor(databaseType).stream()
+        List<String> editableKeys = new ArrayList<>(guacamolePropertiesSchema.guacdKeys());
+        editableKeys.addAll(guacamolePropertiesSchema.groupsFor(databaseType).stream()
                 .flatMap(group -> group.fields().stream())
                 .map(field -> field.key())
                 .toList());
@@ -466,7 +471,7 @@ public class SettingsService {
                 // Non-POSIX filesystem (e.g. local Windows dev) — best-effort only, not fatal.
             }
         } catch (IOException e) {
-            throw new IllegalStateException("Cannot write " + path + ": " + e.getMessage(), e);
+            throw new IllegalStateException(messages.get("error.settings.cannotWriteFile", path, e.getMessage()), e);
         }
     }
 
@@ -508,45 +513,45 @@ public class SettingsService {
     @Transactional
     public AppSettings update(SettingsUpdate update, User actingAdmin) {
         List<String> errors = new ArrayList<>();
-        validateUrlIfPresent("Guacamole base URL", update.guacamoleBaseUrl(), errors, true);
-        validateUrlIfPresent("Auth user-id URL", update.authUserIdUrl(), errors, true);
-        validateUrlIfPresent("Auth login URL", update.authLoginUrl(), errors, false);
-        validateJsonPathIfPresent("User-ID JSON path", update.authUserIdJson(), errors);
-        validateJsonPathIfPresent("Username JSON path", update.authUserUsernameJson(), errors);
-        validateJsonPathIfPresent("Email JSON path", update.authUserEmailJson(), errors);
-        validateJsonPathIfPresent("Full-name JSON path", update.authUserFullnameJson(), errors);
-        validateJsonPathIfPresent("Admin-flag JSON path", update.authUserIsAdminJson(), errors);
+        validateUrlIfPresent(messages.get("error.settings.label.guacamoleBaseUrl"), update.guacamoleBaseUrl(), errors, true);
+        validateUrlIfPresent(messages.get("error.settings.label.authUserIdUrl"), update.authUserIdUrl(), errors, true);
+        validateUrlIfPresent(messages.get("error.settings.label.authLoginUrl"), update.authLoginUrl(), errors, false);
+        validateJsonPathIfPresent(messages.get("error.settings.label.userIdJsonPath"), update.authUserIdJson(), errors);
+        validateJsonPathIfPresent(messages.get("error.settings.label.usernameJsonPath"), update.authUserUsernameJson(), errors);
+        validateJsonPathIfPresent(messages.get("error.settings.label.emailJsonPath"), update.authUserEmailJson(), errors);
+        validateJsonPathIfPresent(messages.get("error.settings.label.fullNameJsonPath"), update.authUserFullnameJson(), errors);
+        validateJsonPathIfPresent(messages.get("error.settings.label.adminFlagJsonPath"), update.authUserIsAdminJson(), errors);
         if (update.authCookieName() != null && !update.authCookieName().matches("^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$")) {
-            errors.add("Cookie name contains characters not valid in an HTTP cookie name");
+            errors.add(messages.get("error.settings.cookieNameInvalidChars"));
         }
         if (update.authCacheTtlSeconds() != null && update.authCacheTtlSeconds() <= 0) {
-            errors.add("Auth cache TTL must be positive");
+            errors.add(messages.get("error.settings.authCacheTtlMustBePositive"));
         }
         if (update.hostPublicAddress() != null && !HOSTNAME_PATTERN.matcher(update.hostPublicAddress()).matches()) {
-            errors.add("Host public address is not a valid hostname/IP");
+            errors.add(messages.get("error.settings.hostPublicAddressInvalid"));
         }
         if (update.hostExternalHostname() != null && !HOSTNAME_PATTERN.matcher(update.hostExternalHostname()).matches()) {
-            errors.add("External hostname is not a valid hostname/IP");
+            errors.add(messages.get("error.settings.externalHostnameInvalid"));
         }
         if (update.provisioningAdminAccountName() != null && !USERNAME_PATTERN.matcher(update.provisioningAdminAccountName()).matches()) {
-            errors.add("Provisioning admin account name is not a valid POSIX username");
+            errors.add(messages.get("error.settings.adminAccountNameInvalid"));
         }
         if (update.provisioningRdpPasswordLength() != null
                 && (update.provisioningRdpPasswordLength() < 8 || update.provisioningRdpPasswordLength() > 128)) {
-            errors.add("RDP password length must be between 8 and 128");
+            errors.add(messages.get("error.settings.rdpPasswordLengthRange"));
         }
         if (update.authBackend() != null && !update.authBackend().isBlank()
                 && !VALID_AUTH_BACKENDS.contains(update.authBackend())) {
-            errors.add("Auth backend must be 'pam' or 'smb'");
+            errors.add(messages.get("error.settings.authBackendInvalid"));
         }
         if (update.sshPort() != null && (update.sshPort() < 1 || update.sshPort() > 65535)) {
-            errors.add("SSH port must be between 1 and 65535");
+            errors.add(messages.get("error.settings.sshPortRange"));
         }
         if (update.sshConnectTimeoutMs() != null && update.sshConnectTimeoutMs() <= 0) {
-            errors.add("SSH connect timeout must be positive");
+            errors.add(messages.get("error.settings.sshConnectTimeoutMustBePositive"));
         }
         if (update.authHttpTimeoutMs() != null && update.authHttpTimeoutMs() <= 0) {
-            errors.add("Auth HTTP timeout must be positive");
+            errors.add(messages.get("error.settings.authHttpTimeoutMustBePositive"));
         }
         validateDnsUpstreamServersIfPresent(update.dnsUpstreamServers(), errors);
         validateSshIfPresent(update, errors);
@@ -555,16 +560,16 @@ public class SettingsService {
         // (display = port - 5900 - see nspawnmgr-qemu-write-unit.sh), so a port below 5900 would
         // compute a negative display number.
         if ((update.qemuVncPortRangeStart() == null) != (update.qemuVncPortRangeEnd() == null)) {
-            errors.add("QEMU VNC port range must set both start and end, or neither");
+            errors.add(messages.get("error.settings.qemuVncPortRangeBothOrNeither"));
         } else if (update.qemuVncPortRangeStart() != null) {
             if (update.qemuVncPortRangeStart() < 5900 || update.qemuVncPortRangeStart() > 65535) {
-                errors.add("QEMU VNC port range start must be between 5900 and 65535");
+                errors.add(messages.get("error.settings.qemuVncPortRangeStartRange"));
             }
             if (update.qemuVncPortRangeEnd() < 5900 || update.qemuVncPortRangeEnd() > 65535) {
-                errors.add("QEMU VNC port range end must be between 5900 and 65535");
+                errors.add(messages.get("error.settings.qemuVncPortRangeEndRange"));
             }
             if (update.qemuVncPortRangeStart() > update.qemuVncPortRangeEnd()) {
-                errors.add("QEMU VNC port range start must not be after end");
+                errors.add(messages.get("error.settings.qemuVncPortRangeStartAfterEnd"));
             }
         }
 
@@ -573,7 +578,7 @@ public class SettingsService {
         }
 
         AppSettings entity = appSettingsRepository.findById(1L)
-                .orElseThrow(() -> new IllegalStateException("app_settings row (id=1) is missing"));
+                .orElseThrow(() -> new IllegalStateException(messages.get("error.settings.appSettingsRowMissing")));
         entity.setGuacamoleBaseUrl(update.guacamoleBaseUrl());
         entity.setGuacamoleDataSource(update.guacamoleDataSource());
         entity.setHostPublicAddress(update.hostPublicAddress());
@@ -627,10 +632,10 @@ public class SettingsService {
     @Transactional
     public void updateHostPublicAddress(String newAddress, User actingAdmin) {
         if (!HOSTNAME_PATTERN.matcher(newAddress).matches()) {
-            throw new IllegalArgumentException("Host public address is not a valid hostname/IP");
+            throw new IllegalArgumentException(messages.get("error.settings.hostPublicAddressInvalid"));
         }
         AppSettings entity = appSettingsRepository.findById(1L)
-                .orElseThrow(() -> new IllegalStateException("app_settings row (id=1) is missing"));
+                .orElseThrow(() -> new IllegalStateException(messages.get("error.settings.appSettingsRowMissing")));
         entity.setHostPublicAddress(newAddress);
         entity.setUpdatedAt(Instant.now());
         entity.setUpdatedByUserId(actingAdmin.getId());
@@ -675,7 +680,7 @@ public class SettingsService {
                 ssh.authPassword(username, password);
             }
         } catch (IOException e) {
-            errors.add("SSH connection failed: " + e.getMessage());
+            errors.add(messages.get("error.settings.sshConnectionFailed", e.getMessage()));
         }
     }
 
@@ -722,7 +727,7 @@ public class SettingsService {
             return;
         }
         if (!probeReachable(url)) {
-            errors.add(label + " (" + url + ") is not reachable");
+            errors.add(messages.get("error.settings.notReachable", label, url));
         }
     }
 
@@ -745,7 +750,7 @@ public class SettingsService {
         try {
             JsonPath.compile(path);
         } catch (InvalidPathException e) {
-            errors.add(label + " ('" + path + "') is not a valid JsonPath expression");
+            errors.add(messages.get("error.settings.notValidJsonPath", label, path));
         }
     }
 
@@ -764,7 +769,7 @@ public class SettingsService {
         for (String entry : value.split(",", -1)) {
             String server = entry.strip();
             if (server.isEmpty() || !isValidIpLiteral(server)) {
-                errors.add("DNS upstream servers must be a comma-separated list of IP addresses ('" + entry + "' is not valid)");
+                errors.add(messages.get("error.settings.dnsUpstreamServersInvalid", entry));
             }
         }
     }

@@ -9,6 +9,7 @@ import com.nspawnmgr.cli.MachineStatus;
 import com.nspawnmgr.config.SshProperties;
 import com.nspawnmgr.domain.ContainerBackend;
 import com.nspawnmgr.service.SettingsService;
+import com.nspawnmgr.service.UserMessages;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
@@ -31,11 +32,14 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
     private final SshRemoteExecutor ssh;
     private final SshProperties sshProperties;
     private final SettingsService settingsService;
+    private final UserMessages messages;
 
-    public RealContainerCliExecutor(SshRemoteExecutor ssh, SshProperties sshProperties, SettingsService settingsService) {
+    public RealContainerCliExecutor(SshRemoteExecutor ssh, SshProperties sshProperties, SettingsService settingsService,
+                                     UserMessages messages) {
         this.ssh = ssh;
         this.sshProperties = sshProperties;
         this.settingsService = settingsService;
+        this.messages = messages;
     }
 
     @Override
@@ -150,8 +154,8 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
             if (result.success()) {
                 return;
             }
-            lastFailure = new ContainerCliException("Command failed (%d): machinectl remove %s -- %s"
-                    .formatted(result.exitCode(), machineName, result.stderr()));
+            lastFailure = new ContainerCliException(messages.get("error.cli.commandFailed",
+                    result.exitCode(), "machinectl remove " + machineName, result.stderr()));
             if (!result.stderr().contains("Device or resource busy")) {
                 throw lastFailure;
             }
@@ -160,12 +164,12 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
         throw lastFailure;
     }
 
-    private static void sleep(Duration duration) {
+    private void sleep(Duration duration) {
         try {
             Thread.sleep(duration.toMillis());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ContainerCliException("Interrupted while waiting to retry machinectl remove", e);
+            throw new ContainerCliException(messages.get("error.cli.interruptedRetryingMachinectlRemove"), e);
         }
     }
 
@@ -210,7 +214,7 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
             // arbitrary commands inside the guest OS. Scripts/package-install are simply absent from
             // qemu-detail.html (see the UI layer), so this should never actually be reachable; this
             // exists so a latent caller bug fails loudly instead of silently misbehaving as nspawn.
-            throw new ContainerCliException("QEMU has no in-guest exec mechanism (runInMachine is unsupported for this backend)");
+            throw new ContainerCliException(messages.get("error.cli.qemuNoExecMechanism", "runInMachine"));
         }
         char[] password = sudoPasswordOverride != null ? sudoPasswordOverride : sshProperties.password().toCharArray();
         List<String> full = new ArrayList<>(backend == ContainerBackend.PODMAN
@@ -338,8 +342,8 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
         String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(), "nspawnmgr-resolve-hostname.sh").toString();
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15), List.of(scriptPath, hostname));
         if (!result.success() || result.stdout().isBlank()) {
-            throw new ContainerCliException("Could not resolve hostname '" + hostname + "' on the host (exit "
-                    + result.exitCode() + "): " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.couldNotResolveHostname",
+                    hostname, result.exitCode(), result.stderr()));
         }
         return result.stdout().trim();
     }
@@ -349,8 +353,8 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
         String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(), "nspawnmgr-get-machine-boot-settings.sh").toString();
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15), List.of(scriptPath, machineName));
         if (!result.success()) {
-            throw new ContainerCliException("Could not read boot settings for '" + machineName + "' (exit "
-                    + result.exitCode() + "): " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.couldNotReadBootSettings",
+                    machineName, result.exitCode(), result.stderr()));
         }
         Map<String, String> values = new HashMap<>();
         for (String line : result.stdout().lines().toList()) {
@@ -369,8 +373,8 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
         String scriptPath = Path.of(settingsService.nspawnPrivilegedScriptsDir(), "nspawnmgr-set-machine-autostart.sh").toString();
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15), List.of(scriptPath, machineName, String.valueOf(autoStart)));
         if (!result.success()) {
-            throw new ContainerCliException("Could not set auto-start for '" + machineName + "' (exit "
-                    + result.exitCode() + "): " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.couldNotSetAutoStart",
+                    machineName, result.exitCode(), result.stderr()));
         }
     }
 
@@ -382,8 +386,8 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
                 : List.of(scriptPath, machineName, requiresMachineName);
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(15), command);
         if (!result.success()) {
-            throw new ContainerCliException("Could not set '" + machineName + "'s required machine (exit "
-                    + result.exitCode() + "): " + result.stderr());
+            throw new ContainerCliException(messages.get("error.cli.couldNotSetRequiredMachine",
+                    machineName, result.exitCode(), result.stderr()));
         }
     }
 
@@ -408,7 +412,7 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
     @Override
     public AbortableScriptRun startScript(String machineName, ContainerBackend backend, String scriptBody, Duration timeout) {
         if (backend == ContainerBackend.QEMU) {
-            throw new ContainerCliException("QEMU has no in-guest exec mechanism (startScript is unsupported for this backend)");
+            throw new ContainerCliException(messages.get("error.cli.qemuNoExecMechanism", "startScript"));
         }
         if (backend == ContainerBackend.PODMAN) {
             String pidFile = "/tmp/nspawnmgr-script-" + UUID.randomUUID() + ".pid";
@@ -475,8 +479,8 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
     private void run(Duration timeout, String... command) {
         CommandResult result = ssh.execNoPasswordSudo(timeout, List.of(command));
         if (!result.success()) {
-            throw new ContainerCliException("Command failed (%d): %s -- %s"
-                    .formatted(result.exitCode(), String.join(" ", command), result.stderr()));
+            throw new ContainerCliException(messages.get("error.cli.commandFailed",
+                    result.exitCode(), String.join(" ", command), result.stderr()));
         }
     }
 }

@@ -2,27 +2,27 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8"/>
-    <title>nspawnmgr — Full log</title>
+    <title th:text="${t.get('page.logsFull.titleTag')}">nspawnmgr — Full log</title>
     <link rel="stylesheet" th:href="@{/css/app.css}"/>
     <script th:src="@{/js/theme-init.js}"></script>
 </head>
 <body th:attr="data-base-path=@{/}" th:data-is-admin="${currentUser.role.name() == 'ADMIN'}">
 <div th:replace="~{fragments/app-shell :: shell(
-        title='Full log', subtitle='Everything currently in the application log, plus any rotated files',
+        title=${t.get('page.logsFull.title')}, subtitle=${t.get('page.logsFull.subtitle')},
         activeNav='log', currentUser=${currentUser}, addMenu=null,
         content=~{::#page-content})}">
     <div id="page-content">
-        <p><a th:href="@{/logs}">&laquo; Back to last 100 lines</a></p>
-        <p><a id="btn-download" href="#">Download</a></p>
-        <pre id="log-content">Loading...</pre>
+        <p><a th:href="@{/logs}" th:text="${t.get('page.logsFull.backToLast100')}">&laquo; Back to last 100 lines</a></p>
+        <p><a id="btn-download" href="#" th:text="${t.get('button.download')}">Download</a></p>
+        <pre id="log-content" th:text="${t.get('js.status.loading')}">Loading...</pre>
 
-        <h2>Rotated logs</h2>
+        <h2 th:text="${t.get('page.logsFull.rotatedLogs')}">Rotated logs</h2>
         <div class="table-card">
         <table>
             <thead>
             <tr>
-                <th>Filename</th>
-                <th>Actions</th>
+                <th th:text="${t.get('page.adminPackages.filename')}">Filename</th>
+                <th th:text="${t.get('page.logsFull.actions')}">Actions</th>
             </tr>
             </thead>
             <tbody id="rotated-log-list"></tbody>

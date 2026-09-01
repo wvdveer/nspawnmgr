@@ -46,7 +46,7 @@ class ContainerSessionServiceTest {
         credentialRepository = mock(ContainerCredentialRepository.class);
         provisioningService = mock(ProvisioningService.class);
         service = new ContainerSessionService(shareService, guacamoleSessionService, guacamoleAdminClient, cliExecutor,
-                credentialRepository, provisioningService);
+                credentialRepository, provisioningService, TestUserMessages.create());
 
         User user = new User("external-id");
         user.setGuacamoleUsername("someuser");

@@ -8,17 +8,17 @@ async function loadMainContent() {
     const downloadLink = document.getElementById('btn-download');
     let url;
     if (selectedFile) {
-        title.textContent = 'Log: ' + selectedFile;
+        title.textContent = t('page.logsFull.logColonFile', selectedFile);
         url = `${basePath}/api/logs/rotated/${encodeURIComponent(selectedFile)}`;
         downloadLink.style.display = 'none';
     } else {
-        title.textContent = 'Full log (current)';
+        title.textContent = t('page.logsFull.fullLogCurrent');
         url = `${basePath}/api/logs/current`;
         downloadLink.href = `${basePath}/api/logs/current/download`;
     }
     const response = await fetch(url);
     if (!response.ok) {
-        content.textContent = 'Failed: ' + await response.text();
+        content.textContent = t('general.failedPrefix', await response.text());
         return;
     }
     content.textContent = await response.text();
@@ -40,7 +40,7 @@ async function loadRotatedList() {
 
         const viewButton = document.createElement('button');
         viewButton.className = 'btn-primary';
-        viewButton.textContent = 'View';
+        viewButton.textContent = t('button.view');
         viewButton.addEventListener('click', () => {
             window.location.href = `${basePath}/logs/full?file=${encodeURIComponent(filename)}`;
         });
@@ -49,14 +49,14 @@ async function loadRotatedList() {
         if (isAdmin) {
             const deleteButton = document.createElement('button');
             deleteButton.className = 'btn-danger';
-            deleteButton.textContent = 'Delete';
+            deleteButton.textContent = t('button.delete');
             deleteButton.addEventListener('click', async () => {
-                if (!await window.appDialog.confirm(`Delete ${filename}?`)) {
+                if (!await window.appDialog.confirm(t('page.logsFull.confirmDelete', filename))) {
                     return;
                 }
                 const deleteResponse = await fetch(`${basePath}/api/logs/rotated/${encodeURIComponent(filename)}`, { method: 'DELETE' });
                 if (!deleteResponse.ok) {
-                    await window.appDialog.alert('Failed: ' + await deleteResponse.text());
+                    await window.appDialog.alert(t('general.failedPrefix', await deleteResponse.text()));
                     return;
                 }
                 loadRotatedList();

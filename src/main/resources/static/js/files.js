@@ -57,7 +57,7 @@ function renderBreadcrumb(path) {
     // root, and SFTP browsing is unrestricted (not capped at the connecting account's home
     // directory - see RemoteSftpBrowser's own javadoc), so "/" is a real, reachable destination
     // there too, not a misleading label the way a home-directory cap would have made it.
-    rootLink.textContent = '/ (root)';
+    rootLink.textContent = t('page.files.rootLabel');
     rootLink.addEventListener('click', (e) => { e.preventDefault(); loadDirectory(rootPath); });
     nav.appendChild(rootLink);
     if (path === rootPath || !path) {
@@ -140,7 +140,7 @@ function showBrowsePanel(username) {
 function handleDisconnected(response) {
     if (needsCredentials && response.status === 409) {
         homeDirectory = '';
-        showConnectPanel('Not connected - enter a credential and connect again.');
+        showConnectPanel(t('page.files.notConnected'));
         return true;
     }
     return false;
@@ -172,7 +172,7 @@ async function loadDirectory(path) {
         return;
     }
     if (!response.ok) {
-        document.getElementById('files-status').textContent = 'Failed to list directory: ' + await response.text();
+        document.getElementById('files-status').textContent = t('page.files.failedToListDirectory', await response.text());
         return;
     }
     renderEntries(await response.json());
@@ -180,7 +180,7 @@ async function loadDirectory(path) {
 
 async function uploadFile(file) {
     if (file.size > MAX_UPLOAD_BYTES) {
-        await window.appDialog.alert(`"${file.name}" is too large (${formatBytes(file.size)}). The upload limit is 10GB.`);
+        await window.appDialog.alert(t('page.files.tooLarge', file.name, formatBytes(file.size)));
         return;
     }
     const formData = new FormData();
@@ -195,7 +195,7 @@ async function uploadFile(file) {
         return;
     }
     if (!response.ok) {
-        await window.appDialog.alert('Upload failed: ' + await response.text());
+        await window.appDialog.alert(t('page.files.uploadFailed', await response.text()));
         return;
     }
     loadDirectory(currentPath);
@@ -205,10 +205,10 @@ async function connect() {
     const username = document.getElementById('connect-username').value;
     const password = document.getElementById('connect-password').value;
     if (!username || !password) {
-        document.getElementById('connect-status').textContent = 'Enter both a username and password.';
+        document.getElementById('connect-status').textContent = t('page.files.enterUsernameAndPassword');
         return;
     }
-    document.getElementById('connect-status').textContent = 'Connecting...';
+    document.getElementById('connect-status').textContent = t('page.files.connecting');
     const response = await fetch(`${basePath}/api/containers/${containerId}/files/connect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -216,7 +216,7 @@ async function connect() {
     });
     document.getElementById('connect-password').value = '';
     if (!response.ok) {
-        document.getElementById('connect-status').textContent = 'Connection failed: ' + await response.text();
+        document.getElementById('connect-status').textContent = t('page.files.connectionFailed', await response.text());
         return;
     }
     homeDirectory = (await response.json()).homeDirectory;
