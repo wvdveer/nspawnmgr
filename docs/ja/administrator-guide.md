@@ -1590,7 +1590,7 @@ mvn -f packaging/nspawnmgr-deb/pom.xml package   # -> packaging/nspawnmgr-deb/ta
 **それをインストールする：**
 
 ```bash
-sudo apt install ./nspawnmgr_0.4.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
+sudo apt install ./nspawnmgr_0.5.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
 ```
 
 `tomcat9`も`guacd`/`guacamole-tomcat`も、このパッケージの`Depends:`には含まれません —
@@ -1796,7 +1796,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_ARCH_PKG=1 tools/scripts/build-all.sh   # needs `makepkg` on PATH - a real Arch host, or the
                                                # archlinux/devtools container image
 
-sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.4.0-1-any.pkg.tar.zst
+sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.5.0-1-any.pkg.tar.zst
 ```
 
 ### Fedora/RHEL（RPM）へのインストール
@@ -1854,7 +1854,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_RPM=1 tools/scripts/build-all.sh   # needs a real `rpmbuild` binary (`rpm-build` package) -
                                           # a real Fedora/RHEL host, no cross-platform equivalent
 
-sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.4.0-1.noarch.rpm
+sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.5.0-1.noarch.rpm
 ```
 
 ### オプションB：ソースからビルドして手動でデプロイ

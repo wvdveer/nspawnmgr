@@ -3,11 +3,46 @@
 <head>
     <meta charset="UTF-8"/>
     <title th:text="${container.name} + '(' + ${protocol} + ') - nspawnmgr'">session</title>
-    <style>html, body { margin: 0; height: 100%; } iframe { border: 0; width: 100%; height: 100%; }</style>
+    <style>
+        html, body { margin: 0; height: 100%; }
+        iframe { border: 0; flex: 1 1 auto; }
+        #session-layout { display: flex; height: 100%; }
+        /* Placement is read off data-keystroke-panel-placement (set from the container/host's own
+           setting, see KeystrokeButtonPanelPlacement) rather than a server-side th:class - keeps the
+           enum's three states in one place, matched by session.js for the fetch-or-skip decision. */
+        body[data-keystroke-panel-placement="NONE"] #keystroke-button-panel { display: none; }
+        body[data-keystroke-panel-placement="ABOVE"] #session-layout { flex-direction: column; }
+        body[data-keystroke-panel-placement="LEFT"] #session-layout { flex-direction: row; }
+        #keystroke-button-panel {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            padding: 0.5rem;
+            background: #23272e;
+            flex: 0 0 auto;
+        }
+        body[data-keystroke-panel-placement="LEFT"] #keystroke-button-panel { flex-direction: column; width: 10rem; }
+        #keystroke-button-panel button {
+            padding: 0.4rem 0.7rem;
+            cursor: pointer;
+        }
+        #keystroke-button-panel-status { color: #e0b000; font: 0.8rem sans-serif; margin: 0 0.5rem; }
+    </style>
 </head>
 <body th:data-container-id="${container.id}" th:data-protocol="${protocol}"
-      th:attr="data-base-path=@{/}">
-<iframe id="guac-frame" th:title="${t.get('page.session.iframeTitle')}"></iframe>
+      th:attr="data-base-path=@{/},data-keystroke-panel-placement=${container.keystrokeButtonPanelPlacement}">
+<div id="session-layout">
+    <div id="keystroke-button-panel">
+        <span id="keystroke-button-panel-status"></span>
+    </div>
+    <iframe id="guac-frame" th:title="${t.get('page.session.iframeTitle')}"></iframe>
+</div>
+<script th:inline="javascript">
+    /*<![CDATA[*/
+    window.NSPAWNMGR_I18N = /*[[${translations}]]*/ {};
+    /*]]>*/
+</script>
+<script th:src="@{/js/i18n.js}"></script>
 <script th:src="@{/js/session.js}"></script>
 </body>
 </html>

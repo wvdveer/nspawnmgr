@@ -213,7 +213,7 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
     }
 
     @Override
-    public void createPodmanContainer(String templateSourcePath, String containerName, String command, char[] sudoPasswordOverride) {
+    public void createPodmanContainer(String templateSourcePath, String containerName, String command, boolean systemdEnabled, char[] sudoPasswordOverride) {
         char[] password = sudoPasswordOverride != null ? sudoPasswordOverride : settingsService.sshPassword().toCharArray();
         Path source = Path.of(settingsService.nspawnTemplatesDir(), ContainerBackend.PODMAN.templateSubdirectory(),
                 templateSourcePath + ".tar");
@@ -223,8 +223,10 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
         // caller in this codebase. Blank/null becomes "" - the script's own [ -n ] check treats that
         // as "no override, trust the image's own CMD".
         String commandArg = command != null ? command : "";
+        // "1"/"" (not "true"/"false") - matches the script's own [ "$4" = "1" ] check.
+        String systemdArg = systemdEnabled ? "1" : "";
         CommandResult result = ssh.execWithSudoPassword(PODMAN_TEMPLATE_TIMEOUT,
-                List.of(wrapperScript("nspawnmgr-podman-create-container.sh"), source.toString(), containerName, commandArg),
+                List.of(wrapperScript("nspawnmgr-podman-create-container.sh"), source.toString(), containerName, commandArg, systemdArg),
                 null, password);
         if (!result.success()) {
             throw new ContainerCliException(messages.get("error.cli.failedToCreatePodmanContainer",

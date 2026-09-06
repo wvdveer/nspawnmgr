@@ -57,6 +57,51 @@
         <input type="number" id="vncPort" name="vncPort" min="1" max="65535"
                th:value="${host != null and host.externalVncPort != null ? host.externalVncPort : 5900}"/>
     </div>
+
+    <div class="field">
+        <label for="rdp-security-select" th:text="${t.get('page.detail.rdpSecurityLabel')}">RDP security</label>
+        <select id="rdp-security-select">
+            <option th:each="mode : ${T(com.nspawnmgr.domain.RdpSecurityMode).values()}" th:value="${mode}" th:text="${mode}"
+                    th:selected="${host != null ? mode == host.rdpSecurity : mode.name() == 'ANY'}">mode</option>
+        </select>
+        <p class="hint" th:text="${t.get('page.detail.rdpSecurityHint')}">Guacamole's RDP negotiation mode. Leave on ANY unless RDP fails to connect —
+            some xrdp versions (e.g. Fedora's) reject ANY for reasons unrelated to credentials; RDP
+            (classic security) is the known workaround. Applies immediately if RDP is already
+            connected, no restart needed.</p>
+    </div>
+
+    <div class="field">
+        <label for="keystroke-panel-placement-select" th:text="${t.get('page.detail.keystrokeButtonPanelPlacementLabel')}">Keystroke Button Panel</label>
+        <select id="keystroke-panel-placement-select">
+            <option th:each="p : ${T(com.nspawnmgr.domain.KeystrokeButtonPanelPlacement).values()}" th:value="${p}" th:text="${p}"
+                    th:selected="${host != null ? p == host.keystrokeButtonPanelPlacement : p.name() == 'NONE'}">placement</option>
+        </select>
+        <p class="hint" th:text="${t.get('page.detail.keystrokeButtonPanelPlacementHint')}">Where the session page shows buttons for admin-configured key sequences (see
+            /admin/key-sequences) - key combinations a browser can never deliver as a real keypress,
+            Ctrl+Alt+Delete being the classic example. NONE hides it.</p>
+    </div>
+
+    <div class="field">
+        <label for="description" th:text="${t.get('field.description')}">Description</label>
+        <input type="text" id="description" th:placeholder="${t.get('field.descriptionPlaceholder')}"
+               th:value="${host != null ? host.description : ''}"/>
+    </div>
+
+    <div class="field">
+        <label th:text="${t.get('page.detail.sharedWithHeading')}">Shared with</label>
+        <ul id="share-list" class="list-plain">
+            <li th:each="s : ${shares}" th:if="${s.user.id != host.owner.id}">
+                <span th:text="${s.user.username}">user</span>
+                <button type="button" class="btn-remove-share btn-danger" th:attr="data-user-id=${s.user.id}" th:text="${t.get('button.remove')}">Remove</button>
+            </li>
+        </ul>
+        <div class="inline-controls">
+            <input type="text" id="share-username" th:placeholder="${t.get('field.usernamePlaceholder')}"/>
+            <button type="button" id="btn-add-share" class="btn-primary" th:text="${t.get('button.add')}">Add</button>
+        </div>
+        <p class="hint" th:if="${host == null}" th:text="${t.get('page.hostForm.sharesAppliedOnSave')}">Applied once this host is saved.</p>
+    </div>
+
     <button type="submit" class="btn-primary" th:text="${t.get('button.save')}">Save</button>
 </form>
 <p id="status" class="status-message"></p>

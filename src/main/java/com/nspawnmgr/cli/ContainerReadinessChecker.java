@@ -14,7 +14,11 @@ public interface ContainerReadinessChecker {
      * @param privateKeyPem the container's decrypted SSH private key (PEM), from its {@code SSH_KEY}
      *                       {@code ContainerCredential}
      * @param accountName    the Linux account inside the container that key authenticates as
-     * @param checkRdp       whether to also check RDP (xrdp) readiness over that same SSH session
+     * @param checkRdp       whether to also check RDP readiness over that same SSH session - the
+     *                        actual service checked depends on the container's desktop manager
+     *                        (xrdp for X11 managers, gnome-remote-desktop for GNOME - see
+     *                        {@link com.nspawnmgr.cli.real.RealContainerReadinessChecker}'s own
+     *                        implementation)
      */
     Readiness check(Container container, String privateKeyPem, String accountName, boolean checkRdp);
 

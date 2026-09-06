@@ -21,7 +21,7 @@
         <label for="templateId" th:text="${t.get('field.template')}">Template</label>
         <select id="templateId" name="templateId">
             <option th:each="tpl : ${templates}" th:value="${tpl.id}" th:text="${tpl.name}"
-                    th:attr="data-rdp-state=${tpl.rdpState}">template</option>
+                    th:attr="data-rdp-state=${tpl.rdpState},data-package-manager=${tpl.packageManager}">template</option>
         </select>
     </div>
     <div class="field">
@@ -41,9 +41,19 @@
     <div class="field">
         <label for="desktopManager" th:text="${t.get('field.desktopManager')}">Desktop manager</label>
         <select id="desktopManager" name="desktopManager" disabled>
-            <option value="NONE" th:text="${t.get('field.desktopManagerNone')}">None</option>
-            <option value="KDE_STANDARD">KDE (standard)</option>
-            <option value="XFCE4">Xfce</option>
+            <option value="NONE_X11" th:text="${t.get('field.desktopManagerNone')}">None (X11)</option>
+            <option value="KDE_STANDARD_X11" th:text="${t.get('field.desktopManagerKdeStandard')}">KDE (standard, X11)</option>
+            <option value="XFCE4_X11" th:text="${t.get('field.desktopManagerXfce4')}">Xfce (X11)</option>
+            <option value="NONE_WAYLAND" data-wayland="true" th:text="${t.get('field.desktopManagerNoneWayland')}">None (Wayland)</option>
+            <option value="SWAY" data-wayland="true" th:text="${t.get('field.desktopManagerSway')}">Sway (Wayland)</option>
+            <option value="WAYFIRE" data-wayland="true" th:text="${t.get('field.desktopManagerWayfire')}">Wayfire (Wayland)</option>
+        </select>
+    </div>
+    <div class="field">
+        <label for="keystrokeButtonPanelPlacement" th:text="${t.get('page.detail.keystrokeButtonPanelPlacementLabel')}">Keystroke Button Panel</label>
+        <select id="keystrokeButtonPanelPlacement" name="keystrokeButtonPanelPlacement">
+            <option th:each="p : ${T(com.nspawnmgr.domain.KeystrokeButtonPanelPlacement).values()}" th:value="${p}" th:text="${p}"
+                    th:selected="${p.name() == 'NONE'}">placement</option>
         </select>
     </div>
     <button type="submit" class="btn-primary" th:text="${t.get('button.create')}">Create</button>

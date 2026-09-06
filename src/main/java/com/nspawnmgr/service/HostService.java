@@ -2,6 +2,8 @@ package com.nspawnmgr.service;
 
 import com.nspawnmgr.domain.Container;
 import com.nspawnmgr.domain.ContainerKind;
+import com.nspawnmgr.domain.KeystrokeButtonPanelPlacement;
+import com.nspawnmgr.domain.RdpSecurityMode;
 import com.nspawnmgr.domain.User;
 import com.nspawnmgr.guacamole.GuacamoleAdminClient;
 import com.nspawnmgr.repository.ContainerRepository;
@@ -73,10 +75,14 @@ public class HostService {
     @Transactional
     public Container create(String name, String hostname, String ownerUsername,
                              boolean sshEnabled, int sshPort, boolean rdpEnabled, int rdpPort,
-                             boolean vncEnabled, int vncPort) {
+                             boolean vncEnabled, int vncPort, String description, RdpSecurityMode rdpSecurity,
+                             KeystrokeButtonPanelPlacement keystrokeButtonPanelPlacement) {
         requireNameAvailable(name, null);
         User owner = requireUser(ownerUsername);
         Container container = Container.external(name, owner, hostname);
+        container.setDescription(description);
+        container.setRdpSecurity(rdpSecurity != null ? rdpSecurity : RdpSecurityMode.ANY);
+        container.setKeystrokeButtonPanelPlacement(keystrokeButtonPanelPlacement != null ? keystrokeButtonPanelPlacement : KeystrokeButtonPanelPlacement.NONE);
         applyPortsAndSync(container, sshEnabled, sshPort, rdpEnabled, rdpPort, vncEnabled, vncPort);
         Container saved = containerRepository.save(container);
         shareService.grantAccess(saved, owner);
@@ -86,13 +92,17 @@ public class HostService {
     @Transactional
     public Container update(Long id, String name, String hostname, String ownerUsername,
                              boolean sshEnabled, int sshPort, boolean rdpEnabled, int rdpPort,
-                             boolean vncEnabled, int vncPort) {
+                             boolean vncEnabled, int vncPort, String description, RdpSecurityMode rdpSecurity,
+                             KeystrokeButtonPanelPlacement keystrokeButtonPanelPlacement) {
         Container container = getById(id);
         requireNameAvailable(name, id);
         User owner = requireUser(ownerUsername);
         container.setName(name);
         container.setHostname(hostname);
         container.setOwner(owner);
+        container.setDescription(description);
+        container.setRdpSecurity(rdpSecurity != null ? rdpSecurity : RdpSecurityMode.ANY);
+        container.setKeystrokeButtonPanelPlacement(keystrokeButtonPanelPlacement != null ? keystrokeButtonPanelPlacement : KeystrokeButtonPanelPlacement.NONE);
         applyPortsAndSync(container, sshEnabled, sshPort, rdpEnabled, rdpPort, vncEnabled, vncPort);
         container.touch();
         Container saved = containerRepository.save(container);
@@ -118,13 +128,13 @@ public class HostService {
         container.setExternalVncPort(vncEnabled ? vncPort : null);
         container.setVncEnabled(vncEnabled);
 
-        String sshId = syncConnection(container.getGuacSshConnectionId(), container.getName() + "-ssh",
+        String sshId = syncConnection(container, container.getGuacSshConnectionId(), container.getName() + "-ssh",
                 sshEnabled, container.getHostname(), sshPort, Protocol.SSH);
         container.setGuacSshConnectionId(sshId);
-        String rdpId = syncConnection(container.getGuacRdpConnectionId(), container.getName() + "-rdp",
+        String rdpId = syncConnection(container, container.getGuacRdpConnectionId(), container.getName() + "-rdp",
                 rdpEnabled, container.getHostname(), rdpPort, Protocol.RDP);
         container.setGuacRdpConnectionId(rdpId);
-        String vncId = syncConnection(container.getGuacVncConnectionId(), container.getName() + "-vnc",
+        String vncId = syncConnection(container, container.getGuacVncConnectionId(), container.getName() + "-vnc",
                 vncEnabled, container.getHostname(), vncPort, Protocol.VNC);
         container.setGuacVncConnectionId(vncId);
     }
@@ -133,11 +143,12 @@ public class HostService {
 
     /**
      * Creates, updates, or deletes the Guacamole connection for one protocol, per {@code enabled}.
-     * RDP always uses {@code security=any} here - the per-container {@code rdpSecurity} setting
-     * (see {@link com.nspawnmgr.domain.RdpSecurityMode}) only applies to MANAGED containers; an
-     * EXTERNAL host isn't backed by nspawnmgr's own provisioning and has no such field to consult.
+     * RDP uses {@code container.getRdpSecurity()} (see {@link com.nspawnmgr.domain.RdpSecurityMode})
+     * - confirmed live this used to be hardcoded to {@code security=any} unconditionally here, which
+     * silently reset a Host's own RDP security setting back to ANY on every single Edit Host save,
+     * even after using the "RDP security" control on this same Host's detail page to change it.
      */
-    private String syncConnection(String existingId, String connectionName, boolean enabled,
+    private String syncConnection(Container container, String existingId, String connectionName, boolean enabled,
                                    String hostname, int port, Protocol protocol) {
         if (!enabled) {
             deleteConnection(existingId);
@@ -146,13 +157,15 @@ public class HostService {
         if (existingId == null) {
             return switch (protocol) {
                 case SSH -> guacamoleAdminClient.createSshConnectionPromptCredentials(connectionName, hostname, port);
-                case RDP -> guacamoleAdminClient.createRdpConnectionPromptCredentials(connectionName, hostname, port, "any");
+                case RDP -> guacamoleAdminClient.createRdpConnectionPromptCredentials(connectionName, hostname, port,
+                        container.getRdpSecurity().guacamoleValue());
                 case VNC -> guacamoleAdminClient.createVncConnectionPromptCredentials(connectionName, hostname, port);
             };
         }
         switch (protocol) {
             case SSH -> guacamoleAdminClient.updateSshConnectionPromptCredentials(existingId, connectionName, hostname, port);
-            case RDP -> guacamoleAdminClient.updateRdpConnectionPromptCredentials(existingId, connectionName, hostname, port, "any");
+            case RDP -> guacamoleAdminClient.updateRdpConnectionPromptCredentials(existingId, connectionName, hostname, port,
+                    container.getRdpSecurity().guacamoleValue());
             case VNC -> guacamoleAdminClient.updateVncConnectionPromptCredentials(existingId, connectionName, hostname, port);
         }
         return existingId;

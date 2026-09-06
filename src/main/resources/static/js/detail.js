@@ -141,12 +141,13 @@ document.getElementById('btn-save-description')?.addEventListener('click', async
 
 document.getElementById('btn-save-pod-command')?.addEventListener('click', async () => {
     const command = document.getElementById('pod-command').value;
+    const systemdEnabled = document.getElementById('pod-systemd-enabled').checked;
     const button = document.getElementById('btn-save-pod-command');
     button.disabled = true;
     const response = await fetch(`${basePath}/api/containers/${containerId}/pod-command`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command }),
+        body: JSON.stringify({ command, systemdEnabled }),
     });
     if (!response.ok) {
         button.disabled = false;
@@ -230,6 +231,20 @@ document.getElementById('btn-save-rdp-security')?.addEventListener('click', asyn
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ security }),
+    });
+    if (!response.ok) {
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
+        return;
+    }
+    window.location.reload();
+});
+
+document.getElementById('btn-save-keystroke-panel-placement')?.addEventListener('click', async () => {
+    const placement = document.getElementById('keystroke-panel-placement-select').value;
+    const response = await fetch(`${basePath}/api/containers/${containerId}/keystroke-button-panel-placement`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ placement }),
     });
     if (!response.ok) {
         await window.appDialog.alert(t('general.failedPrefix', await response.text()));

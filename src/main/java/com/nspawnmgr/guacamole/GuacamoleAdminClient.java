@@ -165,6 +165,31 @@ public class GuacamoleAdminClient {
     }
 
     /**
+     * For nspawnmgr's own managed {@code NONE_WAYLAND} VNC sessions (cage+wayvnc) - unlike the
+     * password-protected {@link #createVncConnection(String, String, int, String)} above, no
+     * "password" parameter is set at all (a genuinely absent one, not an empty string - Guacamole's
+     * VNC support treats it as optional either way). wayvnc itself offers no classic RFB password
+     * auth (a feature request for it was explicitly closed "not planned" upstream - only
+     * unauthenticated access or a TLS/VeNCrypt scheme guacd doesn't implement at all), so this
+     * relies purely on network-level isolation - the container's internal address is only reachable
+     * from guacd inside the self-hosted machine's own bridge, never exposed directly.
+     */
+    public String createVncConnection(String connectionName, String hostname, int port) {
+        Map<String, Object> parameters = new HashMap<>();
+        parameters.put("hostname", hostname);
+        parameters.put("port", String.valueOf(port));
+        return createConnection(connectionName, "vnc", parameters);
+    }
+
+    /** As {@link #createVncConnection(String, String, int)}, re-pointing an existing connection. */
+    public void updateVncConnection(String connectionId, String connectionName, String hostname, int port) {
+        Map<String, Object> parameters = new HashMap<>();
+        parameters.put("hostname", hostname);
+        parameters.put("port", String.valueOf(port));
+        updateConnection(connectionId, connectionName, "vnc", parameters);
+    }
+
+    /**
      * For admin-configured external hosts: no username/password/private-key parameter is set, so
      * Guacamole prompts the connecting user for credentials interactively instead of nspawnmgr
      * having to generate/store any.

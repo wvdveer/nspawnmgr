@@ -40,6 +40,7 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /** Orchestrates the full container create flow: clone, network, boot, provision, register in Guacamole, grant owner. */
@@ -50,6 +51,17 @@ public class ProvisioningService {
 
     /** Standard Linux username rules - matches ContainerUserService's own copy of this pattern. */
     private static final Pattern USERNAME_PATTERN = Pattern.compile("^[a-z_][a-z0-9_-]{0,31}$");
+
+    /** The Wayland desktop managers that use the wlroots-based `cage`/`sway`/`wayfire` + `wayvnc`
+     *  VNC mechanism (see ProvisioningService's own waylandVncUnitInstallCommand) and therefore
+     *  need a wlroots build new enough to advertise wayvnc's virtual-pointer protocol - see
+     *  createPending's own APT-gate comment for the confirmed-live Debian bookworm gap this works
+     *  around (WAYFIRE confirmed catalog-level to depend on the identical too-old libwlroots10 on
+     *  Debian bookworm - see DesktopManager's own javadoc). Deliberately not a blanket
+     *  DesktopManager.isWayland() check: GNOME and HYPRLAND are both downgraded unconditionally
+     *  instead, for their own different reasons - see their own javadoc and the unconditional
+     *  downgrade block in createPending below. */
+    private static final Set<DesktopManager> NEEDS_RECENT_WLROOTS_FOR_INPUT = Set.of(DesktopManager.NONE_WAYLAND, DesktopManager.SWAY, DesktopManager.WAYFIRE);
 
     private final ContainerRepository containerRepository;
     private final ContainerCredentialRepository containerCredentialRepository;
@@ -64,6 +76,7 @@ public class ProvisioningService {
     private final SettingsService settingsService;
     private final PackageCacheService packageCacheService;
     private final PamCredentialAuthService pamCredentialAuthService;
+    private final ProvisioningCommands commands;
     private final SecureRandom secureRandom = new SecureRandom();
     private final UserMessages messages;
 
@@ -80,6 +93,7 @@ public class ProvisioningService {
                                 SettingsService settingsService,
                                 PackageCacheService packageCacheService,
                                 PamCredentialAuthService pamCredentialAuthService,
+                                ProvisioningCommands commands,
                                 UserMessages messages) {
         this.containerRepository = containerRepository;
         this.containerCredentialRepository = containerCredentialRepository;
@@ -94,19 +108,70 @@ public class ProvisioningService {
         this.settingsService = settingsService;
         this.packageCacheService = packageCacheService;
         this.pamCredentialAuthService = pamCredentialAuthService;
+        this.commands = commands;
         this.messages = messages;
     }
 
     @Transactional
     public Container createPending(String name, Template template, User owner, boolean rdpEnabled, boolean vncEnabled,
-                                    DesktopManager desktopManager, String description, String podCommand) {
-        Container container = new Container(name, owner, template, rdpEnabled && template.getRdpState() != TemplateFeatureState.NOT_CAPABLE, description);
+                                    DesktopManager desktopManager, String description, String podCommand, boolean podSystemdEnabled) {
+        // NONE_WAYLAND and SWAY both need a wlroots build new enough to advertise the
+        // virtual-pointer protocol `wayvnc` needs for interactive input - confirmed live
+        // (way1/debian-minimal, yoga, 2026-09-02) that Debian bookworm's `cage` (0.1.4, wlroots
+        // 0.15 - the only version bookworm's own repos carry, no newer candidate) is too old, and
+        // `wayvnc` refuses to start at all rather than degrade ("Virtual Pointer protocol not
+        // supported by compositor"). Debian's own `sway` package depends on the identical
+        // libwlroots10 0.15.1-6, so it's assumed affected the same way (not yet independently
+        // confirmed live). Debian trixie has newer builds of both (matching the version that DOES
+        // work, confirmed live on Fedora 43) but no trixie-based template exists in this app yet.
+        // Rather than degrade to a view-only `wayvnc --disable-input` session, both are silently
+        // downgraded to NONE_X11 for any APT-based template (generalized by package manager, not a
+        // new per-template DB field, since APT is the only affected manager today - matches this
+        // class's existing template-driven feature-gating posture). The dropdown's own JS already
+        // excludes both for APT templates, so a genuine UI user never hits this; this is purely the
+        // defense-in-depth backstop for a direct API call bypassing it.
+        //
+        // GNOME re-descoped 2026-09-06 (was briefly re-enabled 2026-09-05 once the guacd
+        // FreeRDP2-vs-3 blocker was fixed - see DesktopManager's own javadoc) - now downgraded
+        // unconditionally again, regardless of package manager, for a genuinely different, deeper
+        // reason: live testing on BOTH Fedora (gnome-remote-desktop 49.3) and Arch (50.2) found
+        // gnome-remote-desktop's system-mode RDP NLA authentication rejects every credential
+        // identically (correct or deliberately wrong), across two distros and two major GNOME
+        // versions - a broken upstream NLA/CredSSP implementation, not anything fixable from this
+        // app's own provisioning code. Corroborated by real, currently-open upstream bug reports
+        // describing the same general class of failure (Ubuntu LP #2141992, RH Bugzilla #2189376).
+        //
+        // HYPRLAND is downgraded unconditionally too, for its own different reason - live testing
+        // (arch-hyprland/yoga, 2026-09-04) found current Hyprland (0.56.2) no longer links wlroots
+        // directly; it uses its own Aquamarine backend (0.14.0), which dropped
+        // WLR_BACKENDS=headless with no documented replacement, so backend creation just fails
+        // (`CBackend::create() failed!`) with no GPU/DRM device present. A known, currently-open,
+        // unresolved upstream regression (Hyprland issues #7753/#7917), not fixable from this app's
+        // own provisioning code.
+        //
+        // Both keep the "enum and provisioning code stay in place, just not offered in the UI,
+        // revisit if the blocker changes" treatment already established for
+        // KDE_STANDARD_WAYLAND/XFCE4_WAYLAND.
+        DesktopManager actualDesktopManager = desktopManager == DesktopManager.HYPRLAND || desktopManager == DesktopManager.GNOME
+                || (NEEDS_RECENT_WLROOTS_FOR_INPUT.contains(desktopManager) && template.getPackageManager() == PackageManager.APT)
+                ? DesktopManager.NONE_X11 : desktopManager;
+        // RDP stays X11-only for every *_WAYLAND desktop manager - xrdp/xorgxrdp has no Wayland
+        // story in this codebase (see DesktopManager's own javadoc). Silently downgraded rather
+        // than rejected outright, same posture the template-NOT_CAPABLE check right next to it
+        // already takes - the New Nspawn form's own JS disables/deselects the Wayland dropdown
+        // options the moment "Enable RDP" is checked, so a genuine UI user never hits this; this is
+        // purely the defense-in-depth backstop for a direct API call bypassing that JS.
+        //
+        boolean rdpActuallyEnabled = rdpEnabled && template.getRdpState() != TemplateFeatureState.NOT_CAPABLE
+                && !actualDesktopManager.isWayland();
+        Container container = new Container(name, owner, template, rdpActuallyEnabled, description);
         container.setVncEnabled(vncEnabled && template.getVncState() != TemplateFeatureState.NOT_CAPABLE);
-        container.setDesktopManager(desktopManager);
+        container.setDesktopManager(actualDesktopManager);
         // Meaningless for SYSTEMD_NSPAWN - stored regardless (matches packageManager's own
         // "harmless when irrelevant" convention) rather than validating the backend here, since the
         // web form itself only ever offers this field on the New Pod page.
         container.setPodCommand(podCommand);
+        container.setPodSystemdEnabled(podSystemdEnabled);
         return containerRepository.save(container);
     }
 
@@ -233,7 +298,7 @@ public class ProvisioningService {
             containerRepository.save(container);
 
             provisionSsh(container, sudoPasswordOverride);
-            if (container.getDesktopManager() != DesktopManager.NONE) {
+            if (container.getDesktopManager() != DesktopManager.NONE_X11) {
                 // Installed once, shared between RDP/VNC - either needs the desktop environment
                 // already present before it can start a session that launches into it.
                 downloadAndRegister(container,
@@ -289,8 +354,12 @@ public class ProvisioningService {
             // mechanism (see plan's "explicitly out of scope for pods" list); a podman container on
             // nspawnbr0 already has real network access via netavark, nothing to configure.
             filesystemProvisioner.createPodmanContainer(container.getTemplate().getSourcePath(), container.getName(),
-                    container.getPodCommand(), sudoPasswordOverride);
+                    container.getPodCommand(), container.isPodSystemdEnabled(), sudoPasswordOverride);
             cliExecutor.start(container.getName(), container.getBackend());
+
+            if (container.isPodSystemdEnabled()) {
+                patchPamLoginuidForPodmanSsh(container, sudoPasswordOverride);
+            }
 
             shareService.grantAccess(container, container.getOwner());
             // ContainerAccessService's reachability-gated enableSsh/Rdp/Vnc (a pod's whole access
@@ -319,6 +388,27 @@ public class ProvisioningService {
     }
 
     /**
+     * A real init system under {@code --systemd=always} (see {@link Container#isPodSystemdEnabled})
+     * genuinely runs sshd as a proper service, unlike a bare pod command - but its PAM stack's
+     * {@code pam_loginuid.so} (present by default in Fedora/RHEL-family {@code /etc/pam.d/sshd})
+     * needs {@code CAP_AUDIT_CONTROL} to write {@code /proc/self/loginuid}, which podman doesn't
+     * grant even under {@code --systemd=always}. Confirmed live (fed-way-pod-1, yoga, 2026-09-03):
+     * every SSH login accepted the password, showed the login banner, then disconnected
+     * immediately - {@code journalctl -u sshd} showed {@code pam_loginuid(sshd:session): Error
+     * writing /proc/self/loginuid: Operation not permitted} followed by {@code error: PAM:
+     * pam_open_session(): Cannot make/remove an entry for the specified session} - a REQUIRED PAM
+     * module failing aborts the whole session, tearing the connection down right after auth
+     * succeeds. Downgrading the line to {@code optional} (confirmed live to fix this exact
+     * container, connection stayed open afterward) keeps the module loaded without letting its
+     * failure kill the session - PAM config is read fresh per connection, not cached at sshd
+     * startup, so no restart is needed even if sshd is already up by the time this runs. Guarded on
+     * the file existing at all - not every systemd-enabled pod's image necessarily ships sshd.
+     */
+    private void patchPamLoginuidForPodmanSsh(Container container, char[] sudoPasswordOverride) {
+        sh(container, commands.get("pod.fix-pam-loginuid"), sudoPasswordOverride);
+    }
+
+    /**
      * Changes a pod's {@code podCommand} (see {@link Container#getPodCommand}'s own javadoc) and
      * makes it take effect immediately by removing and recreating the underlying podman container -
      * podman bakes a container's own command in at {@code podman create} time, not something a plain
@@ -334,7 +424,7 @@ public class ProvisioningService {
      * and removes cleanly either way.
      */
     @Transactional
-    public void updatePodCommand(Long containerId, String command, char[] sudoPasswordOverride) {
+    public void updatePodCommand(Long containerId, String command, boolean systemdEnabled, char[] sudoPasswordOverride) {
         Container container = containerRepository.findByIdWithTemplate(containerId)
                 .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", containerId)));
         if (container.getBackend() != ContainerBackend.PODMAN) {
@@ -346,8 +436,9 @@ public class ProvisioningService {
         try {
             cliExecutor.remove(container.getName(), container.getBackend());
             filesystemProvisioner.createPodmanContainer(container.getTemplate().getSourcePath(), container.getName(),
-                    command, sudoPasswordOverride);
+                    command, systemdEnabled, sudoPasswordOverride);
             container.setPodCommand(command);
+            container.setPodSystemdEnabled(systemdEnabled);
             // Recreated clean - clear a stale ERROR (and its message) rather than leaving a freshly
             // recreated, never-yet-started container stuck showing the OLD failure forever. Doesn't
             // auto-start it either way (same as the STOPPED path) - the admin's own next Start click
@@ -446,9 +537,9 @@ public class ProvisioningService {
         String accountName = resolveAccountName(container);
         SshKeyPairGenerator.GeneratedKeyPair keyPair = sshKeyPairGenerator.generate();
 
-        sh(container, "id -u %s >/dev/null 2>&1 || useradd -m -s /bin/bash %s".formatted(accountName, accountName), sudoPasswordOverride);
-        sh(container, "mkdir -p /home/%s/.ssh && chmod 700 /home/%s/.ssh".formatted(accountName, accountName), sudoPasswordOverride);
-        sh(container, "echo '%s' >> /home/%s/.ssh/authorized_keys && chmod 600 /home/%s/.ssh/authorized_keys && chown -R %s:%s /home/%s/.ssh"
+        sh(container, commands.get("common.ensure-account-exists").formatted(accountName, accountName), sudoPasswordOverride);
+        sh(container, commands.get("ssh.setup-ssh-dir").formatted(accountName, accountName), sudoPasswordOverride);
+        sh(container, commands.get("ssh.install-authorized-key")
                 .formatted(keyPair.publicKeyOpenSsh(), accountName, accountName, accountName, accountName, accountName), sudoPasswordOverride);
         // Skipped entirely when the template's own image already has openssh installed and enabled
         // (see Template.sshState's own comment) - every official "Set up X-minimal" template
@@ -458,7 +549,7 @@ public class ProvisioningService {
         if (container.getTemplate().getSshState() != TemplateFeatureState.PREINSTALLED) {
             downloadAndRegister(container, templateService.sshPackagesToPreDownload(container.getTemplate()), sudoPasswordOverride);
             sh(container, templateService.resolveInstallSshCommand(container.getTemplate()), sudoPasswordOverride, PACKAGE_INSTALL_TIMEOUT);
-            sh(container, "systemctl enable --now ssh 2>/dev/null || systemctl enable --now sshd", sudoPasswordOverride);
+            sh(container, commands.get("ssh.enable-service"), sudoPasswordOverride);
         }
 
         saveCredential(container, CredentialType.SSH_KEY, accountName, keyPair.privateKeyPem(), keyPair.publicKeyOpenSsh());
@@ -537,14 +628,18 @@ public class ProvisioningService {
     }
 
     private void provisionRdp(Container container, char[] sudoPasswordOverride) {
+        if (container.getDesktopManager() == DesktopManager.GNOME) {
+            provisionGnomeRdp(container, sudoPasswordOverride);
+            return;
+        }
         String accountName = resolveAccountName(container);
         String password = generatePassword();
 
-        sh(container, "id -u %s >/dev/null 2>&1 || useradd -m -s /bin/bash %s".formatted(accountName, accountName), sudoPasswordOverride);
-        sh(container, "echo '%s:%s' | chpasswd".formatted(accountName, password), sudoPasswordOverride);
+        sh(container, commands.get("common.ensure-account-exists").formatted(accountName, accountName), sudoPasswordOverride);
+        sh(container, commands.get("common.set-password").formatted(accountName, password), sudoPasswordOverride);
         downloadAndRegister(container, templateService.xrdpPackagesToPreDownload(container.getTemplate()), sudoPasswordOverride);
         sh(container, templateService.resolveInstallXrdpCommand(container.getTemplate()), sudoPasswordOverride, PACKAGE_INSTALL_TIMEOUT);
-        sh(container, "systemctl enable --now xrdp", sudoPasswordOverride);
+        sh(container, commands.get("rdp.x11.enable-service"), sudoPasswordOverride);
         if (container.getTemplate().getPackageManager() == PackageManager.DNF) {
             // Confirmed live (fed1, then fed-rdp-only, 2026-08-14): xrdp.ini ships with an empty
             // `autorun=`, which per its own comment means "use the first suitable section in the
@@ -562,9 +657,9 @@ public class ProvisioningService {
             // dependency on nspawnmgr's own separate VNC feature being enabled at all. Setting
             // autorun explicitly (rather than relying on [Xorg] merely being first in the file)
             // keeps this robust against the file's own section ordering ever changing.
-            sh(container, "sed -i 's/^autorun=.*/autorun=Xorg/' /etc/xrdp/xrdp.ini", sudoPasswordOverride);
+            sh(container, commands.get("rdp.x11.fedora-set-autorun-xorg"), sudoPasswordOverride);
         }
-        if (container.getDesktopManager() != DesktopManager.NONE) {
+        if (!container.getDesktopManager().isNone() && !container.getDesktopManager().isWayland()) {
             // Confirmed live (fed1, 2026-08-14): even with autorun pointed at a working Xvnc and
             // the systemd-user PAM fix above in place (D-Bus session bus genuinely working now),
             // the window manager still exited in well under a second with zero output anywhere.
@@ -577,24 +672,28 @@ public class ProvisioningService {
             // same "just exec the known-correct thing" philosophy): Xsession's own logic checks
             // `[ -x "$HOME/.xsession" ]` before any of that distro auto-detection even runs, so
             // writing this file bypasses the fragile chain entirely instead of trying to fix it.
-            sh(container, "printf '#!/bin/sh\\nexec %s\\n' > /home/%s/.xsession && chmod +x /home/%s/.xsession && chown %s:%s /home/%s/.xsession"
-                    .formatted(desktopSessionCommand(container.getDesktopManager()), accountName, accountName, accountName, accountName, accountName),
+            sh(container, commands.get("rdp.x11.write-xsession")
+                    .formatted(vncCleanupScriptForXsession(container.getDesktopManager()), desktopSessionCommand(container.getDesktopManager()), accountName),
                     sudoPasswordOverride);
         }
 
-        // Confirmed live (deb4, real Fedora-host-provisioned Debian container, 2026-08-27): xrdp
+        // Confirmed live (deb4, 2026-08-27; re-confirmed and corrected on deb1, 2026-09-05): xrdp
         // couldn't read its own TLS private key ("Cannot read private key file ...: Permission
-        // denied"), even though the real xrdp Debian package's own postinst adds the xrdp system
-        // user to the ssl-cert group as part of installing it (line 544, above) - group membership
-        // changes don't apply to an already-running daemon process without a restart, and
-        // `systemctl enable --now` (line 545, run immediately after install) is a no-op if xrdp's
-        // own postinst already started the service itself. Without TLS, xrdp still falls back to
-        // plain RDP and the connection *looks* like it works (login succeeds, the desktop starts),
-        // but disconnects again within a few seconds - confirmed live this is exactly what breaks
-        // RDP through Guacamole's own connection here. A restart after every config file write
-        // above is settled (not just the group-membership one) - cheap, and guarantees the daemon
-        // that will actually serve real connections reflects the final state either way.
-        sh(container, "systemctl restart xrdp", sudoPasswordOverride);
+        // denied") - without TLS, xrdp falls back to plain RDP and the connection *looks* like it
+        // works (login succeeds, the desktop starts) but disconnects again within a few seconds.
+        // The original fix here (just a bare `systemctl restart xrdp`) assumed the real Debian
+        // xrdp package's own postinst already adds the xrdp system user to the ssl-cert group, and
+        // only a restart was needed for an already-running daemon to pick that up. That assumption
+        // was never actually checked against the package's own postinst script, and was wrong:
+        // confirmed live by reading `/var/lib/dpkg/info/xrdp.postinst` on a freshly-provisioned
+        // container (xrdp 0.9.21.1-1+deb12u3) - it creates the xrdp system user and its own
+        // snakeoil cert/key via make-ssl-cert, but never touches the ssl-cert group at all. A bare
+        // restart therefore did nothing; the group membership needs to be granted explicitly every
+        // time, not merely picked up. `rdp.x11.restart-service` (provisioning-commands.yml) now
+        // does `getent group ssl-cert && usermod -aG ssl-cert xrdp` before the restart, guarded so
+        // it's a no-op wherever the ssl-cert group doesn't exist (Fedora/Arch use a different
+        // permission model for their own xrdp/self-signed-cert setup, unaffected by this).
+        sh(container, commands.get("rdp.x11.restart-service"), sudoPasswordOverride);
 
         saveCredential(container, CredentialType.RDP_PASSWORD, accountName, password, null);
 
@@ -612,20 +711,272 @@ public class ProvisioningService {
         container.setGuacRdpConnectionId(connectionId);
     }
 
+    /** The RDP/NLA shared-secret "username" this app's own Guacamole RDP connection authenticates
+     *  with for every {@link DesktopManager#GNOME} container - see {@link #provisionGnomeRdp}'s
+     *  own javadoc for why this is a synthetic identity, not any real Linux account. Constant
+     *  (not per-container) since it's just a label on the credential-pair gate, not itself a
+     *  secret - only the paired password (generated fresh per container, see
+     *  {@link CredentialType#RDP_NLA_SECRET}) needs to be unpredictable. */
+    private static final String GNOME_RDP_NLA_USERNAME = "nspawnmgr-rdp";
+
+    /**
+     * GNOME's own native RDP mechanism ({@code gnome-remote-desktop}'s "system mode") - a
+     * completely different mechanism from xrdp, confirmed live 2026-09-02 (Fedora 43 and Arch,
+     * real QEMU test VMs on acer): a real GDM login screen renders behind an RDP/NLA credential
+     * gate, and a genuine interactive login into it (typed by the human, same as sitting at a
+     * physical machine) drives GDM's own stock PAM stack ({@code pam_gnome_keyring.so}) to
+     * create/unlock the account's login keyring automatically - no custom PAM hacking needed at
+     * all, unlike the headless-VNC approach that was investigated and found to be a confirmed
+     * architectural dead end (see DesktopManager's own javadoc for why VNC isn't offered for
+     * GNOME at all).
+     *
+     * <p>Two genuinely separate credentials are involved here, unlike every other RDP-capable
+     * desktop manager in this app: the NLA-layer secret ({@link #GNOME_RDP_NLA_USERNAME} + a
+     * generated password, gates the RDP protocol handshake itself via {@code grdctl --system rdp
+     * set-credentials} - confirmed live this is a synthetic identity, unrelated to any real Linux
+     * account) and the real account password (typed by the human at the actual GDM greeter that
+     * renders behind that gate). This app's Guacamole RDP connection authenticates with the NLA
+     * secret, not the real account - the actual login happens by hand inside the viewport once
+     * connected. A deliberate UX difference from every other desktop manager here (every other one
+     * auto-authenticates straight into a running desktop) - confirmed and accepted rather than
+     * worked around, since it's a real login screen, not a broken one; see the keyboard-layout
+     * follow-on work this directly motivates.
+     *
+     * <p>Driven entirely through the {@code grdctl} CLI rather than raw D-Bus calls: confirmed
+     * live that the raw D-Bus interface's own service/interface names differ between GNOME
+     * versions (Fedora 43's GNOME 49.3 exposes {@code org.gnome.RemoteDesktop.Configuration}/
+     * {@code Configuration.Rdp.Server}; Arch's GNOME 50.2 exposes {@code org.gnome.RemoteDesktop}/
+     * {@code Rdp.Server}, no {@code Configuration} segment at all), while {@code grdctl}'s own CLI
+     * surface was confirmed identical on both - sidesteps needing per-GNOME-version D-Bus paths in
+     * this provisioning code entirely.
+     *
+     * <p>The desktop package itself (GNOME + {@code gnome-remote-desktop}) is installed once,
+     * shared with a hypothetical VNC path, by {@link #provision}'s own top-level
+     * resolveInstallDesktopCommand call before this method ever runs - not repeated here. The
+     * account itself already exists too, created by {@link #provisionSsh} (always provisioned
+     * first, unconditionally, for every systemd-nspawn container) - the {@code useradd} guard
+     * below is purely the same defensive idempotency idiom {@link #provisionRdp}'s own X11 path
+     * uses, not load-bearing.
+     *
+     * <p><b>Not yet live-verified against a real nspawnmgr-provisioned container</b> - the
+     * mechanism itself (grdctl/gdm/D-Bus, the GDM-login-keyring behavior) was confirmed live on
+     * standalone QEMU test VMs on acer, not through this exact code path. In particular,
+     * {@code openssl}'s availability on the minimal templates this app actually ships
+     * (fedora-minimal/arch-minimal) is assumed, not confirmed - matches this feature's established
+     * "implement first, verify live next" order (see e.g. the Xwayland gap NONE_WAYLAND hit this
+     * same way, commit {@code 04d818e}).
+     */
+    private void provisionGnomeRdp(Container container, char[] sudoPasswordOverride) {
+        String accountName = resolveAccountName(container);
+        String accountPassword = generatePassword();
+        String nlaPassword = generatePassword();
+
+        sh(container, commands.get("common.ensure-account-exists").formatted(accountName, accountName), sudoPasswordOverride);
+        sh(container, commands.get("common.set-password").formatted(accountName, accountPassword), sudoPasswordOverride);
+
+        sh(container, commands.get("rdp.gnome.enable-gdm"), sudoPasswordOverride);
+
+        // Self-signed, same posture as xrdp's own bundled cert (see provisionRdp above) - network
+        // isolation is this app's real trust boundary for RDP, not a CA-signed chain.
+        sh(container, commands.get("rdp.gnome.generate-cert"), sudoPasswordOverride);
+        // Confirmed live (arch-gnome, yoga, 2026-09-03): `openssl req -keyout` writes the private
+        // key mode 600, owned by root - but gnome-remote-desktop.service runs as its own dedicated
+        // `User=gnome-remote-desktop`, which can't read it at all. grdctl's own set-tls-cert/
+        // set-tls-key calls still return success either way (they just hand the path to the D-Bus
+        // service, which only discovers the unreadable key later, when it actually tries to load
+        // it) - the daemon's own journal showed "RDP TLS certificate and key not yet configured
+        // properly" repeating forever, and port 3389 never bound, with nothing in this app's own
+        // provisioning ever failing/erroring to say why. World-readable (not owner-restricted to a
+        // specific system account) rather than chown, since the exact account name isn't something
+        // this app should have to assume stays stable - matches the "network isolation is the real
+        // trust boundary" posture already stated above for this self-signed, single-purpose cert.
+        sh(container, commands.get("rdp.gnome.fix-cert-permissions"), sudoPasswordOverride);
+        sh(container, commands.get("rdp.gnome.set-tls-cert"), sudoPasswordOverride);
+        sh(container, commands.get("rdp.gnome.set-tls-key"), sudoPasswordOverride);
+        sh(container, commands.get("rdp.gnome.set-credentials").formatted(GNOME_RDP_NLA_USERNAME, nlaPassword), sudoPasswordOverride);
+        // Confirmed live (Arch, 2026-09-02): configuring cert/credentials while the daemon is
+        // already enabled does NOT bind port 3389 - "RDP server started" only appears in the
+        // journal after an explicit disable-then-enable cycle, not a single enable call.
+        sh(container, commands.get("rdp.gnome.disable"), sudoPasswordOverride);
+        sh(container, commands.get("rdp.gnome.enable"), sudoPasswordOverride);
+
+        saveCredential(container, CredentialType.RDP_PASSWORD, accountName, accountPassword, null);
+        saveCredential(container, CredentialType.RDP_NLA_SECRET, GNOME_RDP_NLA_USERNAME, nlaPassword, null);
+
+        String internalAddress = resolveInternalAddress(container);
+        String connectionId = guacamoleAdminClient.createRdpConnection(
+                container.getName() + "-rdp", internalAddress, RDP_PORT, GNOME_RDP_NLA_USERNAME, nlaPassword,
+                container.getRdpSecurity().guacamoleValue());
+        container.setGuacRdpConnectionId(connectionId);
+    }
+
+    /** The systemd unit {@link #waylandVncUnitInstallCommand} writes - also used to restart-if-dead
+     *  in {@link #ensureVncServerRunning}. */
+    private static final String WAYLAND_VNC_UNIT = "nspawnmgr-wayland-vnc.service";
+
+    /** The actual compositor process the unit's ExecStart backgrounds before handing off to
+     *  `wayvnc` - NONE_WAYLAND wraps a single app in the kiosk compositor `cage`; SWAY/HYPRLAND/
+     *  WAYFIRE are themselves full compositor/WMs, no wrapper needed. All four are wlroots-based
+     *  (WAYFIRE confirmed catalog-level, see DesktopManager's own javadoc), so all four pick up the
+     *  same `WLR_BACKENDS=headless` env trio the unit sets. */
+    private String waylandCompositorCommand(DesktopManager desktopManager) {
+        return switch (desktopManager) {
+            case NONE_WAYLAND -> commands.get("vnc.wayland.compositor.none-wayland");
+            case SWAY -> commands.get("vnc.wayland.compositor.sway");
+            case HYPRLAND -> commands.get("vnc.wayland.compositor.hyprland");
+            case WAYFIRE -> commands.get("vnc.wayland.compositor.wayfire");
+            default -> throw new IllegalStateException(
+                    "waylandCompositorCommand should only be called for NONE_WAYLAND/SWAY/HYPRLAND/WAYFIRE, not " + desktopManager);
+        };
+    }
+
+    /**
+     * NONE_WAYLAND/SWAY's own VNC mechanism - entirely separate from the TigerVNC/X11 path below,
+     * not a variant of it (see provisionVnc's own Wayland branch for why). Neither the compositor
+     * nor `wayvnc` ship a systemd unit for this combined use case, so nspawnmgr writes and owns one
+     * directly - same "just write the config nspawnmgr needs" posture provisionRdp's own
+     * ~/.xsession already takes, extended to a full unit file here since there's no login-manager-
+     * driven session to hook into at all for a headless Wayland compositor.
+     *
+     * <p>`WLR_BACKENDS=headless`+`WLR_LIBINPUT_NO_DEVICES=1`+`WLR_HEADLESS_OUTPUTS=1` are required
+     * for any wlroots-based compositor here - confirmed live (fedora-kde-test-vm, 2026-09-02):
+     * `cage`'s own default DRM/seat backend needs a real logind-managed seat/GPU (neither exists
+     * here), failing outright ("Unable to create the wlroots backend") without them.
+     *
+     * <p><strong>{@code PAMName=login}</strong> - confirmed live (fed-sway, Fedora 43,
+     * 2026-09-02): without a real PAM-established session, Fedora's `sway` package's own bundled
+     * `sway-systemd` integration (a cgroup-assignment helper it spawns on startup) hard-crashes
+     * trying to reach a D-Bus *session* bus that simply doesn't exist for a bare system-level unit
+     * ("FileNotFoundError: ... '/var/lib/dbus/machine-id'") - and once `wayvnc` then also fails
+     * (its own polling window expiring with no socket ever appearing) and the unit is marked
+     * failed, `KillMode=control-group` (systemd's own default) tears down `sway` too, even though
+     * it may have been running fine. `PAMName=login` runs the same PAM session stack a real
+     * interactive login gets (confirmed live: an ordinary SSH login into the same container
+     * already has a working `DBUS_SESSION_BUS_ADDRESS`/`XDG_RUNTIME_DIR` via `pam_systemd` -
+     * manually re-running the exact same compositor command under that real session succeeded
+     * cleanly, `sway`, `swaybg`, `swaybar`, and the `sway-systemd` helper all staying up) - this
+     * is the standard systemd mechanism for giving a plain service unit an equivalent session
+     * (e.g. `getty@.service` itself uses `PAMName=login`), letting `XDG_RUNTIME_DIR` come from PAM
+     * itself (`/run/user/<uid>`) rather than nspawnmgr's own hand-rolled `RuntimeDirectory=`.
+     *
+     * <p><strong>Socket name detected dynamically, not assumed</strong> - confirmed live
+     * (fed-sway, 2026-09-02): `sway` does not honor a pre-set `WAYLAND_DISPLAY` env var the way
+     * `cage` does - asked for `wayland-test`, it created `wayland-1` instead (a stale lock from an
+     * earlier manual test attempt left `wayland-0` unavailable). Polling for a fixed expected name
+     * is fragile in exactly this way, so the wrapper instead lists `$XDG_RUNTIME_DIR` for the
+     * first `wayland-<N>` socket that actually appears (whatever the compositor decided to call
+     * it) and points `wayvnc` at that. Poll budget widened from 5s to 10s (50 to 100 attempts) -
+     * `sway`'s own startup (spawning `swaybg`/`swaybar`/the cgroup-assignment helper) has more to
+     * do than `cage`'s bare kiosk mode did.
+     *
+     * <p>`cage -s -- foot`: `cage` is a minimal, chrome-free kiosk compositor (wlroots-based) that
+     * runs exactly one application fullscreen - the closest available equivalent to NONE_X11's
+     * "just Xvnc + a shell" (`foot`, a lightweight Wayland-native terminal, plays xterm's own role
+     * here). The shell wrapper backgrounds the compositor, polls for its Wayland socket to appear,
+     * then `exec`s `wayvnc` as the tracked main PID - the compositor stays in the same cgroup even
+     * after that exec reparents nothing about it, so `KillMode=control-group` still tears both
+     * down together on stop/restart.
+     *
+     * <p>No VNC password is set (see GuacamoleAdminClient#createVncConnection(String,String,int)'s
+     * own javadoc for why - wayvnc has no classic-RFB-password auth mode Guacamole can speak at
+     * all). `[Install] WantedBy=multi-user.target` + `enable` (not just `start`) matches the X11
+     * vncServerStartCommand's own posture: the session should come back on its own after a
+     * container reboot, not just an nspawnmgr-initiated restart.
+     *
+     * <p><strong>NONE_WAYLAND confirmed live end-to-end against a real nspawnmgr-managed
+     * container</strong> (fed-wayland, Fedora, 2026-09-02 - real rendering AND real interactive
+     * input both confirmed via gtk3-demo). SWAY confirmed live only up through a successful
+     * compositor+session-bus combination (this method's own PAMName=login fix) - the full
+     * wayvnc-serving-a-real-VNC-session path for SWAY specifically is not yet independently
+     * re-confirmed after this fix landed. Still open for both: whether `wayvnc` reliably exits on
+     * its own once the compositor's last client exits/the Wayland socket goes away (the property
+     * {@link #ensureVncServerRunning}'s whole "restart only if actually dead" design depends on).
+     */
+    private String waylandVncUnitInstallCommand(String accountName, DesktopManager desktopManager) {
+        return commands.get("vnc.wayland.install-unit")
+                .formatted(accountName, VNC_PORT, WAYLAND_VNC_UNIT, waylandCompositorCommand(desktopManager));
+    }
+
+    /**
+     * SWAY-only: unlike NONE_WAYLAND (which hands `cage` its one app directly as an argument),
+     * Sway is a real tiling WM that reads its own config for what to run - installing just the
+     * package gives a session with no visible terminal and no obvious way to open one over VNC.
+     * Copies the distro-packaged default config (`/etc/sway/config`, standard across every distro
+     * that ships Sway) rather than writing one from scratch, so real keybindings/behavior stay
+     * intact, then appends an unconditional `exec foot` so a terminal is visible immediately on
+     * startup - the same "give the user something usable right away" posture `cage -s -- foot`
+     * already takes for NONE_WAYLAND, without depending on whether the packaged default config's
+     * own `$term` binding happens to point at an installed terminal (it may not - not yet checked
+     * live for Sway's own packaging on any distro).
+     */
+    private String swayConfigInstallCommand(String accountName) {
+        return commands.get("vnc.wayland.sway-config").formatted(accountName);
+    }
+
+    /**
+     * HYPRLAND-only: same reasoning as {@link #swayConfigInstallCommand} - installing just the
+     * package gives a session with no visible terminal, so this copies the distro-packaged default
+     * config (`/usr/share/hypr/hyprland.conf`, the common location across Fedora/Arch packaging -
+     * NOT yet independently confirmed live, and Debian's own path may differ or not exist at all)
+     * to `~/.config/hypr/hyprland.conf`, then appends an unconditional `exec-once = foot` (Hyprland's
+     * own config directive for "run this once at startup", not Sway's plain `exec`) so a terminal
+     * is visible immediately - same "give the user something usable right away" posture as
+     * NONE_WAYLAND/SWAY. If no default config exists at that path, the `cp` silently does nothing
+     * (matches swayConfigInstallCommand's own tolerance for that) and the `exec-once` line becomes
+     * the entire config, which should still be enough for Hyprland to start with sane built-in
+     * defaults plus a visible terminal - not yet confirmed live either way.
+     */
+    private String hyprlandConfigInstallCommand(String accountName) {
+        return commands.get("vnc.wayland.hyprland-config").formatted(accountName);
+    }
+
+    /** WAYFIRE-only: unlike SWAY/HYPRLAND, Wayfire ships no packaged default config to copy at all
+     *  (confirmed via its own docs - it runs fine with none, defaulting to autostarting
+     *  {@code wf-shell}) - writes a fresh, minimal {@code ~/.config/wayfire.ini} directly instead
+     *  of copy-then-append, explicitly keeping {@code autostart_wf_shell} on (so the {@code
+     *  wf-shell} panel already installed alongside Wayfire still appears once a config file exists
+     *  at all - its "no config -> autostart wf-shell" default is specifically about the no-config
+     *  case) and adding a terminal, same "give the user something usable right away" posture as
+     *  SWAY/HYPRLAND. */
+    private String wayfireConfigInstallCommand(String accountName) {
+        return commands.get("vnc.wayland.wayfire-config").formatted(accountName);
+    }
+
     /**
      * VNC needs no separate Linux account or login password - it reuses the account provisionSsh
      * already created, authenticating purely via a VNC-specific password (~/.vnc/passwd, set with
      * vncpasswd). Display :0 -> port 5900, avoiding the +1-per-display offset a higher display
      * number would introduce (there's no real X server already using :0 inside these headless
      * containers, unlike a real desktop machine).
+     *
+     * <p>Wayland is a genuinely separate mechanism, not a variant of the X11/TigerVNC path below -
+     * see {@link #waylandVncUnitInstallCommand} - so it branches off first and returns, rather than
+     * threading extra conditionals through TigerVNC-specific package installs/xstartup/vncpasswd
+     * logic that doesn't apply to it at all.
      */
     private void provisionVnc(Container container, char[] sudoPasswordOverride) {
         String accountName = resolveAccountName(container);
+
+        if (container.getDesktopManager().isWayland()) {
+            if (container.getDesktopManager() == DesktopManager.SWAY) {
+                sh(container, swayConfigInstallCommand(accountName), sudoPasswordOverride);
+            } else if (container.getDesktopManager() == DesktopManager.HYPRLAND) {
+                sh(container, hyprlandConfigInstallCommand(accountName), sudoPasswordOverride);
+            } else if (container.getDesktopManager() == DesktopManager.WAYFIRE) {
+                sh(container, wayfireConfigInstallCommand(accountName), sudoPasswordOverride);
+            }
+            sh(container, waylandVncUnitInstallCommand(accountName, container.getDesktopManager()), sudoPasswordOverride);
+            String internalAddress = resolveInternalAddress(container);
+            String connectionId = guacamoleAdminClient.createVncConnection(container.getName() + "-vnc", internalAddress, VNC_PORT);
+            container.setGuacVncConnectionId(connectionId);
+            return;
+        }
+
         String password = generatePassword();
 
         downloadAndRegister(container, templateService.vncPackagesToPreDownload(container.getTemplate()), sudoPasswordOverride);
         sh(container, templateService.resolveInstallVncCommand(container.getTemplate()), sudoPasswordOverride, PACKAGE_INSTALL_TIMEOUT);
-        if (container.getDesktopManager() != DesktopManager.NONE) {
+        if (!container.getDesktopManager().isNone()) {
             // A bare exec (TigerVNC's own natural behavior) - confirmed live (deb1, 2026-08-13)
             // that TigerVNC 1.12+ kills the whole Xvnc server the instant the xstartup script's
             // own process exits ("The X session cleanly exited! Killing Xtigervnc process ID
@@ -639,7 +990,7 @@ public class ProvisioningService {
             // to keep one alive forever.
             String xstartupBody = templateService.resolveVncXstartupTemplate(container.getTemplate())
                     .formatted(desktopSessionCommand(container.getDesktopManager()));
-            sh(container, "mkdir -p /home/%s/.vnc && printf '#!/bin/sh\\n%s\\n' > /home/%s/.vnc/xstartup && chmod +x /home/%s/.vnc/xstartup && chown -R %s:%s /home/%s/.vnc"
+            sh(container, commands.get("vnc.x11.write-xstartup")
                     .formatted(accountName, xstartupBody, accountName, accountName, accountName, accountName, accountName),
                     sudoPasswordOverride);
             // Confirmed live (arch-kde, 2026-08-15): ~/.vnc/xstartup above is silently ignored by
@@ -670,17 +1021,12 @@ public class ProvisioningService {
             // write itself needs gating - same `[ -f vncserver@.service ]` signal already used to
             // pick the right branch in vncServerStartCommand/vncAccountSwitchCommand below.
             String desktopCommand = desktopSessionCommand(container.getDesktopManager());
-            sh(container, ("cat > /usr/share/xsessions/nspawnmgr.desktop <<'NSPAWNMGR_XSESSION'\n" +
-                    "[Desktop Entry]\nName=nspawnmgr\nExec=%s\nType=Application\nDesktopNames=nspawnmgr\n" +
-                    "NSPAWNMGR_XSESSION\n" +
-                    "if [ -f /usr/lib/systemd/system/vncserver@.service ] || [ -f /lib/systemd/system/vncserver@.service ]; then " +
-                    "mkdir -p /etc/tigervnc && printf 'session=nspawnmgr\\n' > /etc/tigervnc/vncserver-config-mandatory; fi")
-                    .formatted(desktopCommand), sudoPasswordOverride);
+            sh(container, commands.get("vnc.x11.write-xsession-desktop-file").formatted(desktopCommand), sudoPasswordOverride);
         }
         // Password is embedded in the command text here rather than fed over a separate stdin
         // channel - same posture provisionRdp's own chpasswd line above already accepts for its
         // Linux account password.
-        sh(container, "mkdir -p /home/%s/.vnc && echo '%s' | su - %s -c 'vncpasswd -f > ~/.vnc/passwd' && chown %s:%s /home/%s/.vnc/passwd && chmod 600 /home/%s/.vnc/passwd"
+        sh(container, commands.get("vnc.x11.set-vnc-password")
                 .formatted(accountName, password, accountName, accountName, accountName, accountName, accountName), sudoPasswordOverride);
         // TigerVNC 1.13+ (confirmed live on both arch-minimal and fedora-minimal) moved off the
         // classic "run vncserver directly from a login shell" model onto a systemd-integrated one
@@ -785,8 +1131,8 @@ public class ProvisioningService {
      *  steps already done — those apply once per container, not per account switch. */
     private void rewireSsh(Container container, String accountName, char[] sudoPasswordOverride) {
         SshKeyPairGenerator.GeneratedKeyPair keyPair = sshKeyPairGenerator.generate();
-        sh(container, "mkdir -p /home/%s/.ssh && chmod 700 /home/%s/.ssh".formatted(accountName, accountName), sudoPasswordOverride);
-        sh(container, "echo '%s' >> /home/%s/.ssh/authorized_keys && chmod 600 /home/%s/.ssh/authorized_keys && chown -R %s:%s /home/%s/.ssh"
+        sh(container, commands.get("ssh.setup-ssh-dir").formatted(accountName, accountName), sudoPasswordOverride);
+        sh(container, commands.get("ssh.install-authorized-key")
                 .formatted(keyPair.publicKeyOpenSsh(), accountName, accountName, accountName, accountName, accountName), sudoPasswordOverride);
 
         saveCredential(container, CredentialType.SSH_KEY, accountName, keyPair.privateKeyPem(), keyPair.publicKeyOpenSsh());
@@ -798,11 +1144,15 @@ public class ProvisioningService {
 
     /** The credential-granting tail of {@link #provisionRdp}, minus account creation/xrdp install. */
     private void rewireRdp(Container container, String accountName, char[] sudoPasswordOverride) {
+        if (container.getDesktopManager() == DesktopManager.GNOME) {
+            rewireGnomeRdp(container, accountName, sudoPasswordOverride);
+            return;
+        }
         String password = generatePassword();
-        sh(container, "echo '%s:%s' | chpasswd".formatted(accountName, password), sudoPasswordOverride);
-        if (container.getDesktopManager() != DesktopManager.NONE) {
-            sh(container, "printf '#!/bin/sh\\nexec %s\\n' > /home/%s/.xsession && chmod +x /home/%s/.xsession && chown %s:%s /home/%s/.xsession"
-                    .formatted(desktopSessionCommand(container.getDesktopManager()), accountName, accountName, accountName, accountName, accountName),
+        sh(container, commands.get("common.set-password").formatted(accountName, password), sudoPasswordOverride);
+        if (!container.getDesktopManager().isNone() && !container.getDesktopManager().isWayland()) {
+            sh(container, commands.get("rdp.x11.write-xsession")
+                    .formatted(vncCleanupScriptForXsession(container.getDesktopManager()), desktopSessionCommand(container.getDesktopManager()), accountName),
                     sudoPasswordOverride);
         }
 
@@ -813,30 +1163,55 @@ public class ProvisioningService {
                 internalAddress, RDP_PORT, accountName, password, container.getRdpSecurity().guacamoleValue());
     }
 
+    /** {@link #rewireRdp}'s GNOME counterpart - only the real account password (the one typed by
+     *  hand at the actual GDM greeter, see {@link #provisionGnomeRdp}'s own javadoc) changes when
+     *  switching primary account. The RDP/NLA shared secret and the Guacamole connection itself
+     *  are deliberately left untouched: GNOME's RDP identity is a fixed synthetic credential, not
+     *  tied to which Linux account is primary - the same NLA gate gets a real human into the same
+     *  GDM greeter regardless of which account they then choose to log into there. */
+    private void rewireGnomeRdp(Container container, String accountName, char[] sudoPasswordOverride) {
+        String password = generatePassword();
+        sh(container, commands.get("common.set-password").formatted(accountName, password), sudoPasswordOverride);
+        saveCredential(container, CredentialType.RDP_PASSWORD, accountName, password, null);
+    }
+
     /** The credential-granting tail of {@link #provisionVnc}, minus package install; also forces the
      *  running VNC server (if any) to restart under the new account rather than waiting for the next
      *  on-demand {@link #ensureVncServerRunning} call to notice, since its own port-based "already
      *  running" check would otherwise treat the old account's still-live session as this account's. */
     private void rewireVnc(Container container, String accountName, char[] sudoPasswordOverride) {
+        if (container.getDesktopManager().isWayland()) {
+            if (container.getDesktopManager() == DesktopManager.SWAY) {
+                sh(container, swayConfigInstallCommand(accountName), sudoPasswordOverride);
+            } else if (container.getDesktopManager() == DesktopManager.HYPRLAND) {
+                sh(container, hyprlandConfigInstallCommand(accountName), sudoPasswordOverride);
+            } else if (container.getDesktopManager() == DesktopManager.WAYFIRE) {
+                sh(container, wayfireConfigInstallCommand(accountName), sudoPasswordOverride);
+            }
+            // waylandVncUnitInstallCommand always does enable+restart (not just enable+start) -
+            // rewriting User= then restarting is what actually switches the running session's
+            // account, same "unconditionally stop the old one, start fresh" intent
+            // vncAccountSwitchCommand's own explicit systemctl stop has for the X11 path below.
+            sh(container, waylandVncUnitInstallCommand(accountName, container.getDesktopManager()), sudoPasswordOverride);
+            String internalAddress = resolveInternalAddress(container);
+            guacamoleAdminClient.updateVncConnection(container.getGuacVncConnectionId(), container.getName() + "-vnc", internalAddress, VNC_PORT);
+            return;
+        }
+
         String password = generatePassword();
-        if (container.getDesktopManager() != DesktopManager.NONE) {
+        if (!container.getDesktopManager().isNone()) {
             String xstartupBody = templateService.resolveVncXstartupTemplate(container.getTemplate())
                     .formatted(desktopSessionCommand(container.getDesktopManager()));
-            sh(container, "mkdir -p /home/%s/.vnc && printf '#!/bin/sh\\n%s\\n' > /home/%s/.vnc/xstartup && chmod +x /home/%s/.vnc/xstartup && chown -R %s:%s /home/%s/.vnc"
+            sh(container, commands.get("vnc.x11.write-xstartup")
                     .formatted(accountName, xstartupBody, accountName, accountName, accountName, accountName, accountName),
                     sudoPasswordOverride);
             // See provisionVnc's own comment on the vncserver-config-mandatory gating below - the
             // older, non-vncsession TigerVNC's own /usr/bin/vncserver (a Perl script) also reads
             // this exact filename but expects real Perl syntax there, not a bare key=value line.
             String desktopCommand = desktopSessionCommand(container.getDesktopManager());
-            sh(container, ("cat > /usr/share/xsessions/nspawnmgr.desktop <<'NSPAWNMGR_XSESSION'\n" +
-                    "[Desktop Entry]\nName=nspawnmgr\nExec=%s\nType=Application\nDesktopNames=nspawnmgr\n" +
-                    "NSPAWNMGR_XSESSION\n" +
-                    "if [ -f /usr/lib/systemd/system/vncserver@.service ] || [ -f /lib/systemd/system/vncserver@.service ]; then " +
-                    "mkdir -p /etc/tigervnc && printf 'session=nspawnmgr\\n' > /etc/tigervnc/vncserver-config-mandatory; fi")
-                    .formatted(desktopCommand), sudoPasswordOverride);
+            sh(container, commands.get("vnc.x11.write-xsession-desktop-file").formatted(desktopCommand), sudoPasswordOverride);
         }
-        sh(container, "mkdir -p /home/%s/.vnc && echo '%s' | su - %s -c 'vncpasswd -f > ~/.vnc/passwd' && chown %s:%s /home/%s/.vnc/passwd && chmod 600 /home/%s/.vnc/passwd"
+        sh(container, commands.get("vnc.x11.set-vnc-password")
                 .formatted(accountName, password, accountName, accountName, accountName, accountName, accountName), sudoPasswordOverride);
         sh(container, vncAccountSwitchCommand(accountName, templateService.resolveVncProcessNamePattern(container.getTemplate())),
                 sudoPasswordOverride);
@@ -852,14 +1227,8 @@ public class ProvisioningService {
      *  :0 (regardless of which account it belongs to) before starting a fresh one under {@code
      *  accountName} - the whole point here is switching who owns it, not leaving an already-running
      *  session alone. */
-    private static String vncAccountSwitchCommand(String accountName, String processNamePattern) {
-        return ("if [ -f /usr/lib/systemd/system/vncserver@.service ] || [ -f /lib/systemd/system/vncserver@.service ]; then " +
-                "systemctl stop vncserver@:0.service 2>/dev/null; " +
-                "sed -i '/^:0=/d' /etc/tigervnc/vncserver.users 2>/dev/null; " +
-                "echo ':0=%1$s' >> /etc/tigervnc/vncserver.users; " +
-                "systemctl enable vncserver@:0.service && systemctl restart vncserver@:0.service; " +
-                "else pkill -f \"(^|/)%2$s :0 \" 2>/dev/null; sleep 1; su - %1$s -c 'vncserver :0 -localhost no >/dev/null 2>&1 || vncserver :0'; fi")
-                .formatted(accountName, processNamePattern);
+    private String vncAccountSwitchCommand(String accountName, String processNamePattern) {
+        return commands.get("vnc.x11.switch-account").formatted(accountName, processNamePattern);
     }
 
     /** {@code container.getPrimaryAccountName()} if set, otherwise the global fallback default -
@@ -910,6 +1279,23 @@ public class ProvisioningService {
         return USERNAME_PATTERN.matcher(candidate).matches() ? candidate : null;
     }
 
+    /**
+     * systemd-run --machine='s own signature for "this container hasn't finished enough of its own
+     * boot yet to accept --machine=-targeted exec calls" - confirmed live in two different
+     * wordings: the plain "Failed to connect to bus" and (Fedora 43, fed-sway, 2026-09-02, a
+     * genuinely fresh container - confirmed NOT specific to any of this session's own Wayland
+     * work, it fired on the very first provisionSsh useradd step) the more verbose "Failed to
+     * connect to system scope bus via machine transport: No such file or directory" - a plain
+     * substring match on "Failed to connect to bus" misses that second wording entirely (the
+     * words "system scope" sit between "to" and "bus"), silently turning what should be a
+     * transient-race retry into an immediate hard failure. Matched as two independent substrings
+     * rather than a single literal string so both wordings (and any other systemd version's own
+     * phrasing in between) are covered.
+     */
+    private static boolean containerNotReadyYet(CommandResult result) {
+        return result.stderr() != null && result.stderr().contains("Failed to connect to") && result.stderr().contains("bus");
+    }
+
     /** Live {@code id -u} check, tolerant of the same "container not booted enough yet" transient
      *  race {@link #sh} already retries through - unlike {@link #sh}, a clean non-zero exit (account
      *  genuinely doesn't exist) is a normal, immediate "false", not a failure. */
@@ -919,8 +1305,7 @@ public class ProvisioningService {
             if (result.success()) {
                 return true;
             }
-            boolean containerNotReadyYet = result.stderr() != null && result.stderr().contains("Failed to connect to bus");
-            if (!containerNotReadyYet || attempt == SH_MAX_ATTEMPTS) {
+            if (!containerNotReadyYet(result) || attempt == SH_MAX_ATTEMPTS) {
                 return false;
             }
             try {
@@ -933,12 +1318,8 @@ public class ProvisioningService {
         return false;
     }
 
-    private static String vncServerStartCommand(String accountName, String processNamePattern) {
-        return ("if [ -f /usr/lib/systemd/system/vncserver@.service ] || [ -f /lib/systemd/system/vncserver@.service ]; then " +
-                "grep -q '^:0=' /etc/tigervnc/vncserver.users 2>/dev/null || echo ':0=%1$s' >> /etc/tigervnc/vncserver.users; " +
-                "systemctl enable vncserver@:0.service && systemctl restart vncserver@:0.service; " +
-                "else su - %1$s -c 'pkill -f \"(^|/)%2$s :0 \" 2>/dev/null; sleep 1; vncserver :0 -localhost no >/dev/null 2>&1 || vncserver :0'; fi")
-                .formatted(accountName, processNamePattern);
+    private String vncServerStartCommand(String accountName, String processNamePattern) {
+        return commands.get("vnc.x11.start-server").formatted(accountName, processNamePattern);
     }
 
     private static final Duration ENSURE_VNC_TIMEOUT = Duration.ofSeconds(30);
@@ -956,8 +1337,23 @@ public class ProvisioningService {
      * reliably "Xvnc" (Debian's tigervnc-standalone-server execs `Xtigervnc`), so a name-pattern
      * check is fragile in exactly the way vncServerStartCommand's own pkill pattern already turned
      * out to be; the port it's supposed to be serving is a much more reliable signal.
+     *
+     * <p>Wayland takes a much simpler path than the port-check dance below: {@code systemctl
+     * start} on an already-{@code active} unit is already a safe no-op (doesn't restart or
+     * disturb it), and on a dead/failed one (the exec-based `wayvnc` process having exited when
+     * `cage`'s own child did - see waylandVncUnitInstallCommand's own javadoc) starts a fresh one -
+     * exactly the same "only restart if actually dead" semantics as the port-check below, just via
+     * a systemd primitive that already provides it directly, no manual check needed.
      */
     public void ensureVncServerRunning(Container container) {
+        if (container.getDesktopManager().isWayland()) {
+            ScriptRunResult waylandResult = cliExecutor.runScript(container.getName(), container.getBackend(),
+                    commands.get("vnc.wayland.ensure-running").formatted(WAYLAND_VNC_UNIT), ENSURE_VNC_TIMEOUT);
+            if (!waylandResult.success()) {
+                log.warn("Failed to ensure Wayland VNC server running for container {} (exit {})", container.getName(), waylandResult.exitCode());
+            }
+            return;
+        }
         // container.getTemplate() may be a lazy proxy tied to whatever session originally loaded it
         // (open-in-view is off, and this is reached from ContainerSessionService's own transaction,
         // not the one that loaded the container in the controller layer) - re-fetch with template
@@ -967,8 +1363,8 @@ public class ProvisioningService {
                 .orElseThrow(() -> new IllegalArgumentException(messages.get("error.common.noSuchContainer", container.getId())));
         String accountName = resolveAccountName(container);
         String processNamePattern = templateService.resolveVncProcessNamePattern(withTemplate.getTemplate());
-        String script = "ss -tln 2>/dev/null | grep -q ':" + VNC_PORT + "[[:space:]]' || { "
-                + vncServerStartCommand(accountName, processNamePattern) + " ; }";
+        String script = commands.get("vnc.x11.ensure-running-check")
+                .formatted(VNC_PORT, vncServerStartCommand(accountName, processNamePattern));
         ScriptRunResult result = cliExecutor.runScript(container.getName(), container.getBackend(), script, ENSURE_VNC_TIMEOUT);
         if (!result.success()) {
             log.warn("Failed to ensure VNC server running for container {} (exit {})", container.getName(), result.exitCode());
@@ -1002,8 +1398,7 @@ public class ProvisioningService {
      */
     public void ensureLingerEnabled(Container container) {
         String accountName = resolveAccountName(container);
-        String script = "loginctl show-user %1$s --property=Linger 2>/dev/null | grep -q '^Linger=yes' || loginctl enable-linger %1$s"
-                .formatted(accountName);
+        String script = commands.get("common.ensure-linger-enabled").formatted(accountName);
         ScriptRunResult result = cliExecutor.runScript(container.getName(), container.getBackend(), script, ENSURE_LINGER_TIMEOUT);
         if (!result.success()) {
             log.warn("Failed to ensure linger enabled for container {} (exit {})", container.getName(), result.exitCode());
@@ -1041,12 +1436,55 @@ public class ProvisioningService {
         }
     }
 
-    private static String desktopSessionCommand(DesktopManager desktopManager) {
+    /** X11 session-start command only - callers already exclude every Wayland DesktopManager (see
+     *  their own "!isNone() && !isWayland()" guards), since Wayland has its own, not-yet-built
+     *  provisioning path (wayvnc/cage-based, not this X11 xstartup/xsession mechanism at all). */
+    private String desktopSessionCommand(DesktopManager desktopManager) {
         return switch (desktopManager) {
-            case GNOME -> "gnome-session";
-            case KDE_STANDARD -> "startplasma-x11";
-            case XFCE4 -> "startxfce4";
-            case NONE -> throw new IllegalStateException("desktopSessionCommand should never be called for NONE");
+            case GNOME -> commands.get("desktop-session.gnome");
+            case KDE_STANDARD_X11 -> commands.get("desktop-session.kde-standard-x11");
+            case XFCE4_X11 -> commands.get("desktop-session.xfce4-x11");
+            case NONE_X11 -> throw new IllegalStateException("desktopSessionCommand should never be called for NONE_X11");
+            case KDE_STANDARD_WAYLAND, XFCE4_WAYLAND, NONE_WAYLAND, SWAY, HYPRLAND, WAYFIRE ->
+                    throw new IllegalStateException("desktopSessionCommand should never be called for a Wayland DesktopManager - Wayland has its own provisioning path");
+        };
+    }
+
+    /**
+     * A pre-exec script fragment for {@code .xsession} (see {@code rdp.x11.write-xsession}) that
+     * clears a stale VNC desktop session before RDP starts a fresh one - empty for every desktop
+     * manager except {@code XFCE4_X11}/{@code KDE_STANDARD_X11}, the two real X11 desktops with a
+     * persistent per-user session-manager singleton to conflict with. {@code NONE_X11} has no
+     * desktop session to leak; every Wayland variant and {@code GNOME} have their own, unrelated
+     * lifecycle (systemd-unit-based, or a persistent system daemon respectively) - see their own
+     * callers' guards (`!isNone() && !isWayland()`), which already exclude this method entirely.
+     *
+     * <p>Deliberately scripted into the container's own {@code .xsession} (runs on the container,
+     * as part of every single RDP session start, via {@code rdp.x11.kill-stale-vnc-session-*}
+     * below) rather than orchestrated from nspawnmgr's own backend before minting a session URL -
+     * this is each desktop manager's own quirk (its per-user session-manager singleton detection
+     * doesn't distinguish which protocol or display started an earlier session), not a general
+     * cross-protocol concept this app should own generically.
+     *
+     * <p>Confirmed live, both desktop managers, both on 2026-09-05: a still-running
+     * {@code xfce4-session}/{@code xfwm4} (XFCE, {@code deb1}) or
+     * {@code startplasma-x11}/{@code ksmserver}/{@code kwin_x11}/{@code plasmashell} (KDE,
+     * {@code deb2}) left over from an earlier VNC connection that was never cleanly logged out of
+     * breaks a fresh RDP session's own attempt to start the same desktop - XFCE's own freshly-
+     * started window manager exits almost immediately (xrdp-sesman: {@code "Window manager ...
+     * exited quickly ... this could indicate a window manager config problem"}), while KDE's own
+     * {@code startplasma-x11} instead renders its splash screen and then hangs forever (never
+     * spawning its own session manager, which refuses to start a second instance) - a black screen
+     * rather than a disconnect, since nothing ever exits and xrdp-sesman never sees a reason to
+     * tear the (still technically alive) session down. See each {@code rdp.x11.kill-stale-vnc-
+     * session-*} command's own comment for why killing just the session/window-manager process
+     * (not the X server underneath it) is enough in both cases.
+     */
+    private String vncCleanupScriptForXsession(DesktopManager desktopManager) {
+        return switch (desktopManager) {
+            case XFCE4_X11 -> commands.get("rdp.x11.kill-stale-vnc-session-xfce4");
+            case KDE_STANDARD_X11 -> commands.get("rdp.x11.kill-stale-vnc-session-kde-standard");
+            default -> "";
         };
     }
 
@@ -1169,8 +1607,7 @@ public class ProvisioningService {
             if (result.success()) {
                 return;
             }
-            boolean containerNotReadyYet = result.stderr() != null && result.stderr().contains("Failed to connect to bus");
-            if (!containerNotReadyYet || attempt == SH_MAX_ATTEMPTS) {
+            if (!containerNotReadyYet(result) || attempt == SH_MAX_ATTEMPTS) {
                 // Confirmed live (createDebianMinimalTemplate hit the same gap): a command's real
                 // failure reason - e.g. apt-get's own error text - often lands on stdout, not
                 // stderr, so stderr alone can be a completely uninformative "exit 100" with

@@ -39,7 +39,7 @@ async function runScriptTests() {
         const response = await fetch(`${location.origin}/nspawnmgr/api/containers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: containerName, templateId, rdpEnabled: false, vncEnabled: false }),
+            body: JSON.stringify({ name: containerName, templateId, rdpEnabled: false, vncEnabled: false, keystrokeButtonPanelPlacement: 'NONE' }),
         });
         if (!response.ok) {
             throw new Error(`fixture container creation failed: ${response.status} ${await response.text()}`);

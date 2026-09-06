@@ -3,6 +3,7 @@ package com.nspawnmgr.cli.real;
 import com.nspawnmgr.cli.ContainerCliExecutor;
 import com.nspawnmgr.cli.ContainerReadinessChecker;
 import com.nspawnmgr.domain.Container;
+import com.nspawnmgr.domain.DesktopManager;
 import net.schmizz.sshj.SSHClient;
 import net.schmizz.sshj.connection.channel.direct.Session;
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier;
@@ -55,7 +56,7 @@ public class RealContainerReadinessChecker implements ContainerReadinessChecker 
             ssh.setConnectTimeout(CONNECT_TIMEOUT_MS);
             ssh.connect(internalAddress, SSH_PORT);
             ssh.authPublickey(accountName, ssh.loadKeys(privateKeyPem, null, null));
-            boolean rdpReady = !checkRdp || isServiceActive(ssh);
+            boolean rdpReady = !checkRdp || isServiceActive(ssh, container);
             return new Readiness(true, rdpReady, internalAddress);
         } catch (IOException e) {
             log.warn("Readiness check failed for container '{}' at {}:{} (account={}): {}: {}",
@@ -66,9 +67,16 @@ public class RealContainerReadinessChecker implements ContainerReadinessChecker 
         }
     }
 
-    private boolean isServiceActive(SSHClient ssh) throws IOException {
+    /** GNOME's own native RDP mechanism (see ProvisioningService's own provisionGnomeRdp) has no
+     *  xrdp service at all - checking for it unconditionally meant a GNOME container's RDP could
+     *  never be reported ready, leaving it permanently stuck in BOOTING regardless of whether
+     *  provisioning actually succeeded (confirmed live, yoga 2026-09-03: arch-gnome's gdm and
+     *  gnome-remote-desktop were both genuinely up, but this check kept it BOOTING forever anyway).
+     *  Every other desktop manager still checks xrdp, unchanged. */
+    private boolean isServiceActive(SSHClient ssh, Container container) throws IOException {
+        String service = container.getDesktopManager() == DesktopManager.GNOME ? "gnome-remote-desktop" : "xrdp";
         try (Session session = ssh.startSession()) {
-            try (Session.Command cmd = session.exec("systemctl is-active xrdp")) {
+            try (Session.Command cmd = session.exec("systemctl is-active " + service)) {
                 cmd.join(RDP_CHECK_TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 Integer exitStatus = cmd.getExitStatus();
                 return exitStatus != null && exitStatus == 0;

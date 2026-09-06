@@ -424,7 +424,7 @@ public class DatabaseSetupWizardServlet extends HttpServlet {
         Timestamp now = Timestamp.from(Instant.now());
         String sql = "INSERT INTO containers (name, description, owner_id, template_id, kind, internal_address, "
                 + "state, rdp_enabled, vnc_enabled, desktop_manager, outbound_enabled, created_at, updated_at) "
-                + "VALUES (?, ?, ?, ?, 'MANAGED', ?, 'RUNNING', FALSE, FALSE, 'NONE', TRUE, ?, ?)";
+                + "VALUES (?, ?, ?, ?, 'MANAGED', ?, 'RUNNING', FALSE, FALSE, 'NONE_X11', TRUE, ?, ?)";
         try (PreparedStatement statement = dbConnection.prepareStatement(sql)) {
             statement.setString(1, name);
             statement.setString(2, description);

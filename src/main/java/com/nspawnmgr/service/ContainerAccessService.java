@@ -1,10 +1,13 @@
 package com.nspawnmgr.service;
 
+import com.nspawnmgr.cli.ContainerCliExecutor;
 import com.nspawnmgr.cli.ContainerPortProbe;
 import com.nspawnmgr.crypto.SecretEncryptionService;
 import com.nspawnmgr.domain.Container;
 import com.nspawnmgr.domain.ContainerCredential;
+import com.nspawnmgr.domain.ContainerKind;
 import com.nspawnmgr.domain.CredentialType;
+import com.nspawnmgr.domain.KeystrokeButtonPanelPlacement;
 import com.nspawnmgr.domain.RdpSecurityMode;
 import com.nspawnmgr.guacamole.GuacamoleAdminClient;
 import com.nspawnmgr.repository.ContainerCredentialRepository;
@@ -41,6 +44,7 @@ public class ContainerAccessService {
     private final ContainerPortProbe portProbe;
     private final GuacamoleAdminClient guacamoleAdminClient;
     private final SecretEncryptionService secretEncryptionService;
+    private final ContainerCliExecutor cliExecutor;
     private final UserMessages messages;
 
     public ContainerAccessService(ContainerRepository containerRepository,
@@ -48,12 +52,14 @@ public class ContainerAccessService {
                                    ContainerPortProbe portProbe,
                                    GuacamoleAdminClient guacamoleAdminClient,
                                    SecretEncryptionService secretEncryptionService,
+                                   ContainerCliExecutor cliExecutor,
                                    UserMessages messages) {
         this.containerRepository = containerRepository;
         this.credentialRepository = credentialRepository;
         this.portProbe = portProbe;
         this.guacamoleAdminClient = guacamoleAdminClient;
         this.secretEncryptionService = secretEncryptionService;
+        this.cliExecutor = cliExecutor;
         this.messages = messages;
     }
 
@@ -108,6 +114,17 @@ public class ContainerAccessService {
      * on the next connection attempt without needing a container restart. A no-op push (no
      * connection configured yet) is fine - the new value still applies whenever RDP is next
      * provisioned/enabled.
+     *
+     * <p>EXTERNAL containers use a different hostname/port pair than MANAGED ones - {@link
+     * Container#getInternalAddress()} is MANAGED-only and is {@code null} for a Host, which used
+     * to silently drop the "hostname" parameter from the Guacamole update entirely (confirmed
+     * live: the connection kept its old target, or none at all, once this method became reachable
+     * for Hosts too - see the "RDP security" control HostService/detail.html now expose for them).
+     * {@link Container#getHostname()} is the raw admin-entered value (e.g. "acer"), not itself a
+     * connectable address - resolved the same way {@link ContainerSessionService#startRdpSession}
+     * already does for the exact same field, rather than passing it straight through (confirmed
+     * live: doing that put the literal unresolved hostname into Guacamole's own "hostname"
+     * parameter instead of the real target address).
      */
     @Transactional
     public void setRdpSecurity(Container container, RdpSecurityMode mode) {
@@ -117,15 +134,28 @@ public class ContainerAccessService {
         if (container.getGuacRdpConnectionId() == null) {
             return;
         }
+        boolean external = container.getKind() == ContainerKind.EXTERNAL;
+        String hostname = external ? cliExecutor.resolveHostname(container.getHostname()) : container.getInternalAddress();
+        int port = external ? container.getExternalRdpPort() : RDP_PORT;
         Optional<ContainerCredential> credential = credentialRepository.findByContainerAndType(container, CredentialType.RDP_PASSWORD);
         if (credential.isPresent()) {
             String password = secretEncryptionService.decrypt(credential.get().getSecretCiphertext(), credential.get().getIv());
             guacamoleAdminClient.updateRdpConnection(container.getGuacRdpConnectionId(), container.getName() + "-rdp",
-                    container.getInternalAddress(), RDP_PORT, credential.get().getAccountName(), password, mode.guacamoleValue());
+                    hostname, port, credential.get().getAccountName(), password, mode.guacamoleValue());
         } else {
             guacamoleAdminClient.updateRdpConnectionPromptCredentials(container.getGuacRdpConnectionId(),
-                    container.getName() + "-rdp", container.getInternalAddress(), RDP_PORT, mode.guacamoleValue());
+                    container.getName() + "-rdp", hostname, port, mode.guacamoleValue());
         }
+    }
+
+    /** Purely a nspawnmgr-side UI toggle - unlike {@link #setRdpSecurity} above, nothing here ever
+     *  touches Guacamole itself; the session page reads this value directly (see
+     *  Container.keystrokeButtonPanelPlacement's own javadoc) when it next renders. */
+    @Transactional
+    public void setKeystrokeButtonPanelPlacement(Container container, KeystrokeButtonPanelPlacement placement) {
+        container.setKeystrokeButtonPanelPlacement(placement);
+        container.touch();
+        containerRepository.save(container);
     }
 
     @Transactional

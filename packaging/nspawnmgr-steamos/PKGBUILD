@@ -42,7 +42,7 @@
 # motivated this variant; this package itself hasn't had its own real install/verify pass yet.
 
 pkgname=nspawnmgr-steamos
-pkgver=0.4.0
+pkgver=0.5.0
 pkgrel=1
 pkgdesc="Web manager for systemd-nspawn containers, podman pods, and QEMU/KVM virtual machines with Guacamole access (SteamOS variant - storage relocated under /home)"
 arch=('any')

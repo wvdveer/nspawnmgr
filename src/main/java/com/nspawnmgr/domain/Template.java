@@ -155,6 +155,51 @@ public class Template {
     @Column(name = "xfce4_pre_download_packages")
     private String xfce4PreDownloadPackages;
 
+    /** Wayland counterparts of the X11 overrides above - see DesktopManager's own javadoc for why
+     *  NONE_WAYLAND (unlike NONE_X11) has a real install requirement of its own (a minimal
+     *  compositor, e.g. cage) and therefore needs an override pair too. */
+    @Column(name = "install_kde_standard_wayland_command")
+    private String installKdeStandardWaylandCommand;
+
+    @Column(name = "kde_standard_wayland_pre_download_packages")
+    private String kdeStandardWaylandPreDownloadPackages;
+
+    @Column(name = "install_xfce4_wayland_command")
+    private String installXfce4WaylandCommand;
+
+    @Column(name = "xfce4_wayland_pre_download_packages")
+    private String xfce4WaylandPreDownloadPackages;
+
+    @Column(name = "install_none_wayland_command")
+    private String installNoneWaylandCommand;
+
+    @Column(name = "none_wayland_pre_download_packages")
+    private String noneWaylandPreDownloadPackages;
+
+    /** SWAY is a bare, Wayland-only constant (no X11 counterpart) - see DesktopManager's own
+     *  javadoc. Same override-then-default pattern as every other desktop-manager pair above. */
+    @Column(name = "install_sway_command")
+    private String installSwayCommand;
+
+    @Column(name = "sway_pre_download_packages")
+    private String swayPreDownloadPackages;
+
+    /** HYPRLAND is a bare, Wayland-only constant (no X11 counterpart) - see DesktopManager's own
+     *  javadoc. Same override-then-default pattern as every other desktop-manager pair above. */
+    @Column(name = "install_hyprland_command")
+    private String installHyprlandCommand;
+
+    @Column(name = "hyprland_pre_download_packages")
+    private String hyprlandPreDownloadPackages;
+
+    /** WAYFIRE is a bare, Wayland-only constant (no X11 counterpart) - see DesktopManager's own
+     *  javadoc. Same override-then-default pattern as every other desktop-manager pair above. */
+    @Column(name = "install_wayfire_command")
+    private String installWayfireCommand;
+
+    @Column(name = "wayfire_pre_download_packages")
+    private String wayfirePreDownloadPackages;
+
     /** Null leaves systemd-nspawn's own {@code PrivateUsers=} default (`pick` on current systemd)
      *  untouched for containers made from this template - see NspawnSettingsRenderer. An explicit
      *  override lets a specific template opt into a different user-namespace posture without a code

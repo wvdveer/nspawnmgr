@@ -1,5 +1,6 @@
 package com.nspawnmgr.service;
 
+import com.nspawnmgr.cli.ContainerCliExecutor;
 import com.nspawnmgr.cli.ContainerPortProbe;
 import com.nspawnmgr.crypto.SecretEncryptionService;
 import com.nspawnmgr.domain.Container;
@@ -32,6 +33,7 @@ class ContainerAccessServiceTest {
     private ContainerPortProbe portProbe;
     private GuacamoleAdminClient guacamoleAdminClient;
     private SecretEncryptionService secretEncryptionService;
+    private ContainerCliExecutor cliExecutor;
     private ContainerAccessService service;
 
     @BeforeEach
@@ -41,8 +43,9 @@ class ContainerAccessServiceTest {
         portProbe = mock(ContainerPortProbe.class);
         guacamoleAdminClient = mock(GuacamoleAdminClient.class);
         secretEncryptionService = mock(SecretEncryptionService.class);
+        cliExecutor = mock(ContainerCliExecutor.class);
         service = new ContainerAccessService(containerRepository, credentialRepository, portProbe, guacamoleAdminClient, secretEncryptionService,
-                TestUserMessages.create());
+                cliExecutor, TestUserMessages.create());
     }
 
     private Container containerWithAddress(String address) {

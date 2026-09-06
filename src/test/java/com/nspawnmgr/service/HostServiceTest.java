@@ -2,6 +2,8 @@ package com.nspawnmgr.service;
 
 import com.nspawnmgr.domain.Container;
 import com.nspawnmgr.domain.ContainerKind;
+import com.nspawnmgr.domain.KeystrokeButtonPanelPlacement;
+import com.nspawnmgr.domain.RdpSecurityMode;
 import com.nspawnmgr.domain.User;
 import com.nspawnmgr.guacamole.GuacamoleAdminClient;
 import com.nspawnmgr.repository.ContainerRepository;
@@ -55,7 +57,7 @@ class HostServiceTest {
         when(guacamoleAdminClient.createRdpConnectionPromptCredentials(anyString(), anyString(), anyInt(), anyString())).thenReturn("rdp-1");
         when(guacamoleAdminClient.createVncConnectionPromptCredentials(anyString(), anyString(), anyInt())).thenReturn("vnc-1");
 
-        Container host = service.create("h1", "10.0.0.5", "erin", true, 22, true, 3389, true, 5900);
+        Container host = service.create("h1", "10.0.0.5", "erin", true, 22, true, 3389, true, 5900, null, RdpSecurityMode.ANY, KeystrokeButtonPanelPlacement.NONE);
 
         assertThat(host.getKind()).isEqualTo(ContainerKind.EXTERNAL);
         assertThat(host.getGuacSshConnectionId()).isEqualTo("ssh-1");
@@ -77,7 +79,7 @@ class HostServiceTest {
         when(containerRepository.findByName("h1")).thenReturn(Optional.empty());
         when(userRepository.findByUsernameIgnoreCase("erin")).thenReturn(Optional.of(owner()));
 
-        Container host = service.create("h1", "10.0.0.5", "erin", false, 22, false, 3389, false, 5900);
+        Container host = service.create("h1", "10.0.0.5", "erin", false, 22, false, 3389, false, 5900, null, RdpSecurityMode.ANY, KeystrokeButtonPanelPlacement.NONE);
 
         assertThat(host.getGuacSshConnectionId()).isNull();
         assertThat(host.getExternalSshPort()).isNull();
@@ -94,7 +96,7 @@ class HostServiceTest {
         existing.setId(5L);
         when(containerRepository.findByName("h1")).thenReturn(Optional.of(existing));
 
-        assertThatThrownBy(() -> service.create("h1", "10.0.0.5", "erin", false, 22, false, 3389, false, 5900))
+        assertThatThrownBy(() -> service.create("h1", "10.0.0.5", "erin", false, 22, false, 3389, false, 5900, null, RdpSecurityMode.ANY, KeystrokeButtonPanelPlacement.NONE))
                 .isInstanceOf(IllegalArgumentException.class);
         verify(userRepository, never()).findByUsernameIgnoreCase(any());
     }
@@ -104,7 +106,7 @@ class HostServiceTest {
         when(containerRepository.findByName("h1")).thenReturn(Optional.empty());
         when(userRepository.findByUsernameIgnoreCase("nobody")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.create("h1", "10.0.0.5", "nobody", false, 22, false, 3389, false, 5900))
+        assertThatThrownBy(() -> service.create("h1", "10.0.0.5", "nobody", false, 22, false, 3389, false, 5900, null, RdpSecurityMode.ANY, KeystrokeButtonPanelPlacement.NONE))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -122,7 +124,7 @@ class HostServiceTest {
         Container host = existingHost();
         when(userRepository.findByUsernameIgnoreCase("erin")).thenReturn(Optional.of(owner()));
 
-        Container updated = service.update(9L, "h1", "10.0.0.5", "erin", false, 22, false, 3389, false, 5900);
+        Container updated = service.update(9L, "h1", "10.0.0.5", "erin", false, 22, false, 3389, false, 5900, null, RdpSecurityMode.ANY, KeystrokeButtonPanelPlacement.NONE);
 
         assertThat(updated.getGuacSshConnectionId()).isNull();
         verify(guacamoleAdminClient).deleteConnection("ssh-1");
@@ -134,7 +136,7 @@ class HostServiceTest {
         when(userRepository.findByUsernameIgnoreCase("erin")).thenReturn(Optional.of(owner()));
         when(guacamoleAdminClient.createRdpConnectionPromptCredentials(anyString(), anyString(), anyInt(), anyString())).thenReturn("rdp-new");
 
-        Container updated = service.update(9L, "h1", "10.0.0.5", "erin", true, 22, true, 3389, false, 5900);
+        Container updated = service.update(9L, "h1", "10.0.0.5", "erin", true, 22, true, 3389, false, 5900, null, RdpSecurityMode.ANY, KeystrokeButtonPanelPlacement.NONE);
 
         assertThat(updated.getGuacRdpConnectionId()).isEqualTo("rdp-new");
         verify(guacamoleAdminClient).createRdpConnectionPromptCredentials(eq("h1-rdp"), eq("10.0.0.5"), eq(3389), eq("any"));
@@ -145,7 +147,7 @@ class HostServiceTest {
         Container host = existingHost();
         when(userRepository.findByUsernameIgnoreCase("erin")).thenReturn(Optional.of(owner()));
 
-        service.update(9L, "h1", "10.0.0.9", "erin", true, 2222, false, 3389, false, 5900);
+        service.update(9L, "h1", "10.0.0.9", "erin", true, 2222, false, 3389, false, 5900, null, RdpSecurityMode.ANY, KeystrokeButtonPanelPlacement.NONE);
 
         verify(guacamoleAdminClient).updateSshConnectionPromptCredentials("ssh-1", "h1-ssh", "10.0.0.9", 2222);
         verify(guacamoleAdminClient, never()).createSshConnectionPromptCredentials(any(), any(), anyInt());

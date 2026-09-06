@@ -10,13 +10,12 @@
 # pacstrap/arch-chroot themselves use (this script is effectively a hand-rolled, minimal pacstrap).
 # Confirmed live: the host running nspawnmgr is typically Debian/Ubuntu-based, where the host-side
 # branch alone 404'd immediately with "Required command 'pacman' not found." - the chroot fallback
-# exists specifically for that case. UNVERIFIED either way beyond that: no Arch host exists anywhere
-# in this project's test environment (unlike nspawnmgr-create-debian-template.sh's own host-side
-# branch, confirmed live multiple times), so neither branch here has actually been exercised against
-# a real container. Still the most speculative of nspawnmgr's three "set up a minimal template"
-# scripts. Two other known risks, called out inline below:
+# exists specifically for that case, and IS the one exercised on yoga (real arch-minimal-based
+# containers created and run there since 2026-08). The host-side (--root=) pacman branch itself
+# remains unverified - no Arch host exists anywhere in this project's test environment. Two other
+# known risks, called out inline below:
 #   - the image's default /etc/pacman.d/mirrorlist ships with every mirror commented out (Arch's
-#     own deliberate "you must choose one" convention) - a mirror is written in explicitly below.
+#     own deliberate "you must choose one" convention) - mirrors are written in explicitly below.
 #   - real pacstrap sets up a package-signature keyring automatically via pacman-key
 #     --init/--populate; this script disables signature checking for the bootstrap install instead
 #     of attempting to replicate that dance blind. That's a real security trade-off, acceptable for
@@ -113,10 +112,25 @@ mknod -m 666 "$ROOTFS/dev/tty" c 5 0
 # Arch's own mirrorlist convention ships every entry commented out - a fresh install genuinely
 # doesn't work until an admin (or, here, this script) picks one. geo.mirror.pkgbuild.com is Arch's
 # own official GeoIP-based mirror redirector, the same one the real installer/pacstrap defaults
-# point at. This (and the SigLevel edit below) stay UNCONDITIONAL, ahead of the host-vs-chroot
+# point at - but confirmed live 2026-09-05 (arch-gnome, yoga), root-caused in detail, not just
+# "flaky": from this specific network, resolving geo.mirror.pkgbuild.com returns an IPv6 address
+# with no real route (the container network is IPv4-only - only a link-local IPv6 address exists),
+# and even once a connection lands on IPv4 the transfer can stall completely (confirmed:
+# "Operation too slow, less than 1 byte/sec" on specific files, e.g. extra.db) - a single-mirror
+# list has no fallback for either failure mode, aborting a large (339 MiB, gnome-remote-desktop+
+# gdm's full dependency tree) transaction outright. Three more real, individually connectivity-
+# tested mirrors (confirmed live: plain HTTP 200 within ~1-2s each for core.db, at the paths
+# below) added as fallback - a fresh `pacman -Sy --noconfirm gnome-remote-desktop gdm` with this
+# 4-mirror list completed cleanly end-to-end on arch-gnome after this fix (previously hung/failed
+# every time). This (and the SigLevel edit below) stay UNCONDITIONAL, ahead of the host-vs-chroot
 # branch below - both the host-side (--root=) and chroot pacman invocations read these same
 # $ROOTFS files, so there's no separate "per-branch" version of either edit.
-echo "Server = https://geo.mirror.pkgbuild.com/\$repo/os/\$arch" > "$ROOTFS/etc/pacman.d/mirrorlist"
+cat > "$ROOTFS/etc/pacman.d/mirrorlist" <<'MIRRORLIST'
+Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch
+Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch
+Server = https://mirror.arizona.edu/archlinux/$repo/os/$arch
+Server = https://mirrors.mit.edu/archlinux/$repo/os/$arch
+MIRRORLIST
 
 # SigLevel = Never: see the file-level comment above. Real pacstrap-built systems keep signature
 # checking on via pacman-key --init/--populate; skipping that setup here trades it away rather

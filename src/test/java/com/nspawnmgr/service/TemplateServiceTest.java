@@ -53,17 +53,59 @@ class TemplateServiceTest {
 
     @Test
     void resolveInstallDesktopCommandReturnsNullForNone() {
-        assertThat(service.resolveInstallDesktopCommand(template(PackageManager.APT), DesktopManager.NONE)).isNull();
+        assertThat(service.resolveInstallDesktopCommand(template(PackageManager.APT), DesktopManager.NONE_X11)).isNull();
     }
 
     @Test
     void resolveInstallDesktopCommandReturnsDefaultPerPackageManager() {
         assertThat(service.resolveInstallDesktopCommand(template(PackageManager.APT), DesktopManager.GNOME))
                 .contains("task-gnome-desktop");
-        assertThat(service.resolveInstallDesktopCommand(template(PackageManager.APT), DesktopManager.KDE_STANDARD))
+        assertThat(service.resolveInstallDesktopCommand(template(PackageManager.APT), DesktopManager.KDE_STANDARD_X11))
                 .contains("kde-standard");
-        assertThat(service.resolveInstallDesktopCommand(template(PackageManager.APT), DesktopManager.XFCE4))
+        assertThat(service.resolveInstallDesktopCommand(template(PackageManager.APT), DesktopManager.XFCE4_X11))
                 .contains("xfce4");
+    }
+
+    @Test
+    void resolveInstallDesktopCommandReturnsCageWayvncFootXwaylandForNoneWayland() {
+        // xwayland's own package name genuinely differs per manager (unlike cage/wayvnc/foot) - see
+        // DEFAULT_INSTALL_DESKTOP's own NONE_WAYLAND comment for why cage needs it at all.
+        assertThat(service.resolveInstallDesktopCommand(template(PackageManager.APT), DesktopManager.NONE_WAYLAND))
+                .contains("cage").contains("wayvnc").contains("foot").contains("xwayland");
+        assertThat(service.resolveInstallDesktopCommand(template(PackageManager.DNF), DesktopManager.NONE_WAYLAND))
+                .contains("cage").contains("wayvnc").contains("foot").contains("xorg-x11-server-Xwayland");
+        assertThat(service.resolveInstallDesktopCommand(template(PackageManager.PACMAN), DesktopManager.NONE_WAYLAND))
+                .contains("cage").contains("wayvnc").contains("foot").contains("xorg-xwayland");
+    }
+
+    @Test
+    void desktopPackagesToPreDownloadReturnsCageWayvncFootXwaylandForNoneWaylandOnEveryEligibleManager() {
+        assertThat(service.desktopPackagesToPreDownload(template(PackageManager.APT), DesktopManager.NONE_WAYLAND))
+                .containsExactly("cage", "wayvnc", "foot", "xwayland");
+        assertThat(service.desktopPackagesToPreDownload(template(PackageManager.DNF), DesktopManager.NONE_WAYLAND))
+                .containsExactly("cage", "wayvnc", "foot", "xorg-x11-server-Xwayland");
+        assertThat(service.desktopPackagesToPreDownload(template(PackageManager.PACMAN), DesktopManager.NONE_WAYLAND))
+                .containsExactly("cage", "wayvnc", "foot", "xorg-xwayland");
+    }
+
+    @Test
+    void resolveInstallDesktopCommandReturnsSwayWayvncFootXwaylandForSway() {
+        assertThat(service.resolveInstallDesktopCommand(template(PackageManager.APT), DesktopManager.SWAY))
+                .contains("sway").contains("wayvnc").contains("foot").contains("xwayland");
+        assertThat(service.resolveInstallDesktopCommand(template(PackageManager.DNF), DesktopManager.SWAY))
+                .contains("sway").contains("wayvnc").contains("foot").contains("xorg-x11-server-Xwayland");
+        assertThat(service.resolveInstallDesktopCommand(template(PackageManager.PACMAN), DesktopManager.SWAY))
+                .contains("sway").contains("wayvnc").contains("foot").contains("xorg-xwayland");
+    }
+
+    @Test
+    void desktopPackagesToPreDownloadReturnsSwayWayvncFootXwaylandForSwayOnEveryEligibleManager() {
+        assertThat(service.desktopPackagesToPreDownload(template(PackageManager.APT), DesktopManager.SWAY))
+                .containsExactly("sway", "wayvnc", "foot", "xwayland");
+        assertThat(service.desktopPackagesToPreDownload(template(PackageManager.DNF), DesktopManager.SWAY))
+                .containsExactly("sway", "wayvnc", "foot", "xorg-x11-server-Xwayland");
+        assertThat(service.desktopPackagesToPreDownload(template(PackageManager.PACMAN), DesktopManager.SWAY))
+                .containsExactly("sway", "wayvnc", "foot", "xorg-xwayland");
     }
 
     @Test
@@ -89,7 +131,7 @@ class TemplateServiceTest {
         assertThat(service.resolveInstallSshCommand(template(PackageManager.APT))).doesNotContain("apt-get update");
         assertThat(service.resolveInstallXrdpCommand(template(PackageManager.APT))).doesNotContain("apt-get update");
         assertThat(service.resolveInstallVncCommand(template(PackageManager.APT))).doesNotContain("apt-get update");
-        assertThat(service.resolveInstallDesktopCommand(template(PackageManager.APT), DesktopManager.XFCE4))
+        assertThat(service.resolveInstallDesktopCommand(template(PackageManager.APT), DesktopManager.XFCE4_X11))
                 .doesNotContain("apt-get update");
     }
 
@@ -188,12 +230,12 @@ class TemplateServiceTest {
 
     @Test
     void desktopPackagesToPreDownloadEmptyForNone() {
-        assertThat(service.desktopPackagesToPreDownload(template(PackageManager.APT), DesktopManager.NONE)).isEmpty();
+        assertThat(service.desktopPackagesToPreDownload(template(PackageManager.APT), DesktopManager.NONE_X11)).isEmpty();
     }
 
     @Test
     void desktopPackagesToPreDownloadEmptyForApk() {
-        assertThat(service.desktopPackagesToPreDownload(template(PackageManager.APK), DesktopManager.XFCE4)).isEmpty();
+        assertThat(service.desktopPackagesToPreDownload(template(PackageManager.APK), DesktopManager.XFCE4_X11)).isEmpty();
     }
 
     @Test
@@ -207,7 +249,7 @@ class TemplateServiceTest {
 
     @Test
     void desktopPackagesToPreDownloadReturnsPackageForApt() {
-        assertThat(service.desktopPackagesToPreDownload(template(PackageManager.APT), DesktopManager.XFCE4))
+        assertThat(service.desktopPackagesToPreDownload(template(PackageManager.APT), DesktopManager.XFCE4_X11))
                 .containsExactly("xfce4");
     }
 
@@ -221,7 +263,7 @@ class TemplateServiceTest {
         // and, confirmed live 2026-08-14, no terminal emulator either ("Failed to launch preferred
         // application for category TerminalEmulator") - so all five packages needed for an
         // actually-usable session must be named explicitly.
-        assertThat(service.desktopPackagesToPreDownload(template(PackageManager.DNF), DesktopManager.XFCE4))
+        assertThat(service.desktopPackagesToPreDownload(template(PackageManager.DNF), DesktopManager.XFCE4_X11))
                 .containsExactly("xfce4-session", "xfwm4", "xfdesktop", "xfce4-panel", "xfce4-terminal");
     }
 
@@ -269,7 +311,7 @@ class TemplateServiceTest {
 
         assertThat(service.resolveInstallDesktopCommand(template, DesktopManager.GNOME)).isEqualTo("custom-gnome-install");
         // Other desktop managers on the same template stay on the default - overrides are per-manager.
-        assertThat(service.resolveInstallDesktopCommand(template, DesktopManager.XFCE4)).contains("xfce4");
+        assertThat(service.resolveInstallDesktopCommand(template, DesktopManager.XFCE4_X11)).contains("xfce4");
     }
 
     @Test

@@ -49,6 +49,7 @@ public class ContainerLifecycleService {
     private final GuacamoleAdminClient guacamoleAdminClient;
     private final ShareService shareService;
     private final SecretEncryptionService secretEncryptionService;
+    private final ProvisioningCommands commands;
     private final UserMessages messages;
 
     public ContainerLifecycleService(ContainerRepository containerRepository,
@@ -64,6 +65,7 @@ public class ContainerLifecycleService {
                                       GuacamoleAdminClient guacamoleAdminClient,
                                       ShareService shareService,
                                       SecretEncryptionService secretEncryptionService,
+                                      ProvisioningCommands commands,
                                       UserMessages messages) {
         this.containerRepository = containerRepository;
         this.containerCredentialRepository = containerCredentialRepository;
@@ -78,6 +80,7 @@ public class ContainerLifecycleService {
         this.guacamoleAdminClient = guacamoleAdminClient;
         this.shareService = shareService;
         this.secretEncryptionService = secretEncryptionService;
+        this.commands = commands;
         this.messages = messages;
     }
 
@@ -88,6 +91,9 @@ public class ContainerLifecycleService {
         resyncOutboundAccess(container);
         if (container.getBackend() == ContainerBackend.PODMAN) {
             container.setInternalAddress(resolvePodInternalAddress(container));
+            if (container.isPodSystemdEnabled()) {
+                patchPamLoginuidForPodmanSsh(container);
+            }
         }
         if (container.getBackend() == ContainerBackend.QEMU) {
             reapplyQemuVncPassword(container);
@@ -95,6 +101,28 @@ public class ContainerLifecycleService {
         container.setState(bootedState(container));
         container.touch();
         containerRepository.save(container);
+    }
+
+    /** As {@code ProvisioningService.patchPamLoginuidForPodmanSsh} (same fix, same reasoning - see
+     *  its own javadoc there; both share the same {@code pod.fix-pam-loginuid} entry in
+     *  provisioning-commands.yml, called separately here since this class has no other dependency
+     *  on {@code ProvisioningService} itself) - called here too because {@link #start} is the only
+     *  place a systemd-enabled pod's container filesystem gets freshly (re)created without going
+     *  through {@code ProvisioningService.provisionPod} at all: {@code updatePodCommand} recreates
+     *  the underlying podman container (wiping any earlier in-container patch) but leaves it
+     *  STOPPED, so this method's own next {@link #start} call is the only point that can reapply
+     *  it. Idempotent (the sed pattern only ever matches the original "required" line, so a second
+     *  run is a harmless no-op) and best-effort - a failure here shouldn't undo the container
+     *  having actually started, same posture as {@link #reapplyQemuVncPassword}. */
+    private void patchPamLoginuidForPodmanSsh(Container container) {
+        try {
+            cliExecutor.runInMachine(container.getName(), container.getBackend(),
+                    List.of("sh", "-c", commands.get("pod.fix-pam-loginuid")),
+                    Duration.ofSeconds(15));
+        } catch (Exception e) {
+            log.warn("Failed to patch pam_loginuid for pod {} - SSH sessions may disconnect immediately after login: {}",
+                    container.getName(), e.getMessage(), e);
+        }
     }
 
     @Transactional

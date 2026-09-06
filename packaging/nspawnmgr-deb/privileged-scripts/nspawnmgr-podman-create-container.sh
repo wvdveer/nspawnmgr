@@ -50,8 +50,27 @@ fi
 # this, a pod can ping its own bridge-assigned IP fine but "ping fed2.internal"/"ping
 # nspawnmgr.internal" fail outright with "Name or service not known" - /etc/resolv.conf was simply
 # never written at all.
-if [ -n "$3" ]; then
-    podman create --name "$2" --network nspawnbr0 --dns 10.100.0.1 --dns-search internal "$LOADED_REF" sh -c "$3"
+# podman's own systemd auto-detection (--systemd=auto, the default) looks at the LITERAL
+# top-level command being run - /sbin/init, /usr/sbin/init, /usr/local/sbin/init, or anything
+# ending in "systemd" - and if it matches, transparently sets up what a systemd PID 1 needs
+# (tmpfs at /run and /tmp, the right stop-signal, cgroup access) without needing --privileged.
+# Wrapping every command in `sh -c "$3"` below defeats that detection outright, since the
+# command podman actually sees is "sh", not "/sbin/init" - confirmed live (yoga, 2026-09-03): a
+# pod created from an nspawn-converted template with Command=/sbin/init ran systemd with none
+# of that support, and it repeatedly failed "Failed to set RLIMIT_CORE: Operation not
+# permitted" until giving up (Exited 255). $4 = "1" is an explicit opt-in (a pod configuration
+# checkbox, see Container#isPodSystemdEnabled's own javadoc) that forces the same
+# --systemd=always handling regardless of the sh -c wrapping - deliberately NOT inferred from
+# $3's own text (an earlier version of this script tried pattern-matching known init paths, but
+# guessing "this command looks like init" is worse UX than just asking).
+if [ "$4" = "1" ]; then
+    SYSTEMD_FLAG="--systemd=always"
 else
-    podman create --name "$2" --network nspawnbr0 --dns 10.100.0.1 --dns-search internal "$LOADED_REF"
+    SYSTEMD_FLAG=""
+fi
+
+if [ -n "$3" ]; then
+    podman create --name "$2" --network nspawnbr0 --dns 10.100.0.1 --dns-search internal $SYSTEMD_FLAG "$LOADED_REF" sh -c "$3"
+else
+    podman create --name "$2" --network nspawnbr0 --dns 10.100.0.1 --dns-search internal $SYSTEMD_FLAG "$LOADED_REF"
 fi

@@ -31,7 +31,8 @@
 <div class="machine-grid">
     <div class="machine-card" th:each="c : ${containers}"
          th:with="kindKey=${c.kind.name() == 'EXTERNAL' ? 'HOST' : c.backend.name()},
-                  kindLabel=${c.kind.name() == 'EXTERNAL' ? 'HOST' : (c.backend.name() == 'SYSTEMD_NSPAWN' ? 'NSPAWN' : c.backend.name())}">
+                  kindLabel=${c.kind.name() == 'EXTERNAL' ? 'HOST' : (c.backend.name() == 'SYSTEMD_NSPAWN' ? 'NSPAWN' : c.backend.name())},
+                  address=${c.kind.name() == 'EXTERNAL' ? c.hostname : c.internalAddress}">
         <div class="machine-card-header">
             <span class="status-dot" th:classappend="${c.state.name()}"></span>
             <a class="machine-card-name" th:href="@{/containers/{id}(id=${c.id})}" th:text="${c.name}">name</a>
@@ -40,10 +41,10 @@
             <span class="badge badge-backend" th:classappend="${kindKey}" th:text="${kindLabel}">NSPAWN</span>
         </div>
         <p class="machine-card-desc" th:if="${c.description != null and c.description != ''}" th:text="${c.description}">description</p>
-        <p class="machine-card-meta" th:if="${c.kind.name() == 'EXTERNAL'}" th:text="${c.hostname}">hostname</p>
         <p class="machine-card-meta" th:if="${c.kind.name() == 'MANAGED' and c.template != null}" th:text="${c.template.name}">template</p>
         <p class="machine-card-meta" th:if="${c.backend.name() == 'QEMU' and c.qemuCpuCount != null and c.qemuMemoryMb != null}"
            th:text="${c.qemuCpuCount} + ' vCPU / ' + ${c.qemuMemoryMb} + ' MB'">spec</p>
+        <p class="machine-card-meta" th:if="${address != null and address != ''}" th:text="${address}">10.100.0.2</p>
         <div class="machine-card-footer">
             <button class="access-pill SSH" th:data-container-name="${c.name}"
                     th:disabled="${c.state.name() != 'RUNNING' or c.guacSshConnectionId == null}">SSH</button>

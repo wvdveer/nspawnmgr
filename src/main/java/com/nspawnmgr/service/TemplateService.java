@@ -148,12 +148,40 @@ public class TemplateService {
             // outright with "No match for argument". Fedora's real groups are `gnome-desktop`
             // ("GNOME") and `kde-desktop` ("KDE") - confirmed live via `dnf group list`/`dnf group
             // info`, gnome-desktop's mandatory packages include gdm/gnome-shell/nautilus, a real
-            // installable full desktop.
+            // installable full desktop. `gnome-remote-desktop` isn't part of that group - named
+            // explicitly, same "don't trust a group to include everything" posture as
+            // plasma-workspace-x11/Xwayland elsewhere in this map. Confirmed live 2026-09-02
+            // (fedora-test-vm, acer): this combination gives a real GDM login screen whose native
+            // RDP system mode this app now uses for GNOME (see ProvisioningService's own
+            // provisionGnomeRdp) - genuinely different from GNOME's old (pre-v0.5.0) role here as
+            // a plain X11-era desktop-manager choice.
+            //
+            // PACMAN confirmed live 2026-09-02 (vanilla-arch-vm, acer): `gnome-remote-desktop
+            // gdm` alone (NOT the full `gnome` group) was sufficient for a working GDM login into
+            // a real GNOME session - simpler than Fedora's requirement, not yet understood why
+            // (possibly a transitive dependency Arch's package happens to pull in that Fedora's
+            // doesn't), but this is the exact combination that was live-tested, so it's what's
+            // used here rather than the broader (untested-for-this-purpose) full group.
+            //
+            // `openssl` named explicitly too: confirmed live 2026-09-05 (fed-gnome, yoga) - the
+            // self-signed TLS cert ProvisioningService.provisionGnomeRdp generates before its
+            // `grdctl` calls needs the `openssl` CLI, which a minimal Fedora template doesn't ship
+            // by default (openssl-libs is pulled in transitively as a dependency of many things,
+            // the CLI binary itself is not) - provisioning failed with "openssl: command not
+            // found" (exit 127) before ever reaching grdctl.
+            //
+            // UNREACHABLE on every package manager today, not just APT - GNOME is unconditionally
+            // downgraded to NONE_X11 in ProvisioningService.createPending (see DesktopManager's own
+            // javadoc: its system-mode RDP NLA authentication was found broken on both Fedora and
+            // Arch, a deeper and more broadly-applicable blocker than the original Debian-bookworm-
+            // specific GNOME-46 D-Bus-interface gap this comment used to describe). Kept accurate
+            // to what Debian trixie (48.1-4) would still need regardless - gdm3 is Debian's own
+            // package name (not gdm). APK is best-effort/unverified like the rest of this map.
             DesktopManager.GNOME, Map.of(
-                    PackageManager.APT, "DEBIAN_FRONTEND=noninteractive apt-get install -y task-gnome-desktop",
-                    PackageManager.DNF, "dnf group install -y gnome-desktop",
-                    PackageManager.APK, "apk add --no-cache gnome",
-                    PackageManager.PACMAN, "pacman -S --noconfirm gnome"),
+                    PackageManager.APT, "DEBIAN_FRONTEND=noninteractive apt-get install -y task-gnome-desktop gnome-remote-desktop gdm3",
+                    PackageManager.DNF, "dnf group install -y gnome-desktop && dnf install -y gnome-remote-desktop openssl",
+                    PackageManager.APK, "apk add --no-cache gnome gnome-remote-desktop gdm",
+                    PackageManager.PACMAN, "pacman -S --noconfirm gnome-remote-desktop gdm"),
             // Confirmed live 2026-08-14: the `kde-desktop` comps group installs Plasma's Wayland
             // session by default but not its X11 one - RDP (this app's only X11-based desktop
             // path besides VNC) failed with "startplasma-x11: not found". Unlike GNOME (which has
@@ -162,7 +190,7 @@ public class TemplateService {
             // ships a real X11 session as a separate package, `plasma-workspace-x11` ("Xorg
             // support for Plasma", confirmed live via `dnf provides */startplasma-x11`) - named
             // explicitly here, same pattern as XFCE's own missing-package fixes.
-            DesktopManager.KDE_STANDARD, Map.of(
+            DesktopManager.KDE_STANDARD_X11, Map.of(
                     PackageManager.APT, "DEBIAN_FRONTEND=noninteractive apt-get install -y kde-standard",
                     PackageManager.DNF, "dnf group install -y kde-desktop && dnf install -y plasma-workspace-x11",
                     PackageManager.APK, "apk add --no-cache plasma-desktop",
@@ -189,11 +217,93 @@ public class TemplateService {
             // pulls xfce4-terminal in via its own Recommends (apt installs those by default);
             // Fedora has no such metapackage at all here, so nothing pulled one in. Added
             // xfce4-terminal explicitly, same as the other four.
-            DesktopManager.XFCE4, Map.of(
+            DesktopManager.XFCE4_X11, Map.of(
                     PackageManager.APT, "DEBIAN_FRONTEND=noninteractive apt-get install -y xfce4",
                     PackageManager.DNF, "ls /var/cache/dnf/*.rpm >/dev/null 2>&1 && dnf install -y /var/cache/dnf/*.rpm || dnf install -y xfce4-session xfwm4 xfdesktop xfce4-panel xfce4-terminal",
                     PackageManager.APK, "apk add --no-cache xfce4",
-                    PackageManager.PACMAN, "pacman -S --noconfirm xfce4")
+                    PackageManager.PACMAN, "pacman -S --noconfirm xfce4"),
+            // Wayland has no display-server/window-manager split the way X11 does - every client
+            // talks directly to a compositor, which is inherently responsible for window placement -
+            // so "no desktop shell" still needs SOME compositor running, unlike NONE_X11 (which
+            // needs nothing at all beyond Xvnc itself). `cage` is a minimal, chrome-free kiosk
+            // compositor (wlroots-based, confirmed same package name on all three managers) that
+            // fills exactly that role - the closest available equivalent to NONE_X11's "just Xvnc +
+            // a shell". `foot` is that shell's own Wayland-native terminal-emulator equivalent (same
+            // role xterm plays for NONE_X11 on Arch - see VNC_PACKAGES' own PACMAN entry). Confirmed
+            // live (fedora-kde-test-vm, 2026-09-02): `cage -s -- foot` genuinely renders and streams
+            // real (non-black) frames over `wayvnc` once `WLR_BACKENDS=headless` +
+            // `WLR_LIBINPUT_NO_DEVICES=1` + `WLR_HEADLESS_OUTPUTS=1` are set - cage's own DRM/seat
+            // backend (its default outside this env) needs a real logind-managed seat/GPU, neither
+            // of which exists in these headless containers.
+            //
+            // Confirmed live (way1/debian-minimal, yoga, 2026-09-02): cage unconditionally tries to
+            // start an embedded XWayland server on its own startup (X11-app compatibility, cage.c's
+            // own "Cannot create XWayland server" - nothing to do with the launched app itself being
+            // Wayland-native) and aborts outright ("Failed to initialise wayland") if no Xwayland
+            // binary exists at all - `journalctl -u nspawnmgr-wayland-vnc.service` showed "Cannot
+            // find Xwayland binary \"/usr/bin/Xwayland\"". The earlier fedora-kde-test-vm
+            // verification never caught this because that VM already had Xwayland pulled in
+            // transitively from the earlier krfb/KDE investigation on the same box - not a clean
+            // environment. Xwayland's package name genuinely differs per manager (unlike
+            // cage/wayvnc/foot's identical names), so it needs its own per-manager entry here.
+            DesktopManager.NONE_WAYLAND, Map.of(
+                    PackageManager.APT, "DEBIAN_FRONTEND=noninteractive apt-get install -y cage wayvnc foot xwayland",
+                    PackageManager.DNF, "dnf install -y cage wayvnc foot xorg-x11-server-Xwayland",
+                    PackageManager.APK, "apk add --no-cache cage wayvnc foot xwayland",
+                    PackageManager.PACMAN, "pacman -S --noconfirm cage wayvnc foot xorg-xwayland"),
+            // SWAY is a real tiling WM, not a bare kiosk compositor like cage - it's still
+            // wlroots-based (same family, same NONE_WAYLAND VNC mechanism reused as-is - see
+            // ProvisioningService's own waylandVncUnitInstallCommand), so the same
+            // WLR_BACKENDS=headless env trio and the same Xwayland requirement almost certainly
+            // apply too (Xwayland included preemptively here on the strength of that - unlike
+            // NONE_WAYLAND's own Xwayland need, this specific requirement is NOT yet independently
+            // confirmed live for Sway). `foot` is bundled the same way, for a usable terminal.
+            // Package names here (all four managers) are NOT yet confirmed live - Debian's own
+            // "sway" bookworm package name is confirmed via packages.debian.org, DNF/PACMAN/APK
+            // assumed to match (Sway is a mainstream package, unlikely to be renamed, but this
+            // needs the same live-verification bar every other desktop-manager entry here got).
+            DesktopManager.SWAY, Map.of(
+                    PackageManager.APT, "DEBIAN_FRONTEND=noninteractive apt-get install -y sway wayvnc foot xwayland",
+                    PackageManager.DNF, "dnf install -y sway wayvnc foot xorg-x11-server-Xwayland",
+                    PackageManager.APK, "apk add --no-cache sway wayvnc foot xwayland",
+                    PackageManager.PACMAN, "pacman -S --noconfirm sway wayvnc foot xorg-xwayland"),
+            // HYPRLAND reuses the identical NONE_WAYLAND/SWAY wayvnc mechanism (wlroots-based) -
+            // see DesktopManager's own javadoc for why it's added at all (sidesteps GNOME's own
+            // guacd/FreeRDP dead end entirely, no RDP involved). Xwayland/foot bundled the same
+            // preemptive way Sway's own entry already does, on the same "cage needed it, assume
+            // every wlroots compositor might" reasoning - NOT yet independently confirmed live for
+            // Hyprland specifically. Package names (all four managers) are NOT yet confirmed live
+            // either - "hyprland" is Arch's own confirmed package name (a mainstream `extra`-repo
+            // package), DNF/APT/APK assumed to match, needs the same live-verification bar every
+            // other desktop-manager entry here got. Debian bookworm's own "hyprland" availability
+            // is a genuine open question (Hyprland moves fast enough that bookworm may not carry
+            // it at all, a different and possibly harder problem than NONE_WAYLAND/SWAY's own
+            // "packaged but too-old-wlroots" gap) - folded into the same APT wlroots-version gate
+            // as a conservative default either way (see NEEDS_RECENT_WLROOTS_FOR_INPUT).
+            DesktopManager.HYPRLAND, Map.of(
+                    PackageManager.APT, "DEBIAN_FRONTEND=noninteractive apt-get install -y hyprland wayvnc foot xwayland",
+                    PackageManager.DNF, "dnf install -y hyprland wayvnc foot xorg-x11-server-Xwayland",
+                    PackageManager.APK, "apk add --no-cache hyprland wayvnc foot xwayland",
+                    PackageManager.PACMAN, "pacman -S --noconfirm hyprland wayvnc foot xorg-xwayland"),
+            // WAYFIRE reuses the identical NONE_WAYLAND/SWAY wayvnc mechanism (wlroots-based, not a
+            // private backend fork like Hyprland's Aquamarine - confirmed catalog-level via
+            // packages.debian.org that Debian bookworm's own "wayfire" package directly depends on
+            // libwlroots10, the same too-old-for-wayvnc version already gating NONE_WAYLAND/SWAY,
+            // folded into the identical NEEDS_RECENT_WLROOTS_FOR_INPUT gate rather than a new one).
+            // Added 2026-09-06 as a fuller-desktop-feeling alternative to Sway's tiling-only model,
+            // once GNOME was re-descoped for its own unrelated (broken NLA) reason - see
+            // DesktopManager's own javadoc. "wayfire" confirmed a real package (not AUR-only) on
+            // Fedora (dnf) and Arch (extra repo) too - all four managers' exact names here still
+            // need the same live-verification bar every other desktop-manager entry got.
+            // `wf-shell` (a taskbar/panel Arch's own wiki recommends alongside bare Wayfire, for a
+            // fuller desktop feel than a bare compositor) is included on the strength of that one
+            // mention - its availability/exact name on APT/DNF/APK is NOT independently confirmed,
+            // flagged the same way Sway's own Xwayland inclusion was before its own live test.
+            DesktopManager.WAYFIRE, Map.of(
+                    PackageManager.APT, "DEBIAN_FRONTEND=noninteractive apt-get install -y wayfire wf-shell wayvnc foot xwayland",
+                    PackageManager.DNF, "dnf install -y wayfire wf-shell wayvnc foot xorg-x11-server-Xwayland",
+                    PackageManager.APK, "apk add --no-cache wayfire wf-shell wayvnc foot xwayland",
+                    PackageManager.PACMAN, "pacman -S --noconfirm wayfire wf-shell wayvnc foot xorg-xwayland")
     );
 
     private final TemplateRepository templateRepository;
@@ -263,9 +373,13 @@ public class TemplateService {
         return DEFAULT_VNC_PROCESS_NAME_PATTERN;
     }
 
-    /** Null for NONE - nothing to install, matching today's RDP-only behavior with no desktop manager. */
+    /** Null for NONE_X11 - nothing to install, matching the original RDP-only behavior with no
+     *  desktop manager. NONE_WAYLAND is NOT included here despite also being a "no desktop shell"
+     *  choice - unlike bare X11, a Wayland session always needs some compositor running, so
+     *  NONE_WAYLAND has a real install requirement (a minimal one, e.g. cage) - see its own
+     *  DEFAULT_INSTALL_DESKTOP entry. */
     public String resolveInstallDesktopCommand(Template template, DesktopManager desktopManager) {
-        if (desktopManager == DesktopManager.NONE) {
+        if (desktopManager == DesktopManager.NONE_X11) {
             return null;
         }
         String override = desktopInstallCommandOverride(template, desktopManager);
@@ -278,18 +392,30 @@ public class TemplateService {
     private static String desktopInstallCommandOverride(Template template, DesktopManager desktopManager) {
         return switch (desktopManager) {
             case GNOME -> template.getInstallGnomeCommand();
-            case KDE_STANDARD -> template.getInstallKdeStandardCommand();
-            case XFCE4 -> template.getInstallXfce4Command();
-            case NONE -> null;
+            case KDE_STANDARD_X11 -> template.getInstallKdeStandardCommand();
+            case KDE_STANDARD_WAYLAND -> template.getInstallKdeStandardWaylandCommand();
+            case XFCE4_X11 -> template.getInstallXfce4Command();
+            case XFCE4_WAYLAND -> template.getInstallXfce4WaylandCommand();
+            case NONE_WAYLAND -> template.getInstallNoneWaylandCommand();
+            case SWAY -> template.getInstallSwayCommand();
+            case HYPRLAND -> template.getInstallHyprlandCommand();
+            case WAYFIRE -> template.getInstallWayfireCommand();
+            case NONE_X11 -> null;
         };
     }
 
     private static String desktopPreDownloadPackagesOverride(Template template, DesktopManager desktopManager) {
         return switch (desktopManager) {
             case GNOME -> template.getGnomePreDownloadPackages();
-            case KDE_STANDARD -> template.getKdeStandardPreDownloadPackages();
-            case XFCE4 -> template.getXfce4PreDownloadPackages();
-            case NONE -> null;
+            case KDE_STANDARD_X11 -> template.getKdeStandardPreDownloadPackages();
+            case KDE_STANDARD_WAYLAND -> template.getKdeStandardWaylandPreDownloadPackages();
+            case XFCE4_X11 -> template.getXfce4PreDownloadPackages();
+            case XFCE4_WAYLAND -> template.getXfce4WaylandPreDownloadPackages();
+            case NONE_WAYLAND -> template.getNoneWaylandPreDownloadPackages();
+            case SWAY -> template.getSwayPreDownloadPackages();
+            case HYPRLAND -> template.getHyprlandPreDownloadPackages();
+            case WAYFIRE -> template.getWayfirePreDownloadPackages();
+            case NONE_X11 -> null;
         };
     }
 
@@ -325,19 +451,45 @@ public class TemplateService {
     // for that combination (see desktopPackagesToPreDownload below) leaves the direct in-container
     // group install as the only option there, same as before this pre-fetch widening.
     private static final Map<DesktopManager, Map<PackageManager, List<String>>> DESKTOP_PACKAGES = Map.of(
+            // Must match DEFAULT_INSTALL_DESKTOP's GNOME entry above - PACMAN is the live-tested
+            // `gnome-remote-desktop gdm` pair, not the full `gnome` group (see that entry's own
+            // comment). Unreachable today regardless of package manager - GNOME is unconditionally
+            // downgraded to NONE_X11 in ProvisioningService.createPending before pre-fetch ever
+            // runs (see DesktopManager's own javadoc for why) - kept here anyway, same "code stays,
+            // just unreachable" posture as everything else about GNOME's own provisioning path.
             DesktopManager.GNOME, Map.of(
-                    PackageManager.APT, List.of("task-gnome-desktop"),
-                    PackageManager.PACMAN, List.of("gnome")),
-            DesktopManager.KDE_STANDARD, Map.of(
+                    PackageManager.APT, List.of("task-gnome-desktop", "gnome-remote-desktop", "gdm3"),
+                    PackageManager.PACMAN, List.of("gnome-remote-desktop", "gdm")),
+            DesktopManager.KDE_STANDARD_X11, Map.of(
                     PackageManager.APT, List.of("kde-standard"),
                     PackageManager.PACMAN, List.of("plasma")),
-            DesktopManager.XFCE4, Map.of(
+            DesktopManager.XFCE4_X11, Map.of(
                     PackageManager.APT, List.of("xfce4"),
                     // Must match DEFAULT_INSTALL_DESKTOP's DNF entry above - xfce4-session alone
                     // installs but leaves no window manager/desktop/panel, see that entry's
                     // comment (also covers the added xfce4-terminal).
                     PackageManager.DNF, List.of("xfce4-session", "xfwm4", "xfdesktop", "xfce4-panel", "xfce4-terminal"),
-                    PackageManager.PACMAN, List.of("xfce4"))
+                    PackageManager.PACMAN, List.of("xfce4")),
+            // Must match DEFAULT_INSTALL_DESKTOP's NONE_WAYLAND entry above.
+            DesktopManager.NONE_WAYLAND, Map.of(
+                    PackageManager.APT, List.of("cage", "wayvnc", "foot", "xwayland"),
+                    PackageManager.DNF, List.of("cage", "wayvnc", "foot", "xorg-x11-server-Xwayland"),
+                    PackageManager.PACMAN, List.of("cage", "wayvnc", "foot", "xorg-xwayland")),
+            // Must match DEFAULT_INSTALL_DESKTOP's SWAY entry above.
+            DesktopManager.SWAY, Map.of(
+                    PackageManager.APT, List.of("sway", "wayvnc", "foot", "xwayland"),
+                    PackageManager.DNF, List.of("sway", "wayvnc", "foot", "xorg-x11-server-Xwayland"),
+                    PackageManager.PACMAN, List.of("sway", "wayvnc", "foot", "xorg-xwayland")),
+            // Must match DEFAULT_INSTALL_DESKTOP's HYPRLAND entry above.
+            DesktopManager.HYPRLAND, Map.of(
+                    PackageManager.APT, List.of("hyprland", "wayvnc", "foot", "xwayland"),
+                    PackageManager.DNF, List.of("hyprland", "wayvnc", "foot", "xorg-x11-server-Xwayland"),
+                    PackageManager.PACMAN, List.of("hyprland", "wayvnc", "foot", "xorg-xwayland")),
+            // Must match DEFAULT_INSTALL_DESKTOP's WAYFIRE entry above.
+            DesktopManager.WAYFIRE, Map.of(
+                    PackageManager.APT, List.of("wayfire", "wf-shell", "wayvnc", "foot", "xwayland"),
+                    PackageManager.DNF, List.of("wayfire", "wf-shell", "wayvnc", "foot", "xorg-x11-server-Xwayland"),
+                    PackageManager.PACMAN, List.of("wayfire", "wf-shell", "wayvnc", "foot", "xorg-xwayland"))
     );
 
     /** As {@link #xrdpPackagesToPreDownload}, for the SSH install step. */
@@ -366,7 +518,7 @@ public class TemplateService {
     }
 
     public List<String> desktopPackagesToPreDownload(Template template, DesktopManager desktopManager) {
-        if (desktopManager == DesktopManager.NONE) {
+        if (desktopManager == DesktopManager.NONE_X11) {
             return List.of();
         }
         Map<PackageManager, List<String>> defaults = DESKTOP_PACKAGES.get(desktopManager);
@@ -509,11 +661,14 @@ public class TemplateService {
         filesystemProvisioner.createMinimalTemplate(flavor, sudoPasswordOverride);
         // Confirmed live: xrdp/xorgxrdp were dropped from Arch's official repos entirely (AUR-only
         // now, which this app has no way to build from) - "target not found" for both, every time.
-        // NOT_CAPABLE here is what actually disables the "Enable RDP" checkbox on the New
-        // container form (see create.html/create.js) - not a hardcoded PACMAN check there, so an
-        // admin can still flip it back on later (e.g. if a future Arch release restores the
-        // package, or a template is hand-edited to a different install command) via the template's
-        // own "RDP" select on its edit form.
+        // GNOME's native system-mode RDP briefly offered a real alternative path (2026-09-05..06),
+        // but was re-descoped after live testing found its NLA authentication broken on both Fedora
+        // and Arch (see DesktopManager's own javadoc) - so Arch is back to having no working RDP
+        // mechanism at all. NOT_CAPABLE here is what actually disables the "Enable RDP" checkbox on
+        // the New container form (see create.html/create.js) - not a hardcoded PACMAN check there,
+        // so an admin can still flip it back on later (e.g. if a future Arch release restores the
+        // xrdp package, or GNOME's NLA bug gets fixed upstream) via the template's own "RDP" select
+        // on its edit form.
         TemplateFeatureState rdpState = flavor.packageManager() != PackageManager.PACMAN
                 ? TemplateFeatureState.CAPABLE : TemplateFeatureState.NOT_CAPABLE;
         // PREINSTALLED: every nspawnmgr-create-*-template.sh bake script already installs and

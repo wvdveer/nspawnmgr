@@ -77,12 +77,19 @@ fi
 mkdir -p "$ROOTFS"
 tar -xpf "$WORK_DIR/rootfs.tar.xz" -C "$ROOTFS"
 
-# Same three pacman.conf workarounds as nspawnmgr-create-arch-template.sh - see that script's
-# header comment for the full rationale of each (uncommented mirrorlist, SigLevel=Never in place
-# of replicating pacman-key --init/--populate, CheckSpace disabled because chroot mountinfo
-# parsing breaks it, DisableSandbox because Landlock isn't available under nspawn's seccomp
-# filter).
-echo "Server = https://geo.mirror.pkgbuild.com/\$repo/os/\$arch" > "$ROOTFS/etc/pacman.d/mirrorlist"
+# Same pacman.conf workarounds as nspawnmgr-create-arch-template.sh - see that script's header
+# comment for the full rationale of each (uncommented mirrorlist with 3 real, individually
+# connectivity-tested fallback mirrors - the GeoIP redirector alone resolved to an unroutable
+# IPv6 address from this network and could also stall completely on IPv4, confirmed live
+# 2026-09-05 - SigLevel=Never in place of replicating pacman-key --init/--populate, CheckSpace
+# disabled because chroot mountinfo parsing breaks it, DisableSandbox because Landlock isn't
+# available under nspawn's seccomp filter).
+cat > "$ROOTFS/etc/pacman.d/mirrorlist" <<'MIRRORLIST'
+Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch
+Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch
+Server = https://mirror.arizona.edu/archlinux/$repo/os/$arch
+Server = https://mirrors.mit.edu/archlinux/$repo/os/$arch
+MIRRORLIST
 sed -i 's/^SigLevel.*/SigLevel = Never/' "$ROOTFS/etc/pacman.conf"
 sed -i 's/^CheckSpace/#CheckSpace/' "$ROOTFS/etc/pacman.conf"
 sed -i '/^\[options\]/a DisableSandbox' "$ROOTFS/etc/pacman.conf"

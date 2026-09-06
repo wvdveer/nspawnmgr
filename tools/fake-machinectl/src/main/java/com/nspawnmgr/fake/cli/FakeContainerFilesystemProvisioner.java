@@ -172,12 +172,13 @@ public class FakeContainerFilesystemProvisioner implements ContainerFilesystemPr
     }
 
     @Override
-    public void createPodmanContainer(String templateSourcePath, String containerName, String command, char[] sudoPasswordOverride) {
+    public void createPodmanContainer(String templateSourcePath, String containerName, String command, boolean systemdEnabled, char[] sudoPasswordOverride) {
         // No real podman load/create path in dev mode - same "just make sure a stub directory
         // exists" posture as cloneTemplate/createMinimalTemplate above, copying whatever's really
         // sitting in the source podman template's own dev-mode stub directory, if anything. command
-        // is unused here (nothing to actually run in dev mode) - this only needs to prove out the
-        // caller's own wiring, not simulate a real podman create's command handling.
+        // and systemdEnabled are both unused here (nothing to actually run in dev mode) - this only
+        // needs to prove out the caller's own wiring, not simulate a real podman create's command
+        // handling.
         Path source = Path.of(properties.templatesDir(), ContainerBackend.PODMAN.templateSubdirectory(), templateSourcePath);
         Path target = Path.of(properties.machinesDir(), containerName);
         try {

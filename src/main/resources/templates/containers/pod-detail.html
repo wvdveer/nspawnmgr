@@ -66,6 +66,14 @@
             <button id="btn-save-pod-command" class="btn-primary"
                     th:disabled="${container.state.name() != 'STOPPED' and container.state.name() != 'ERROR'}" th:text="${t.get('button.save')}">Save</button>
         </div>
+        <label>
+            <input type="checkbox" id="pod-systemd-enabled" th:checked="${container.podSystemdEnabled}"
+                   th:disabled="${container.state.name() != 'STOPPED' and container.state.name() != 'ERROR'}"/>
+            <span th:text="${t.get('page.newPod.systemdEnabled')}">Enable systemd support</span>
+        </label>
+        <p class="hint" th:text="${t.get('page.newPod.systemdEnabledHint')}">Only needed when the command above is an init system (e.g. /sbin/init, for a
+            template converted from an nspawn one) - podman needs to be told explicitly so it can set up
+            what a real init system requires. Leave unchecked for an ordinary command.</p>
     </div>
 
     <div class="panel-section">

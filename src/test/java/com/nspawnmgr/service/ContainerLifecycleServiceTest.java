@@ -72,6 +72,7 @@ class ContainerLifecycleServiceTest {
                 guacamoleAdminClient,
                 shareService,
                 mock(SecretEncryptionService.class),
+                new ProvisioningCommands(),
                 TestUserMessages.create());
     }
 

@@ -75,7 +75,7 @@ public class ContainerSessionService {
         if (container.getKind() == ContainerKind.EXTERNAL) {
             String address = cliExecutor.resolveHostname(container.getHostname());
             guacamoleAdminClient.updateRdpConnectionPromptCredentials(container.getGuacRdpConnectionId(),
-                    container.getName() + "-rdp", address, container.getExternalRdpPort(), "any");
+                    container.getName() + "-rdp", address, container.getExternalRdpPort(), container.getRdpSecurity().guacamoleValue());
         } else if (credentialRepository.findByContainerAndType(container, CredentialType.RDP_PASSWORD).isPresent()) {
             // Only for a container nspawnmgr actually provisioned RDP on itself - see
             // ProvisioningService#ensureLingerEnabled's own javadoc for the XDG_RUNTIME_DIR race

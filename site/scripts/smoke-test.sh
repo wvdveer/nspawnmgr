@@ -42,7 +42,7 @@ echo "   Using template id=$template_id"
 echo "3. Creating container '$container_name'..."
 container_id="$(curl -fsS -b "$cookie_jar" -X POST "$nspawnmgr_url/api/containers" \
     -H 'Content-Type: application/json' \
-    -d "{\"name\":\"$container_name\",\"templateId\":$template_id,\"rdpEnabled\":false}" \
+    -d "{\"name\":\"$container_name\",\"templateId\":$template_id,\"rdpEnabled\":false,\"keystrokeButtonPanelPlacement\":\"NONE\"}" \
     | grep -oP '"id":\K[0-9]+' || true)"
 if [[ -z "$container_id" ]]; then
     echo "Failed to create container (no id in response)" >&2

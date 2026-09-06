@@ -1,0 +1,124 @@
+# Named shell-command templates used by ProvisioningService/ContainerLifecycleService when
+# provisioning a container - previously scattered as inline Java string literals across those
+# classes (several duplicated verbatim 2-4x across provision/rewire method pairs), making a
+# one-line tweak a larger diff than it needed to be and the actual command text harder to find or
+# audit at a glance. See ProvisioningCommands.java for how this is loaded - bundled with the app,
+# NOT admin/DB-editable (unlike Template's own per-desktop-manager install-command overrides,
+# which stay exactly as they were - this is a different, narrower kind of override entirely).
+#
+# Every value is still a java.util.Formatter template (%s / %1$s / %2$d / etc.) exactly as before -
+# callers still call .formatted(...) themselves, this file only relocates the literal text. YAML's
+# block-literal style (the `|-` entries below) needs no backslash escaping for the quotes/percent
+# signs inside real shell commands, unlike the Java string literals they replace.
+provisioning-commands:
+  common:
+    # Idempotent - safe to call even if the account already exists (every provision/rewire path
+    # that touches an account uses this same guard).
+    ensure-account-exists: "id -u %s >/dev/null 2>&1 || useradd -m -s /bin/bash %s"
+    set-password: "echo '%s:%s' | chpasswd"
+    ensure-linger-enabled: "loginctl show-user %1$s --property=Linger 2>/dev/null | grep -q '^Linger=yes' || loginctl enable-linger %1$s"
+  ssh:
+    setup-ssh-dir: "mkdir -p /home/%s/.ssh && chmod 700 /home/%s/.ssh"
+    install-authorized-key: "echo '%s' >> /home/%s/.ssh/authorized_keys && chmod 600 /home/%s/.ssh/authorized_keys && chown -R %s:%s /home/%s/.ssh"
+    enable-service: "systemctl enable --now ssh 2>/dev/null || systemctl enable --now sshd"
+  rdp:
+    x11:
+      enable-service: "systemctl enable --now xrdp"
+      fedora-set-autorun-xorg: "sed -i 's/^autorun=.*/autorun=Xorg/' /etc/xrdp/xrdp.ini"
+      # %1$s is a pre-exec script fragment (see ProvisioningService#vncCleanupScriptForXsession -
+      # empty except on XFCE/KDE, where it clears a stale VNC desktop session before starting a
+      # fresh RDP one), %2$s the real desktop-session command, the rest chmod/chown as before.
+      write-xsession: "printf '#!/bin/sh\\n%1$s\\nexec %2$s\\n' > /home/%3$s/.xsession && chmod +x /home/%3$s/.xsession && chown %3$s:%3$s /home/%3$s/.xsession"
+      # Killing just the session/window-manager process is enough - TigerVNC already exits on its
+      # own once its xstartup's desktop session exits (see provisionVnc's own "VNC: logout should
+      # end the session" fix), so there's no need to separately touch Xtigervnc/Xvnc itself here.
+      # Confirmed live (deb1, 2026-09-05): a still-running xfce4-session/xfwm4 left over from an
+      # earlier VNC connection that was never cleanly logged out of makes THIS fresh RDP session's
+      # own freshly-started window manager exit almost immediately - XFCE's own per-user
+      # session-manager singleton detection doesn't distinguish which protocol or display started
+      # an earlier session. Bare process-name match (no -f), matching the original manual live
+      # fix; always exits 0 regardless of whether anything actually matched, so it can never fail
+      # the surrounding `&&` chain in write-xsession above.
+      kill-stale-vnc-session-xfce4: "pkill xfce4-session 2>/dev/null; pkill xfwm4 2>/dev/null; true"
+      # Same idea, KDE's own process names - confirmed live (deb2, 2026-09-05): a leftover VNC-side
+      # startplasma-x11/ksmserver/kwin_x11/plasmashell tree makes a fresh RDP session's own
+      # startplasma-x11 render the splash screen, then hang forever (never spawning its own
+      # ksmserver, kwin_x11, or plasmashell - KDE's own session-manager singleton detection refuses
+      # to start a second instance) rather than exit outright the way XFCE's does - the same root
+      # cause as XFCE's, just a black screen instead of a disconnect since xrdp-sesman never sees a
+      # reason to tear the (still technically alive) session down.
+      kill-stale-vnc-session-kde-standard: "pkill startplasma-x11 2>/dev/null; pkill ksmserver 2>/dev/null; pkill kwin_x11 2>/dev/null; pkill plasmashell 2>/dev/null; true"
+      restart-service: "getent group ssl-cert >/dev/null 2>&1 && usermod -aG ssl-cert xrdp; systemctl restart xrdp"
+    gnome:
+      enable-gdm: "systemctl enable --now gdm"
+      generate-cert: "mkdir -p /etc/nspawnmgr && openssl req -x509 -newkey rsa:2048 -nodes -keyout /etc/nspawnmgr/gnome-rdp.key -out /etc/nspawnmgr/gnome-rdp.crt -days 3650 -subj '/CN=nspawnmgr'"
+      fix-cert-permissions: "chmod 644 /etc/nspawnmgr/gnome-rdp.key /etc/nspawnmgr/gnome-rdp.crt"
+      set-tls-cert: "grdctl --system rdp set-tls-cert /etc/nspawnmgr/gnome-rdp.crt"
+      set-tls-key: "grdctl --system rdp set-tls-key /etc/nspawnmgr/gnome-rdp.key"
+      set-credentials: "grdctl --system rdp set-credentials '%s' '%s'"
+      disable: "grdctl --system rdp disable"
+      enable: "grdctl --system rdp enable"
+  vnc:
+    x11:
+      ensure-running-check: "ss -tln 2>/dev/null | grep -q ':%d[[:space:]]' || { %s ; }"
+      write-xstartup: "mkdir -p /home/%s/.vnc && printf '#!/bin/sh\\n%s\\n' > /home/%s/.vnc/xstartup && chmod +x /home/%s/.vnc/xstartup && chown -R %s:%s /home/%s/.vnc"
+      write-xsession-desktop-file: |-
+        cat > /usr/share/xsessions/nspawnmgr.desktop <<'NSPAWNMGR_XSESSION'
+        [Desktop Entry]
+        Name=nspawnmgr
+        Exec=%s
+        Type=Application
+        DesktopNames=nspawnmgr
+        NSPAWNMGR_XSESSION
+        if [ -f /usr/lib/systemd/system/vncserver@.service ] || [ -f /lib/systemd/system/vncserver@.service ]; then mkdir -p /etc/tigervnc && printf 'session=nspawnmgr\n' > /etc/tigervnc/vncserver-config-mandatory; fi
+      set-vnc-password: "mkdir -p /home/%s/.vnc && echo '%s' | su - %s -c 'vncpasswd -f > ~/.vnc/passwd' && chown %s:%s /home/%s/.vnc/passwd && chmod 600 /home/%s/.vnc/passwd"
+      start-server: "if [ -f /usr/lib/systemd/system/vncserver@.service ] || [ -f /lib/systemd/system/vncserver@.service ]; then grep -q '^:0=' /etc/tigervnc/vncserver.users 2>/dev/null || echo ':0=%1$s' >> /etc/tigervnc/vncserver.users; systemctl enable vncserver@:0.service && systemctl restart vncserver@:0.service; else su - %1$s -c 'pkill -f \"(^|/)%2$s :0 \" 2>/dev/null; sleep 1; vncserver :0 -localhost no >/dev/null 2>&1 || vncserver :0'; fi"
+      switch-account: "if [ -f /usr/lib/systemd/system/vncserver@.service ] || [ -f /lib/systemd/system/vncserver@.service ]; then systemctl stop vncserver@:0.service 2>/dev/null; sed -i '/^:0=/d' /etc/tigervnc/vncserver.users 2>/dev/null; echo ':0=%1$s' >> /etc/tigervnc/vncserver.users; systemctl enable vncserver@:0.service && systemctl restart vncserver@:0.service; else pkill -f \"(^|/)%2$s :0 \" 2>/dev/null; sleep 1; su - %1$s -c 'vncserver :0 -localhost no >/dev/null 2>&1 || vncserver :0'; fi"
+    wayland:
+      sway-config: "mkdir -p /home/%1$s/.config/sway && cp /etc/sway/config /home/%1$s/.config/sway/config 2>/dev/null; echo 'exec foot' >> /home/%1$s/.config/sway/config && chown -R %1$s:%1$s /home/%1$s/.config"
+      # Binary name NOT yet confirmed live for Hyprland's own packaging across distros - "Hyprland"
+      # (capital H) is the historically common name, kept here as the best-known default.
+      hyprland-config: "mkdir -p /home/%1$s/.config/hypr && cp /usr/share/hypr/hyprland.conf /home/%1$s/.config/hypr/hyprland.conf 2>/dev/null; echo 'exec-once = foot' >> /home/%1$s/.config/hypr/hyprland.conf && chown -R %1$s:%1$s /home/%1$s/.config"
+      # Wayfire ships no packaged default config to copy (unlike Sway/Hyprland) - confirmed via its
+      # own docs that it runs fine with none at all, defaulting to autostarting wf-shell. Writes a
+      # fresh, minimal wayfire.ini directly rather than copy-then-append, explicitly keeping
+      # autostart_wf_shell on (so the wf-shell panel we already install still appears once a config
+      # file exists at all) and adding a terminal - same "usable right away" posture as Sway/
+      # Hyprland. NOT yet confirmed live: the exact ~/.config/wayfire.ini path/[autostart] syntax
+      # is per Wayfire's own current documentation, not independently verified against a real
+      # container.
+      wayfire-config: "mkdir -p /home/%1$s/.config && echo '[autostart]' > /home/%1$s/.config/wayfire.ini && echo 'autostart_wf_shell = true' >> /home/%1$s/.config/wayfire.ini && echo 'terminal = foot' >> /home/%1$s/.config/wayfire.ini && chown -R %1$s:%1$s /home/%1$s/.config"
+      compositor:
+        none-wayland: "cage -s -- foot"
+        sway: "sway"
+        hyprland: "Hyprland"
+        wayfire: "wayfire"
+      ensure-running: "systemctl start %s"
+      install-unit: |-
+        cat > /etc/systemd/system/%3$s <<'NSPAWNMGR_WAYLAND_VNC_UNIT'
+        [Unit]
+        Description=nspawnmgr Wayland VNC session (%4$s + wayvnc)
+
+        [Service]
+        Type=simple
+        User=%1$s
+        PAMName=login
+        Environment=WLR_BACKENDS=headless
+        Environment=WLR_LIBINPUT_NO_DEVICES=1
+        Environment=WLR_HEADLESS_OUTPUTS=1
+        ExecStart=/bin/sh -c '%4$s & SOCK=; for i in $(seq 1 100); do SOCK=$(ls "$XDG_RUNTIME_DIR" 2>/dev/null | grep -E "^wayland-[0-9]+$" | head -1); [ -n "$SOCK" ] && [ -S "$XDG_RUNTIME_DIR/$SOCK" ] && break; sleep 0.1; done; WAYLAND_DISPLAY="$SOCK" exec wayvnc 0.0.0.0 %2$d'
+        Restart=no
+
+        [Install]
+        WantedBy=multi-user.target
+        NSPAWNMGR_WAYLAND_VNC_UNIT
+        systemctl daemon-reload && systemctl enable %3$s && systemctl restart %3$s
+  desktop-session:
+    gnome: "gnome-session"
+    kde-standard-x11: "startplasma-x11"
+    xfce4-x11: "startxfce4"
+  pod:
+    # See ProvisioningService#patchPamLoginuidForPodmanSsh's own javadoc for why this exists -
+    # shared by both that method and ContainerLifecycleService#patchPamLoginuidForPodmanSsh (the
+    # only two places it's needed, in two different classes with no natural shared home otherwise).
+    fix-pam-loginuid: "[ -f /etc/pam.d/sshd ] && sed -i 's/^session\\s\\+required\\s\\+pam_loginuid.so/session optional pam_loginuid.so/' /etc/pam.d/sshd || true"

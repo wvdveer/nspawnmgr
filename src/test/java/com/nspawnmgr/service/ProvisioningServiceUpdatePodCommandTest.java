@@ -21,6 +21,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -47,7 +48,7 @@ class ProvisioningServiceUpdatePodCommandTest {
                 filesystemProvisioner, mock(ContainerOutboundAccessManager.class), mock(TemplateService.class),
                 mock(GuacamoleAdminClient.class), mock(ShareService.class), mock(SecretEncryptionService.class),
                 mock(SshKeyPairGenerator.class), mock(SettingsService.class), mock(PackageCacheService.class),
-                mock(PamCredentialAuthService.class), TestUserMessages.create());
+                mock(PamCredentialAuthService.class), new ProvisioningCommands(), TestUserMessages.create());
     }
 
     private Container pod(ContainerState state) {
@@ -67,12 +68,24 @@ class ProvisioningServiceUpdatePodCommandTest {
     void allowsChangingTheCommandWhileStopped() {
         Container container = pod(ContainerState.STOPPED);
 
-        service.updatePodCommand(1L, "sleep infinity", null);
+        service.updatePodCommand(1L, "sleep infinity", false, null);
 
         assertThat(container.getPodCommand()).isEqualTo("sleep infinity");
+        assertThat(container.isPodSystemdEnabled()).isFalse();
         assertThat(container.getState()).isEqualTo(ContainerState.STOPPED);
         verify(cliExecutor).remove(eq("fmp1"), eq(ContainerBackend.PODMAN));
-        verify(filesystemProvisioner).createPodmanContainer(eq("some-template"), eq("fmp1"), eq("sleep infinity"), any());
+        verify(filesystemProvisioner).createPodmanContainer(eq("some-template"), eq("fmp1"), eq("sleep infinity"), eq(false), any());
+    }
+
+    @Test
+    void allowsEnablingSystemdSupportAlongsideTheCommand() {
+        Container container = pod(ContainerState.STOPPED);
+
+        service.updatePodCommand(1L, "/sbin/init", true, null);
+
+        assertThat(container.getPodCommand()).isEqualTo("/sbin/init");
+        assertThat(container.isPodSystemdEnabled()).isTrue();
+        verify(filesystemProvisioner).createPodmanContainer(eq("some-template"), eq("fmp1"), eq("/sbin/init"), eq(true), any());
     }
 
     @Test
@@ -80,7 +93,7 @@ class ProvisioningServiceUpdatePodCommandTest {
         Container container = pod(ContainerState.ERROR);
         container.setErrorMessage("crun: cannot find `` in $PATH");
 
-        service.updatePodCommand(1L, "sleep infinity", null);
+        service.updatePodCommand(1L, "sleep infinity", false, null);
 
         assertThat(container.getPodCommand()).isEqualTo("sleep infinity");
         assertThat(container.getState()).isEqualTo(ContainerState.STOPPED);
@@ -91,10 +104,10 @@ class ProvisioningServiceUpdatePodCommandTest {
     void rejectsChangingTheCommandWhileRunning() {
         pod(ContainerState.RUNNING);
 
-        assertThatThrownBy(() -> service.updatePodCommand(1L, "sleep infinity", null))
+        assertThatThrownBy(() -> service.updatePodCommand(1L, "sleep infinity", false, null))
                 .isInstanceOf(IllegalStateException.class);
         verify(cliExecutor, never()).remove(any(), any());
-        verify(filesystemProvisioner, never()).createPodmanContainer(any(), any(), any(), any());
+        verify(filesystemProvisioner, never()).createPodmanContainer(any(), any(), any(), anyBoolean(), any());
     }
 
     @Test
@@ -102,7 +115,7 @@ class ProvisioningServiceUpdatePodCommandTest {
         Container container = pod(ContainerState.STOPPED);
         container.setBackend(ContainerBackend.SYSTEMD_NSPAWN);
 
-        assertThatThrownBy(() -> service.updatePodCommand(1L, "sleep infinity", null))
+        assertThatThrownBy(() -> service.updatePodCommand(1L, "sleep infinity", false, null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }

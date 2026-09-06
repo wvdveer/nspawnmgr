@@ -1,3 +1,33 @@
+nspawnmgr (0.5.0) stable; urgency=medium
+
+  * Wayland desktop support: new containers can run a Wayland session (None,
+    Sway, or Wayfire) instead of X11, streamed over VNC via wayvnc - each
+    gets a real compositor, panel/wallpaper where applicable, and working
+    keyboard/mouse input. Available on Fedora and Arch templates; gated off
+    Debian's bookworm templates, whose packaged wlroots is too old for the
+    input protocol wayvnc needs. KDE/Xfce Wayland sessions, GNOME's native
+    RDP, and Hyprland were each investigated and are not offered - all hit
+    real, currently-open upstream blockers unrelated to nspawnmgr's own code.
+  * guacd's vendored FreeRDP upgraded to 3.5.1 (guacamole-server 1.6.0) for
+    a more current, better-maintained RDP client implementation.
+  * New Keystroke Button Panel: an admin-curated list of key combinations
+    (Ctrl+Alt+Delete being the canonical example) shown as on-screen buttons
+    on a container or host's session page, for keys a browser can never
+    deliver as a real keypress. Configurable per machine, including at
+    creation time.
+  * Host management consolidated: RDP security, description, and sharing for
+    external Hosts now live on one Edit Host page instead of being split
+    across several places.
+  * RDP reliability fixes: a stale VNC-side desktop session (XFCE or KDE)
+    left over from an earlier connection no longer blocks a fresh RDP
+    session from starting; xrdp's own TLS setup no longer intermittently
+    fails from a missing group membership.
+  * Numerous smaller reliability fixes (container-user password-toggle
+    icon placement, Machines-list card layout, and more). See the project's
+    git history for the full list.
+
+ -- nspawnmgr packaging <packaging@nspawnmgr.invalid>  Sun, 06 Sep 2026 00:00:00 +1000
+
 nspawnmgr (0.4.0) stable; urgency=medium
 
   * Multilingual UI: the entire interface (every template, JS-built message,

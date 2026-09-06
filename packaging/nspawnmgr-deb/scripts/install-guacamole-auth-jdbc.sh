@@ -21,9 +21,14 @@
 #      copy (/usr/lib/nspawnmgr/install-guacamole-auth-jdbc.sh), which defaults --source-tarball to
 #      the .deb's own shipped copy at /usr/share/nspawnmgr/.
 #
-# Idempotent: does nothing (besides printing a message) if the target directory already looks
-# populated, so re-running on upgrade never clobbers an admin's own schema-script edits under
-# TARGET_DIR. Use --force to re-extract and overwrite anyway.
+# Idempotent, version-aware: does nothing (besides printing a message) if TARGET_DIR already looks
+# populated AND its own TARGET_DIR/VERSION file (written on every successful extraction) already
+# matches GUACAMOLE_VERSION — so a routine re-run on an unchanged version never clobbers an admin's
+# own schema-script edits under TARGET_DIR, but a package upgrade that bumps GUACAMOLE_VERSION
+# always re-extracts, delivering the new version's jars/schema-scripts as line 12 above always
+# promised (a real gap found live: the original version of this check only looked at whether
+# 001-create-schema.sql existed, not its version, so a version bump silently never re-extracted at
+# all on an already-provisioned machine). Use --force to re-extract and overwrite unconditionally.
 #
 # Usage: install-guacamole-auth-jdbc.sh [--source-tarball FILE] [--target-dir DIR] [--force]
 set -e
@@ -57,8 +62,9 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 if [ -z "$FORCE" ] && [ -f "$TARGET_DIR/mysql/schema/001-create-schema.sql" ] \
-        && [ -f "$TARGET_DIR/postgresql/schema/001-create-schema.sql" ]; then
-    echo "install-guacamole-auth-jdbc.sh: $TARGET_DIR already looks populated — nothing to do (use --force to redo)."
+        && [ -f "$TARGET_DIR/postgresql/schema/001-create-schema.sql" ] \
+        && [ "$(cat "$TARGET_DIR/VERSION" 2>/dev/null)" = "$GUACAMOLE_VERSION" ]; then
+    echo "install-guacamole-auth-jdbc.sh: $TARGET_DIR is already at version $GUACAMOLE_VERSION — nothing to do (use --force to redo)."
     exit 0
 fi
 

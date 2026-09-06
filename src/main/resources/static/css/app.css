@@ -262,6 +262,18 @@ input[type="file"]::-webkit-file-upload-button:hover {
     align-items: center;
 }
 
+/* password-toggle.js wraps the per-row password <input> in a .password-field span AFTER it's
+   already a grid item here - grid's default justify-items:stretch then stretches that wrapper to
+   fill the whole 1fr column, while the plain <input> inside it keeps its own narrower natural
+   width (no explicit width rule for .list-plain input[type="password"]) - the toggle button,
+   positioned `right: 0.4rem` relative to the (now much wider) wrapper, ends up floating well past
+   the input's own right edge instead of overlapping it. Sizing the wrapper to its own content
+   instead of stretching keeps it hugging the input, matching how the same wrapper already looks
+   correct in the Add User row above (a flex row, which doesn't stretch items by default). */
+#container-user-list .password-field {
+    justify-self: start;
+}
+
 .inline-controls {
     display: flex;
     flex-wrap: wrap;
@@ -274,7 +286,9 @@ input[type="file"]::-webkit-file-upload-button:hover {
 .inline-controls input[type="password"],
 .inline-controls select,
 .list-plain input[type="password"],
-.list-plain input[type="text"] {
+.list-plain input[type="text"],
+.table-card input[type="text"],
+.table-card select {
     padding: 0.35rem 0.5rem;
     border: 1px solid var(--border-color);
     border-radius: 4px;

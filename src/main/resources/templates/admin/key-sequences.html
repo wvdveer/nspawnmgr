@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="${t.get('page.adminKeySequences.title')}">nspawnmgr — Admin: Keystroke Button Panel</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/theme-init.js}"></script>
+</head>
+<body th:attr="data-base-path=@{/}">
+<div th:replace="~{fragments/app-shell :: shell(
+        title=${t.get('nav.keySequences')}, subtitle=${t.get('page.adminKeySequences.subtitle')},
+        activeNav='keySequences', currentUser=${currentUser}, addMenu=null,
+        content=~{::#page-content})}">
+<div id="page-content">
+<p class="hint" th:text="${t.get('page.adminKeySequences.hint')}">Buttons shown on a container/host's own session page (see its "Keystroke Button
+    Panel" setting), sending the key combination directly to the live Guacamole session - for
+    combinations a browser can never deliver as a real keypress, Ctrl+Alt+Delete being the classic
+    example.</p>
+<p id="key-sequences-status"></p>
+<div class="table-card">
+<table id="key-sequences-table">
+    <thead>
+    <tr>
+        <th th:text="${t.get('page.adminKeySequences.labelHeading')}">Label</th>
+        <th>Ctrl</th>
+        <th>Alt</th>
+        <th>Shift</th>
+        <th>Super</th>
+        <th th:text="${t.get('page.adminKeySequences.mainKeyHeading')}">Main key</th>
+        <th></th>
+    </tr>
+    </thead>
+    <tbody id="key-sequences-body">
+    <tr th:each="s : ${sequences}" th:data-id="${s.id}">
+        <td><input type="text" class="ks-label" th:value="${s.label}"/></td>
+        <td><input type="checkbox" class="ks-ctrl" th:checked="${s.ctrl}"/></td>
+        <td><input type="checkbox" class="ks-alt" th:checked="${s.alt}"/></td>
+        <td><input type="checkbox" class="ks-shift" th:checked="${s.shift}"/></td>
+        <td><input type="checkbox" class="ks-super" th:checked="${s.superKey}"/></td>
+        <td>
+            <select class="ks-main-key">
+                <option th:each="opt : ${mainKeyOptions}" th:value="${opt.keysym}" th:text="${opt.name}"
+                        th:selected="${opt.keysym == s.mainKeysym}">key</option>
+            </select>
+        </td>
+        <td>
+            <button class="btn-move-up" th:title="${t.get('button.moveUp')}">&#9650;</button>
+            <button class="btn-move-down" th:title="${t.get('button.moveDown')}">&#9660;</button>
+            <button class="btn-primary btn-save-sequence" th:text="${t.get('button.save')}">Save</button>
+            <button class="btn-danger btn-delete-sequence" th:text="${t.get('button.remove')}">Remove</button>
+        </td>
+    </tr>
+    </tbody>
+</table>
+</div>
+
+<h3 th:text="${t.get('page.adminKeySequences.newHeading')}">New key sequence</h3>
+<div class="inline-controls">
+    <input type="text" id="new-ks-label" th:placeholder="${t.get('page.adminKeySequences.labelHeading')}"/>
+    <label><input type="checkbox" id="new-ks-ctrl"/> Ctrl</label>
+    <label><input type="checkbox" id="new-ks-alt"/> Alt</label>
+    <label><input type="checkbox" id="new-ks-shift"/> Shift</label>
+    <label><input type="checkbox" id="new-ks-super"/> Super</label>
+    <select id="new-ks-main-key">
+        <option th:each="opt : ${mainKeyOptions}" th:value="${opt.keysym}" th:text="${opt.name}">key</option>
+    </select>
+    <button id="btn-add-sequence" class="btn-primary" th:text="${t.get('button.add')}">Add</button>
+</div>
+</div>
+</div>
+<script th:src="@{/js/theme-toggle.js}"></script>
+<script th:src="@{/js/dialog.js}"></script>
+<script th:src="@{/js/admin-key-sequences.js}"></script>
+</body>
+</html>

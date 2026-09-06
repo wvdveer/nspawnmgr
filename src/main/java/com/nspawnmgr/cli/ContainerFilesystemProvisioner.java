@@ -220,12 +220,15 @@ public interface ContainerFilesystemProvisioner {
      * @param command like a Dockerfile {@code CMD}, run through a shell as the container's own PID 1
      *                - null/blank trusts whatever CMD is already baked into the loaded image (see
      *                {@code Container#getPodCommand}'s own javadoc for why that's often a footgun).
+     * @param systemdEnabled see {@code Container#isPodSystemdEnabled}'s own javadoc - forces
+     *                        podman's own {@code --systemd=always} handling, needed for a
+     *                        {@code command} that's actually an init system.
      */
-    void createPodmanContainer(String templateSourcePath, String containerName, String command, char[] sudoPasswordOverride);
+    void createPodmanContainer(String templateSourcePath, String containerName, String command, boolean systemdEnabled, char[] sudoPasswordOverride);
 
     /** Convenience overload for stored-secret mode (no per-request override). */
-    default void createPodmanContainer(String templateSourcePath, String containerName, String command) {
-        createPodmanContainer(templateSourcePath, containerName, command, null);
+    default void createPodmanContainer(String templateSourcePath, String containerName, String command, boolean systemdEnabled) {
+        createPodmanContainer(templateSourcePath, containerName, command, systemdEnabled, null);
     }
 
     /**

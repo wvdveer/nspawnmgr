@@ -89,6 +89,23 @@ public class Container {
     @Column(name = "pod_command", length = 1000)
     private String podCommand;
 
+    /**
+     * PODMAN only: whether to run this pod with podman's own systemd support enabled
+     * ({@code --systemd=always} - the extra tmpfs/cgroup/capability handling a real init system
+     * like {@code /sbin/init} needs to run cleanly under podman, see
+     * nspawnmgr-podman-create-container.sh). Confirmed live (yoga, 2026-09-03): without it,
+     * {@code /sbin/init} as a pod's {@link #podCommand} (e.g. from a template converted from an
+     * nspawn one) repeatedly failed "Failed to set RLIMIT_CORE: Operation not permitted" and
+     * exited (255) - podman's own auto-detection of a systemd command never triggers here,
+     * because the command this app runs is always wrapped in {@code sh -c}, which hides the
+     * real command from that detection. Off by default - a deliberate opt-in, not inferred from
+     * {@link #podCommand}'s own text, since guessing "looks like init" is a worse UX than asking.
+     * Editable after creation (pod-detail.html) alongside {@link #podCommand}, same "takes effect
+     * on next recreate" caveat.
+     */
+    @Column(name = "pod_systemd_enabled", nullable = false)
+    private boolean podSystemdEnabled;
+
     /** EXTERNAL only: the target port on the external host itself — not unique (e.g. many hosts use 22). */
     @Column(name = "external_ssh_port")
     private Integer externalSshPort;
@@ -118,6 +135,13 @@ public class Container {
 
     @Column(name = "vnc_enabled", nullable = false)
     private boolean vncEnabled;
+
+    /** Where this container/host's session page shows its Keystroke Button Panel (see
+     *  {@link KeystrokeButtonPanelPlacement}'s own javadoc) - {@code NONE} by default, an admin
+     *  opts a specific container/host into it rather than it appearing everywhere unasked-for. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "keystroke_button_panel_placement", nullable = false)
+    private KeystrokeButtonPanelPlacement keystrokeButtonPanelPlacement = KeystrokeButtonPanelPlacement.NONE;
 
     /**
      * What {@code pam_nspawnmgr} (see PamCredentialAuthService) checks a submitted password
@@ -151,7 +175,7 @@ public class Container {
     /** Desktop environment installed for RDP/VNC to attach to - NONE means nothing was installed. */
     @Enumerated(EnumType.STRING)
     @Column(name = "desktop_manager", nullable = false)
-    private DesktopManager desktopManager = DesktopManager.NONE;
+    private DesktopManager desktopManager = DesktopManager.NONE_X11;
 
     /** MANAGED only: whether this container may reach the internet through the host's masquerade. */
     @Column(name = "outbound_enabled", nullable = false)

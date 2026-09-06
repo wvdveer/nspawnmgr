@@ -62,6 +62,7 @@ import com.nspawnmgr.web.dto.TemplateSummaryResponse;
 import com.nspawnmgr.web.dto.UpdateDescriptionRequest;
 import com.nspawnmgr.web.dto.UpdatePackageManagerRequest;
 import com.nspawnmgr.web.dto.UpdatePamAuthRequest;
+import com.nspawnmgr.web.dto.UpdateKeystrokeButtonPanelPlacementRequest;
 import com.nspawnmgr.web.dto.UpdateRdpSecurityRequest;
 import javax.servlet.http.HttpServletRequest;
 import javax.validation.Valid;
@@ -139,7 +140,8 @@ public class ContainerApiController {
         Template template = templateService.getById(request.templateId());
         Container container = provisioningService.createPending(
                 request.name(), template, owner, request.rdpEnabled(), request.vncEnabled(),
-                parseDesktopManager(request.desktopManager()), request.description(), request.command());
+                parseDesktopManager(request.desktopManager()), request.description(), request.command(), request.systemdEnabled());
+        accessService.setKeystrokeButtonPanelPlacement(container, request.keystrokeButtonPanelPlacement());
         if (provisioningService.requiresApproval()) {
             provisioningService.markPendingApproval(container.getId());
         } else {
@@ -277,7 +279,7 @@ public class ContainerApiController {
     @PutMapping("/api/containers/{id}/pod-command")
     public void updatePodCommand(@PathVariable Long id, @Valid @RequestBody UpdatePodCommandRequest request) {
         Container container = requireOwned(id);
-        provisioningService.updatePodCommand(id, request.command(), null);
+        provisioningService.updatePodCommand(id, request.command(), request.systemdEnabled(), null);
         auditLogService.log(currentUserProvider.get(), AuditAction.UPDATED, AuditTargetType.CONTAINER,
                 container.getId(), container.getName(), "pod command changed");
     }
@@ -569,6 +571,14 @@ public class ContainerApiController {
                 container.getId(), container.getName(), "RDP security set to " + request.security());
     }
 
+    @PutMapping("/api/containers/{id}/keystroke-button-panel-placement")
+    public void setKeystrokeButtonPanelPlacement(@PathVariable Long id, @Valid @RequestBody UpdateKeystrokeButtonPanelPlacementRequest request) {
+        Container container = requireOwned(id);
+        accessService.setKeystrokeButtonPanelPlacement(container, request.placement());
+        auditLogService.log(currentUserProvider.get(), AuditAction.UPDATED, AuditTargetType.CONTAINER,
+                container.getId(), container.getName(), "keystroke button panel placement set to " + request.placement());
+    }
+
     /** Owner-only: configures pam_nspawnmgr, the replacement local-login check that bypasses this
      *  container's own /etc/shadow — see PamCredentialAuthService's own javadoc. */
     @PutMapping("/api/containers/{id}/pam-auth")
@@ -795,7 +805,7 @@ public class ContainerApiController {
 
     private DesktopManager parseDesktopManager(String value) {
         if (value == null || value.isBlank()) {
-            return DesktopManager.NONE;
+            return DesktopManager.NONE_X11;
         }
         try {
             return DesktopManager.valueOf(value.toUpperCase());

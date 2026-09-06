@@ -37,6 +37,12 @@
         its own), the pod will exit within moments of starting</strong> - it won't fail to create,
         but it'll immediately show as stopped again. Editable later from the pod's own page, but
         only takes effect the next time it's recreated (the pod must be stopped first).</p>
+    <div class="field">
+        <label><input type="checkbox" id="systemd-enabled" name="systemdEnabled"/> <span th:text="${t.get('page.newPod.systemdEnabled')}">Enable systemd support</span></label>
+    </div>
+    <p class="hint" th:text="${t.get('page.newPod.systemdEnabledHint')}">Only needed when the command above is an init system (e.g. /sbin/init, for a
+        template converted from an nspawn one) - podman needs to be told explicitly so it can set up
+        what a real init system requires. Leave unchecked for an ordinary command.</p>
     <p class="hint" th:text="${t.get('page.newPod.accessHint')}">SSH, RDP, and VNC access aren't set up automatically for a pod - enable them
         from the pod's own page once it's running.</p>
     <button type="submit" class="btn-primary" th:text="${t.get('button.create')}">Create</button>

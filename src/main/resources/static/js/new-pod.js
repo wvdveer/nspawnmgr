@@ -8,9 +8,10 @@ document.getElementById('create-pod-form').addEventListener('submit', async (eve
         templateId: Number(document.getElementById('templateId').value),
         rdpEnabled: false,
         vncEnabled: false,
-        desktopManager: 'NONE',
+        desktopManager: 'NONE_X11',
         description: document.getElementById('description').value,
         command: document.getElementById('command').value,
+        systemdEnabled: document.getElementById('systemd-enabled').checked,
     };
     const response = await fetch(`${basePath}/api/containers`, {
         method: 'POST',
