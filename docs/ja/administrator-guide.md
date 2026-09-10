@@ -566,6 +566,19 @@ nspawnmgr自身のレディネスポーリングは、どちらもMANAGEDコン�
 アドレスは、RUNNINGに到達した瞬間に（INFOレベルで）ログされ、アドレスが変わった場合に
 備えて、以降の再起動のたびにGuacamoleの接続設定に再同期されます。
 
+### 拡張ネットワーク（コンテナ内のVPN/トンネルクライアント）
+
+「New Nspawn」フォームには、デフォルトでオフになっている**拡張ネットワークを有効にする**チェック
+ボックスがあります。これはコンテナの `.nspawn` ファイルに、systemd-nspawnがデフォルトでは含めない
+2つの要素を付与します：`Capability=CAP_NET_ADMIN` と、ホストの `/dev/net/tun` デバイスの
+バインドマウントです。これらを組み合わせることで、TUN/TAPベースのVPNやトンネルクライアント
+（OpenVPN、WireGuardなど）がコンテナ内に独自の仮想ネットワークインターフェースを作成できるように
+なります。
+
+これは作成時のみ有効な設定です — コンテナが既に存在する場合、後から切り替える手段はありません。
+コンテナが独自のVPN/トンネルクライアントを実行する必要がある場合を除き、チェックを外したままに
+してください。特定のVPNプロバイダーやソフトウェアに紐づくものではなく、単なる権限の付与です。
+
 ### グラフィカルアクセス：RDP、VNC、デスクトップマネージャー
 
 「New Nspawn」フォームには2つの独立したチェックボックス、**Enable RDP**と**Enable VNC**が
@@ -1215,6 +1228,19 @@ Hostは内部的にはContainer行ですが、ユーザーが実際にブラウ�
   を、受け入れる前にチェックします。マッピングは即座に`.nspawn`ファイルに書き込まれ
   ますが、コンテナが次回（再）起動されたときにのみ有効になります — 稼働中のコンテナに
   1つ追加すると、自動的に再起動するのではなく、「再起動が必要」という通知が表示されます。
+  - **ホストで`ufw`が有効な場合**、単純な`ufw allow <port>/<proto>`だけでは不十分です。
+    `systemd-nspawn`自身の`Port=`転送は、カーネルの`PREROUTING`チェーンで本当に外部から
+    来るトラフィックをDNATします — 宛先がコンテナの内部アドレスに書き換えられた時点で、
+    そのパケットはローカル配送ではなく「転送」扱いになるため、通常の`allow`ルールが
+    触れない`ufw`の`FORWARD`チェーンも通過する必要があります。コンテナ自身の内部
+    アドレスと（マッピングされていない）コンテナ側のポートを対象にしたルートルールも
+    必要です：`sudo ufw route allow proto tcp to <コンテナの内部アドレス> port <コンテナ
+    ポート>`。ホスト自身からその実アドレス宛てに送るトラフィックはこれの影響を受けません
+    — `FORWARD`チェーンに実際に当たるのは本当に外部のクライアントだけです — そのため、
+    リモートのクライアントが試す前にホスト上でテストすると「すでに動いている」ように
+    見えることがあります。診断ページ自身のufwチェックは現在、この経路ルールではなく、
+    単純な`allow`ルールしか確認していないため、ポートマッピングを問題なしと報告して
+    いても、外部からのアクセスがまだできないことがあります。
 - **アウトバウンドのインターネットアクセスのトグル**：上記のホスト全体での、
   オールオアナッシングのマスカレード設定とは異なり、各コンテナは個別にアウトバウンド
   アクセスをブロックできます。nspawnmgrはこれを、専用の`NSPAWNMGR-OUTBOUND`
@@ -1590,7 +1616,7 @@ mvn -f packaging/nspawnmgr-deb/pom.xml package   # -> packaging/nspawnmgr-deb/ta
 **それをインストールする：**
 
 ```bash
-sudo apt install ./nspawnmgr_0.5.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
+sudo apt install ./nspawnmgr_0.6.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
 ```
 
 `tomcat9`も`guacd`/`guacamole-tomcat`も、このパッケージの`Depends:`には含まれません —
@@ -1796,7 +1822,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_ARCH_PKG=1 tools/scripts/build-all.sh   # needs `makepkg` on PATH - a real Arch host, or the
                                                # archlinux/devtools container image
 
-sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.5.0-1-any.pkg.tar.zst
+sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.6.0-1-any.pkg.tar.zst
 ```
 
 ### Fedora/RHEL（RPM）へのインストール
@@ -1854,7 +1880,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_RPM=1 tools/scripts/build-all.sh   # needs a real `rpmbuild` binary (`rpm-build` package) -
                                           # a real Fedora/RHEL host, no cross-platform equivalent
 
-sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.5.0-1.noarch.rpm
+sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.6.0-1.noarch.rpm
 ```
 
 ### オプションB：ソースからビルドして手動でデプロイ
@@ -2423,6 +2449,27 @@ nspawnmgrがセッションクッキーを検証できない場合、ブラウ�
 `AUTH_LOGIN_URL`を`auth`の`/auth/login` URL（例えば`http://<hostname>:8080/auth/login`）
 に設定してください。
 
+#### nspawnmgrに複数のオリジンでアクセスする
+
+`AUTH_LOGIN_URL`単体では、1つのオリジンでしか正しく機能しません — `auth.war`が発行する
+クッキーには`Domain`属性がないため、ログインリダイレクト（およびその`returnTo`）は
+常にログインページを提供したのと全く同じホスト:ポートに着地する必要があり、そうで
+なければブラウザはクッキーを送り返しません。別のホスト名（例えば前段のリバース
+プロキシ）経由でnspawnmgrに到達したリクエストは、そうしないと実際に使われている
+オリジンではなく`AUTH_LOGIN_URL`の固定オリジンへのログインへリダイレクトされて
+しまいます。
+
+「Additional trusted origins」（`nspawnmgr.auth.additional-trusted-origins`、
+`/admin/settings`のAuth配下、Login URLのすぐ下でライブ編集可能）は、nspawnmgrに
+正しくアクセスできる追加の`scheme://host[:port]`オリジン（パスなし）のカンマ区切り
+許可リストです。リクエストの`Host`ヘッダーがこれらのいずれかに一致する場合、その
+ログインリダイレクトと`returnTo`は`AUTH_LOGIN_URL`のものではなく、そのオリジン自身の
+スキームとホストに対して構築されます — それ以外のホストは影響を受けず、これまで
+どおり`AUTH_LOGIN_URL`を使い続けます。nspawnmgrの前に2つ目の公開ホスト名でリバース
+プロキシを置く場合は、そのホスト名の完全なオリジン（例：`https://nspawnmgr.example.com`）
+をここに追加し、プロキシが元の`Host`ヘッダーを変更せずに転送することを確認して
+ください。これにより、nspawnmgrはブラウザが実際に使用したホスト名を認識できます。
+
 ## 9. nspawnmgrの設定
 
 すべての設定は`src/main/resources/application.yml`の`nspawnmgr.*`配下にあり、それぞれ
@@ -2445,8 +2492,11 @@ nspawnmgrがセッションクッキーを検証できない場合、ブラウ�
   `data-source`、`home`（`GUACAMOLE_HOME`、デフォルト`/etc/guacamole`）、
   [§7](#7-guacamole)からのものです。
 - **`nspawnmgr.auth.*`** — `user-id-url`（既存のクッキーを`auth`に対して検証します）、
-  `cookie-name`、`login-url`（§8のリダイレクト先）、キャッシュ/タイムアウトの
-  チューニング、`settings-file`（下記の共有auth設定ファイルが書き込まれる場所 —
+  `cookie-name`、`login-url`（§8のリダイレクト先）、`additional-trusted-origins`
+  （`login-url`の固定先ではなく独自のログインリダイレクトを受け取る追加オリジン —
+  [「nspawnmgrに複数のオリジンでアクセスする」](#nspawnmgrに複数のオリジンでアクセスする)
+  参照）、キャッシュ/タイムアウトのチューニング、`settings-file`（下記の共有auth設定
+  ファイルが書き込まれる場所 —
   auth.war自身の`auth.settings-file`/`AUTH_SETTINGS_FILE`、デフォルト
   `/etc/nspawnmgr/auth-live/auth-settings.properties`と一致していなければ
   なりません）。

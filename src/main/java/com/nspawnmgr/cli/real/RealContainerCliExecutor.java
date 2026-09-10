@@ -196,14 +196,18 @@ public class RealContainerCliExecutor implements ContainerCliExecutor {
         }
         CommandResult result = ssh.execNoPasswordSudo(Duration.ofSeconds(10),
                 List.of("machinectl", "show", machineName, "--property=State"));
-        if (!result.success()) {
-            return MachineStatus.NOT_FOUND;
-        }
-        String state = result.stdout().trim();
-        if (state.startsWith("State=running")) {
+        if (result.success() && result.stdout().trim().startsWith("State=running")) {
             return MachineStatus.RUNNING;
         }
-        return MachineStatus.STOPPED;
+        // `machinectl show`/`status` only ever work on a currently RUNNING machine - a stopped
+        // container whose rootfs still exists on this host looks just as "not found" to that
+        // command as a genuinely deleted one, which used to make a perfectly normal stop
+        // indistinguishable from real trouble (see ContainerLivenessPollingService's own
+        // STOPPED-vs-ERROR distinction). listMachineImageNames() (the same NOPASSWD-permitted
+        // `nspawnmgr-list-machine-images.sh` / `machinectl list-images` already used by container
+        // discovery) is the real "does this still exist at all" source of truth, regardless of
+        // running state.
+        return listMachineImageNames().contains(machineName) ? MachineStatus.STOPPED : MachineStatus.NOT_FOUND;
     }
 
     @Override

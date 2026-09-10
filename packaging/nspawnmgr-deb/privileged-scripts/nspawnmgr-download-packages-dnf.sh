@@ -108,7 +108,12 @@ umount "$ROOTFS/run"
 mkdir -p "$ROOTFS/var/cache/dnf"
 for name in $NEEDED_NAMES; do
     for f in "$CACHE_DIR/$name"-*.rpm; do
-        [ -e "$f" ] && cp -n "$f" "$ROOTFS/var/cache/dnf/"
+        # `|| continue`, not `&&` - confirmed live (acer, 2026-09-08) in this exact pattern
+        # elsewhere: under `set -e`, a bare `[ -e "$f" ] && cmd` loop-body statement dies the instant
+        # the glob has no match, which a defensive name-based lookup like this one can hit even
+        # though the common case (a name dnf's own download phase just fetched) usually matches.
+        [ -e "$f" ] || continue
+        cp -n "$f" "$ROOTFS/var/cache/dnf/" 2>/dev/null || true
     done
 done
 
@@ -121,7 +126,7 @@ for pkg in "$@"; do
     for f in "$CACHE_DIR/$pkg"-*.rpm; do
         [ -e "$f" ] || continue
         dest="$UPLOAD_DIR/auto-$(basename "$f")"
-        cp -n "$f" "$dest"
+        cp -n "$f" "$dest" 2>/dev/null || true
         echo "$(basename "$f") $(wc -c < "$f")"
     done
 done

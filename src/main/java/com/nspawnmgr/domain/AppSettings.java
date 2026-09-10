@@ -47,6 +47,9 @@ public class AppSettings {
     @Column(name = "auth_login_url")
     private String authLoginUrl;
 
+    @Column(name = "auth_additional_trusted_origins")
+    private String authAdditionalTrustedOrigins;
+
     @Column(name = "auth_user_id_json")
     private String authUserIdJson;
 

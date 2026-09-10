@@ -91,7 +91,12 @@ umount "$ROOTFS/run"
 # without any extra argument-wrangling on the install side.
 mkdir -p "$ROOTFS/var/cache/pacman/pkg"
 echo "$NEEDED_FILES" | while IFS= read -r f; do
-    [ -n "$f" ] && [ -e "$CACHE_DIR/$f" ] && cp -n "$CACHE_DIR/$f" "$ROOTFS/var/cache/pacman/pkg/"
+    # `|| continue`, not `&&` - confirmed live elsewhere in this same fix pass (acer, 2026-09-08):
+    # under `set -e`, a bare `[ cond ] && cmd` loop-body statement dies the instant cond is false,
+    # which a blank line from $NEEDED_FILES or a genuinely-missing file both trigger routinely.
+    [ -n "$f" ] || continue
+    [ -e "$CACHE_DIR/$f" ] || continue
+    cp -n "$CACHE_DIR/$f" "$ROOTFS/var/cache/pacman/pkg/" 2>/dev/null || true
 done
 
 # Register just the explicitly-requested top-level package(s) (not their transitive dependencies,
@@ -103,7 +108,7 @@ for pkg in "$@"; do
     for f in "$CACHE_DIR/$pkg"-*.pkg.tar.*; do
         [ -e "$f" ] || continue
         dest="$UPLOAD_DIR/auto-$(basename "$f")"
-        cp -n "$f" "$dest"
+        cp -n "$f" "$dest" 2>/dev/null || true
         echo "$(basename "$f") $(wc -c < "$f")"
     done
 done

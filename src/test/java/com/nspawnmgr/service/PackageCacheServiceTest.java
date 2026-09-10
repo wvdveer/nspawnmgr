@@ -113,7 +113,7 @@ class PackageCacheServiceTest {
         assertThat(result.exitCode()).isEqualTo(0);
         verify(filesystem).copyIntoContainer(anyString(), anyString());
         verify(cliExecutor).runInMachine(eq("my-container"), any(),
-                eq(List.of("sh", "-c", "DEBIAN_FRONTEND=noninteractive apt-get install -y /root/nspawnmgr-packages/1_foo.deb")),
+                eq(List.of("sh", "-c", "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends /root/nspawnmgr-packages/1_foo.deb")),
                 any(), any());
     }
 
@@ -165,7 +165,7 @@ class PackageCacheServiceTest {
 
         verify(repository).existsByPackageManagerAndStoredFilename(PackageManager.DNF, "auto-libfoo-devel-1.0.x86_64.rpm");
         verify(cliExecutor).runInMachine(eq("my-container"), any(),
-                eq(List.of("sh", "-c", "dnf install -y /root/nspawnmgr-packages/1_foo.rpm $(ls /var/cache/dnf/*.rpm 2>/dev/null)")), any(), any());
+                eq(List.of("sh", "-c", "dnf install -y --disablerepo='*' --setopt=install_weak_deps=False /root/nspawnmgr-packages/1_foo.rpm $(ls /var/cache/dnf/*.rpm 2>/dev/null)")), any(), any());
     }
 
     @Test
@@ -197,7 +197,7 @@ class PackageCacheServiceTest {
 
         verify(repository).existsByPackageManagerAndStoredFilename(PackageManager.PACMAN, "auto-libfoo-1.0-1-x86_64.pkg.tar.zst");
         verify(cliExecutor).runInMachine(eq("my-container"), any(),
-                eq(List.of("sh", "-c", "pacman -U --noconfirm /root/nspawnmgr-packages/1_foo.pkg.tar.zst")), any(), any());
+                eq(List.of("sh", "-c", "printf '[options]\\nLocalFileSigLevel = Optional\\n' > /tmp/nspawnmgr-pacman.conf && pacman -U --config /tmp/nspawnmgr-pacman.conf --noconfirm /root/nspawnmgr-packages/1_foo.pkg.tar.zst $(ls /var/cache/pacman/pkg/*.pkg.tar.* 2>/dev/null)")), any(), any());
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.nspawnmgr.config;
 import com.nspawnmgr.security.CookiePreAuthFilter;
 import com.nspawnmgr.security.IdentityCache;
 import com.nspawnmgr.security.IdentityResolver;
+import com.nspawnmgr.security.ReturnToUrlBuilder;
 import com.nspawnmgr.service.SettingsService;
 import com.nspawnmgr.service.UserService;
 import org.springframework.context.annotation.Bean;
@@ -13,7 +14,6 @@ import org.springframework.security.config.annotation.web.configuration.WebSecur
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 
 import javax.servlet.http.HttpServletRequest;
-import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
@@ -69,31 +69,14 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
     // back to the page that was originally requested, so it can redirect here once logged in.
     // Falls back to the static /login-required page when no login URL is configured.
     private String loginRedirectUrl(HttpServletRequest request) {
-        String loginUrl = settingsService.authLoginUrl();
+        String loginUrl = settingsService.authLoginUrlForRequest(request);
         if (loginUrl == null || loginUrl.isBlank()) {
             // sendRedirect() interprets a leading "/" as relative to the server root, not this
             // webapp's context path - needs to be explicit now that nspawnmgr runs at /nspawnmgr
             // rather than ROOT (see docs/administrator-guide.md's Tomcat section).
             return request.getContextPath() + "/login-required";
         }
-        String returnTo = URLEncoder.encode(returnToUrl(request, loginUrl), StandardCharsets.UTF_8);
+        String returnTo = URLEncoder.encode(ReturnToUrlBuilder.build(request, loginUrl), StandardCharsets.UTF_8);
         return loginUrl + (loginUrl.contains("?") ? "&" : "?") + "returnTo=" + returnTo;
-    }
-
-    // The cookie auth.war issues is scoped to whichever host:port loginUrl itself points at (that's
-    // the origin actually serving the Set-Cookie response, and no Domain attribute is set) - not
-    // necessarily the host:port the browser used to reach nspawnmgr in the first place (e.g. a
-    // request that came in as "localhost:8080" while HOST_EXTERNAL_HOSTNAME/AUTH_LOGIN_URL point at
-    // the real hostname). Building returnTo from request.getRequestURL() reflected whatever the
-    // browser happened to use, so a mismatch here sent the user back to a host the cookie was never
-    // scoped to - an infinite login loop with a genuinely valid cookie the browser just never sends.
-    // Using loginUrl's own scheme/authority instead guarantees returnTo always matches wherever the
-    // cookie will actually be scoped; only the path+query (which page to return to) comes from the
-    // real request.
-    private String returnToUrl(HttpServletRequest request, String loginUrl) {
-        URI loginUri = URI.create(loginUrl);
-        String pathAndQuery = request.getRequestURI()
-                + (request.getQueryString() != null ? "?" + request.getQueryString() : "");
-        return loginUri.getScheme() + "://" + loginUri.getAuthority() + pathAndQuery;
     }
 }

@@ -19,6 +19,11 @@ cp /usr/share/nspawnmgr/70-nspawnmgr-bridge.network /etc/systemd/network/70-nspa
 # ../nspawnmgr-deb/debian/postinst's own copy of this same fix.
 systemctl enable --now systemd-networkd \
     || echo "nspawnmgr: systemd-networkd enable/start failed - check 'systemctl status systemd-networkd'." >&2
+# nspawnbr0 is RequiredForOnline=yes (see 70-nspawnmgr-bridge.network), so network-online.target
+# only completes once it's really configured - but that alone doesn't help dnsmasq below unless
+# something is actually enabled to evaluate it. Harmless/idempotent if already enabled.
+systemctl enable systemd-networkd-wait-online.service \
+    || echo "nspawnmgr: systemd-networkd-wait-online enable failed - dnsmasq's own boot-race protection won't be effective; check 'systemctl status systemd-networkd-wait-online'." >&2
 # `enable --now` on a systemd-networkd that's already running (e.g. any reinstall) is a no-op for
 # the "now" part - it does NOT notice the 70-nspawnmgr-bridge.netdev/.network files just copied
 # above, so nspawnbr0 silently never gets created. `networkctl reload` forces networkd to re-read
@@ -74,6 +79,18 @@ cp /usr/share/nspawnmgr/dnsmasq-nspawnmgr.conf /etc/dnsmasq.d/nspawnmgr.conf
 mkdir -p /etc/nspawnmgr
 [ -f /etc/nspawnmgr/dns-hosts ] || touch /etc/nspawnmgr/dns-hosts
 [ -f /etc/dnsmasq.d/nspawnmgr-upstream.conf ] || printf 'server=1.1.1.1\nserver=9.9.9.9\n' > /etc/dnsmasq.d/nspawnmgr-upstream.conf
+# Boot-race protection (see dnsmasq-wait-for-nspawnbr0.conf's own comment): the poll above only
+# guards THIS install/upgrade run, not a later, unrelated host reboot - a systemd drop-in makes
+# dnsmasq itself wait for nspawnbr0 on every future boot too, not just right now.
+mkdir -p /etc/systemd/system/dnsmasq.service.d
+cp /usr/share/nspawnmgr/dnsmasq-wait-for-nspawnbr0.conf /etc/systemd/system/dnsmasq.service.d/nspawnmgr-wait-for-bridge.conf
+# Same boot-race protection, one layer up (see nspawn-wait-for-network.conf's own comment):
+# nspawnbr0/dnsmasq coming up reliably still isn't enough on its own if an autostart container
+# starts before either is ready. Template drop-in, so it protects every container.
+mkdir -p /etc/systemd/system/systemd-nspawn@.service.d
+cp /usr/share/nspawnmgr/nspawn-wait-for-network.conf /etc/systemd/system/systemd-nspawn@.service.d/nspawnmgr-wait-for-network.conf
+systemctl daemon-reload \
+    || echo "nspawnmgr: systemctl daemon-reload failed - dnsmasq's boot-race protection may not be active; check 'systemctl status dnsmasq'." >&2
 systemctl restart dnsmasq \
     || echo "nspawnmgr: dnsmasq restart failed - check 'systemctl status dnsmasq'." >&2
 
@@ -101,6 +118,15 @@ if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" != "Disabled" ] \
         || echo "nspawnmgr: failed to compile/load the nspawnmgr_machined_cgroup SELinux policy module - containers may fail to start with 'Failed to register machine: Access denied'; check 'sudo semodule -l | grep nspawnmgr'." >&2
     rm -rf "$SELINUX_WORKDIR"
 fi
+
+# Package cache tree (PackageCacheService.CACHE_ROOT) - see the .deb postinst's own comment on
+# the identical step for the full rationale (world-writable so an admin can drop pre-fetched
+# packages into a package manager's own auto/ cache without root, e.g. for a container with no
+# outbound internet access).
+for pkg_mgr in apt dnf apk pacman; do
+    mkdir -p "/var/cache/nspawnmgr/packages/$pkg_mgr/auto" "/var/cache/nspawnmgr/packages/$pkg_mgr/uploaded"
+done
+chmod -R 777 /var/cache/nspawnmgr/packages
 
 # Self-hosted app machine - bakes/clones debian-minimal and installs a JRE/Tomcat/the WARs/guacd
 # into it, same as the .deb/Arch. Deliberately stays Debian-minimal regardless of this host's own

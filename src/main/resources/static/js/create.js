@@ -4,6 +4,7 @@ const templateIdSelect = document.getElementById('templateId');
 const rdpEnabledCheckbox = document.getElementById('rdpEnabled');
 const rdpUnavailableHint = document.getElementById('rdp-unavailable-hint');
 const vncEnabledCheckbox = document.getElementById('vncEnabled');
+const vpnCapableCheckbox = document.getElementById('vpnCapable');
 const desktopManagerSelect = document.getElementById('desktopManager');
 
 function syncDesktopManagerEnabled() {
@@ -71,6 +72,7 @@ document.getElementById('create-form').addEventListener('submit', async (event) 
         templateId: Number(document.getElementById('templateId').value),
         rdpEnabled: rdpEnabledCheckbox.checked,
         vncEnabled: vncEnabledCheckbox.checked,
+        vpnCapable: vpnCapableCheckbox.checked,
         desktopManager: desktopManagerSelect.value,
         description: document.getElementById('description').value,
         keystrokeButtonPanelPlacement: document.getElementById('keystrokeButtonPanelPlacement').value,

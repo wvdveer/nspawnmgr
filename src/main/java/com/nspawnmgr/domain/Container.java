@@ -136,6 +136,17 @@ public class Container {
     @Column(name = "vnc_enabled", nullable = false)
     private boolean vncEnabled;
 
+    /**
+     * Whether this container's {@code .nspawn} file should grant {@code CAP_NET_ADMIN} and
+     * bind-mount {@code /dev/net/tun} in - the two things every TUN/TAP-based VPN client (e.g.
+     * PureVPN's Linux CLI) needs and that systemd-nspawn doesn't grant by default (see
+     * NspawnSettingsRenderer.render()). Off by default; not tied to any particular VPN provider,
+     * just "this container is allowed to run its own tunnel networking". Creation-time only for
+     * now - no edit UI after the container exists.
+     */
+    @Column(name = "vpn_capable", nullable = false)
+    private boolean vpnCapable;
+
     /** Where this container/host's session page shows its Keystroke Button Panel (see
      *  {@link KeystrokeButtonPanelPlacement}'s own javadoc) - {@code NONE} by default, an admin
      *  opts a specific container/host into it rather than it appearing everywhere unasked-for. */

@@ -314,7 +314,16 @@ public class RealContainerFilesystemProvisioner implements ContainerFilesystemPr
         Path rootfs = Path.of(settingsService.nspawnMachinesDir(), machineName);
         // Every SIMULATE_SCRIPT entry is host-side now, same as downloadPackagesIntoContainer's own
         // DOWNLOAD_SCRIPT above - none of them need the container's machinectl/systemd-nspawn name.
-        List<String> command = List.of(wrapperScript(SIMULATE_SCRIPT.get(packageManager)), rootfs.toString(), localPackageHostPath);
+        List<String> command = new ArrayList<>(List.of(wrapperScript(SIMULATE_SCRIPT.get(packageManager)), rootfs.toString(), localPackageHostPath));
+        // Also hand the simulate script the shared auto/uploaded cache dirs so it can try resolving
+        // the whole dependency closure purely from what's already cached (no network at all) before
+        // ever falling back to its own network-dependent simulate path - confirmed live necessary on
+        // acer's fedora-runner (DNF first, then ported to APT/PACMAN the same way): an admin
+        // pre-seeding /var/cache/nspawnmgr/packages/<manager>/auto by hand (see PackageCacheService's
+        // own javadoc on that workflow) was previously never even consulted, since this method used
+        // to always drive straight to a network-dependent simulate regardless of what the cache
+        // already held.
+        command.addAll(List.of(autoFetchCacheDir(packageManager), autoFetchUploadDir(packageManager)));
         // Same shared package-state directory the corresponding download script's own index-refresh
         // step touches (both point at this same rootfs) - reuse that lock so a simulate call never
         // races a concurrent download for the same container's own package manager state.

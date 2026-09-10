@@ -290,4 +290,33 @@ class ContainerLifecycleServiceTest {
         assertThat(container.getMountedIso()).isEqualTo(iso);
         assertThat(container.getState()).isEqualTo(ContainerState.STOPPED);
     }
+
+    @Test
+    void forceStopTerminatesAGenuinelyRunningContainer() {
+        Container container = managedContainer(ContainerState.RUNNING);
+        when(cliExecutor.status("b1", ContainerBackend.SYSTEMD_NSPAWN)).thenReturn(MachineStatus.RUNNING);
+
+        service.stopForce(container);
+
+        verify(cliExecutor).stopForce("b1", ContainerBackend.SYSTEMD_NSPAWN);
+        assertThat(container.getState()).isEqualTo(ContainerState.STOPPED);
+    }
+
+    @Test
+    void forceStopSkipsTheTerminateCallWhenItsAlreadyNotRunning() {
+        // Force Stop's whole point is "make sure this isn't running" - if the backend already
+        // agrees (STOPPED: still provisioned, just not booted; NOT_FOUND: gone entirely, e.g. a
+        // host reboot silently dropped a non-autostart container - see
+        // ContainerLivenessPollingService's own startup reconciliation for the same root cause),
+        // that goal is already met. Calling machinectl terminate anyway used to surface a
+        // confusing raw "No such machine"/"not running" error for something that was never really
+        // a failure from the admin's point of view.
+        Container container = managedContainer(ContainerState.RUNNING);
+        when(cliExecutor.status("b1", ContainerBackend.SYSTEMD_NSPAWN)).thenReturn(MachineStatus.NOT_FOUND);
+
+        service.stopForce(container);
+
+        verify(cliExecutor, never()).stopForce(any(), any());
+        assertThat(container.getState()).isEqualTo(ContainerState.STOPPED);
+    }
 }

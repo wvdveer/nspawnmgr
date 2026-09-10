@@ -205,9 +205,12 @@ public class ContainerPageController {
                     .toList());
         }
         model.addAttribute("currentUser", user);
-        boolean canManageScripts = canManageScripts(container, user);
-        model.addAttribute("canManageScripts", canManageScripts);
-        if (canManageScripts) {
+        // Owner or shared - used both for the Scripts panel and (SYSTEMD_NSPAWN/PODMAN/QEMU
+        // detail pages' own) start/stop/restart/pause/resume/force-stop actions. Delete stays
+        // owner-only regardless - see requireOwned's own callers.
+        boolean canManage = canManage(container, user);
+        model.addAttribute("canManage", canManage);
+        if (canManage) {
             model.addAttribute("scripts", scriptService.list(container));
         }
         return switch (container.getBackend()) {
@@ -272,12 +275,18 @@ public class ContainerPageController {
         return container;
     }
 
-    /** Overrides an EXTERNAL row's state in memory only, from HostLivenessService's cached ping -
-     *  never persisted, safe precisely because this entity is already detached (open-in-view is
-     *  off and neither list() nor detail() run inside a transaction) by the time we get it. */
+    /** Overrides an EXTERNAL row's state and displayed hostname in memory only, from
+     *  HostLivenessService's cached ping/resolve - never persisted, safe precisely because this
+     *  entity is already detached (open-in-view is off and neither list() nor detail() run inside a
+     *  transaction) by the time we get it. The hostname overwrite is what lets the Machines grid and
+     *  a host's own detail page show a real resolved address instead of just echoing back whatever
+     *  string the admin originally typed at Host creation (which may not even be an IP) - see
+     *  HostLivenessService's own javadoc for why this goes through the same SSH-based resolution
+     *  every real connection already uses, not a plain client-side DNS lookup. */
     private void applyHostLiveness(Container container) {
         if (container.getKind() == ContainerKind.EXTERNAL) {
             container.setState(hostLivenessService.isReachable(container) ? ContainerState.RUNNING : ContainerState.STOPPED);
+            container.setHostname(hostLivenessService.resolvedAddress(container));
         }
     }
 
@@ -290,26 +299,25 @@ public class ContainerPageController {
     private Container requireOwnedOrShared(Long id) {
         Container container = requireVisible(id);
         User user = currentUserProvider.get();
-        if (!canManageScripts(container, user)) {
+        if (!canManage(container, user)) {
             throw new AccessDeniedException(messages.get("error.web.onlyOwnerOrSharedMayPerform"));
         }
         return container;
     }
 
-    /** Owner, or a user the container has been shared with - same gate {@link #canManageScripts}
-     *  uses, name-addressed twin of {@link #requireOwnedOrShared(Long)} (see
-     *  ContainerApiController's twin, which guards the actual session-minting POST this page's own
-     *  JS calls). */
+    /** Owner, or a user the container has been shared with - same gate {@link #canManage} uses,
+     *  name-addressed twin of {@link #requireOwnedOrShared(Long)} (see ContainerApiController's
+     *  twin, which guards the actual session-minting POST this page's own JS calls). */
     private Container requireOwnedOrSharedByName(String name) {
         Container container = requireVisibleByName(name);
         User user = currentUserProvider.get();
-        if (!canManageScripts(container, user)) {
+        if (!canManage(container, user)) {
             throw new AccessDeniedException(messages.get("error.web.notSharedWithYou"));
         }
         return container;
     }
 
-    private boolean canManageScripts(Container container, User user) {
+    private boolean canManage(Container container, User user) {
         return container.getOwner().getId().equals(user.getId())
                 || containerShareRepository.existsByContainerAndUser(container, user);
     }

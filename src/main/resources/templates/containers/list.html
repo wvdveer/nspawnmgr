@@ -22,6 +22,8 @@
     <a th:if="${qemuAvailable}" th:href="@{/containers/new-qemu}" th:text="${t.get('page.machines.newQemu')}">New QEMU</a>
     <button th:unless="${qemuAvailable}" disabled
             th:title="${t.get('page.machines.newQemuDisabledHint')}" th:text="${t.get('page.machines.newQemu')}">New QEMU</button>
+    <hr class="add-menu-divider"/>
+    <button type="button" id="reconcile-btn" th:text="${t.get('page.machines.reconcileStates')}">Reconcile machine states</button>
     <a th:if="${currentUser.role.name() == 'ADMIN'}" th:href="@{/admin/hosts/new}" th:text="${t.get('page.machines.newHost')}">New Host</a>
     <hr th:if="${currentUser.role.name() == 'ADMIN'}" class="add-menu-divider"/>
     <button th:if="${currentUser.role.name() == 'ADMIN'}" type="button" id="discover-btn" th:text="${t.get('page.machines.discoverMachines')}">Discover machines</button>
@@ -67,5 +69,6 @@
 <script th:src="@{/js/dialog.js}"></script>
 <script th:src="@{/js/list.js}"></script>
 <script th:src="@{/js/discover-containers.js}"></script>
+<script th:src="@{/js/reconcile-containers.js}"></script>
 </body>
 </html>

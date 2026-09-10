@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Checks host prerequisites known to silently break container networking - the exact chain
@@ -79,6 +80,8 @@ public class NetworkDiagnosticsService {
         List<DiagnosticCheck> checks = new ArrayList<>();
         checks.add(checkNetworkd());
         checks.add(checkUfw());
+        checks.add(checkUfwDns());
+        checks.add(checkUfwOutbound());
         checks.add(checkHostAddress());
         checks.add(checkGuacd());
         checks.add(checkBridge());
@@ -255,7 +258,18 @@ public class NetworkDiagnosticsService {
      * ports left — SSH/RDP dial a container's internal veth address directly, no host forward
      * involved) against ufw's active rules. No automatic fix: unlike the old fixed SSH/RDP ranges,
      * this is a variable, per-container list, so — same posture as {@link #checkSudoers} — an
-     * admin resolves it by hand (typically {@code ufw allow <port>/<proto>}).
+     * admin resolves it by hand.
+     *
+     * <p>Two separate rules are needed, not one - confirmed live 2026-09-07 (a real self-hosted
+     * install on a host with ufw genuinely active, see {@code docs/administrator-guide.md}'s
+     * "Custom port mappings" section for the full explanation): {@code systemd-nspawn}'s own
+     * {@code Port=} forwarding DNATs genuinely external traffic in the kernel's own {@code
+     * PREROUTING} chain, so once the destination is rewritten to the container's internal address
+     * the packet is forwarded, not delivered locally - it needs ufw's {@code FORWARD} chain (a
+     * {@code ufw route allow ... to <internal address> port <container port>} rule, rendered in
+     * {@code ufw status verbose} as {@code ALLOW FWD}), not just the plain {@code ALLOW IN} rule a
+     * bare {@code ufw allow <host port>} produces. A container with no known internal address yet
+     * (not running) skips the route half of this check - nothing meaningful to compare against.
      */
     private DiagnosticCheck checkUfw() {
         CommandResult result = executor.ufwStatus();
@@ -267,12 +281,20 @@ public class NetworkDiagnosticsService {
         List<ContainerPortMapping> mappings = portMappingRepository.findAllWithContainer();
         List<String> uncovered = new ArrayList<>();
         for (ContainerPortMapping mapping : mappings) {
+            String containerName = mapping.getContainer().getName();
+            String protocol = mapping.getProtocol().name().toLowerCase();
             if (!coversPort(stdout, mapping.getHostPort(), mapping.getProtocol())) {
-                String containerName = mapping.getContainer().getName();
-                uncovered.add(messages.get("diag.ufw.uncoveredEntry", containerName, mapping.getHostPort(),
-                        mapping.getProtocol().name().toLowerCase()));
-                log.warn("Network diagnostics: ufw has no rule covering forwarded port {}/{} for container '{}'",
-                        mapping.getHostPort(), mapping.getProtocol().name().toLowerCase(), containerName);
+                uncovered.add(messages.get("diag.ufw.uncoveredEntry", containerName, mapping.getHostPort(), protocol));
+                log.warn("Network diagnostics: ufw has no ALLOW IN rule covering forwarded port {}/{} for container '{}'",
+                        mapping.getHostPort(), protocol, containerName);
+            }
+            String internalAddress = mapping.getContainer().getInternalAddress();
+            if (internalAddress != null
+                    && !coversForwardedPort(stdout, internalAddress, mapping.getContainerPort(), mapping.getProtocol())) {
+                uncovered.add(messages.get("diag.ufw.uncoveredRouteEntry", containerName, internalAddress,
+                        mapping.getContainerPort(), protocol));
+                log.warn("Network diagnostics: ufw has no ALLOW FWD (route) rule covering {}:{}/{} for container '{}'",
+                        internalAddress, mapping.getContainerPort(), protocol, containerName);
             }
         }
         boolean covered = uncovered.isEmpty();
@@ -283,14 +305,114 @@ public class NetworkDiagnosticsService {
                 false);
     }
 
+    /** A rule added without an explicit protocol (e.g. {@code sudo ufw allow 12345}, as opposed to
+     *  {@code sudo ufw allow 12345/tcp}) covers BOTH tcp and udp - confirmed live (acer,
+     *  2026-09-07): {@code ufw status verbose} renders it as a bare {@code 12345    ALLOW IN
+     *  Anywhere}, no {@code /tcp} suffix at all, which the old plain {@code line.contains(port +
+     *  "/" + protocol)} check never matched - a real, live false FAIL on a host whose rule
+     *  genuinely already covered the port. Both patterns are anchored with a digit/colon boundary
+     *  so a query for port 12345 can't spuriously match inside a wider number or a port *range*
+     *  like {@code 22000:23999/tcp}. */
     private boolean coversPort(String ufwStatusOutput, int port, PortMappingProtocol protocol) {
-        String token = port + "/" + protocol.name().toLowerCase();
+        String proto = protocol.name().toLowerCase();
+        Pattern qualified = Pattern.compile("(?<![0-9:])" + port + "/" + proto + "(?![0-9])");
+        Pattern bare = Pattern.compile("(?<![0-9:])" + port + "(?![0-9:/])");
         for (String line : ufwStatusOutput.split("\n")) {
-            if (line.contains("ALLOW IN") && line.contains(token)) {
+            if (line.contains("ALLOW IN") && (qualified.matcher(line).find() || bare.matcher(line).find())) {
                 return true;
             }
         }
         return false;
+    }
+
+    /** See {@code ufw route allow ... to <address> port <port>}'s own {@code ALLOW FWD} rendering
+     *  in {@code ufw status verbose} - e.g. {@code "10.100.0.177 8080/tcp      ALLOW FWD   Anywhere"}. */
+    private boolean coversForwardedPort(String ufwStatusOutput, String containerAddress, int containerPort, PortMappingProtocol protocol) {
+        String token = containerPort + "/" + protocol.name().toLowerCase();
+        for (String line : ufwStatusOutput.split("\n")) {
+            if (line.contains("ALLOW FWD") && line.contains(containerAddress) && line.contains(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Confirmed live (acer, 2026-09-07) as the actual root cause of a container having no DNS
+     * resolution at all, even with a perfectly healthy dnsmasq and correct per-container
+     * resolv.conf/resolvectl config: postinst's own ufw carve-out (see debian/postinst) only ever
+     * opened port 67/udp on nspawnbr0 for DHCP - never port 53 for dnsmasq itself. A container's DNS
+     * query to the host's own dnsmasq (10.100.0.1:53) is genuinely inbound traffic arriving on
+     * nspawnbr0 from ufw's point of view, unlike an admin's own `dig @10.100.0.1 ...` test run
+     * directly on the host (self-originated, never hits the same INPUT filtering) - so a default-deny
+     * ufw silently drops it. The symptom looks nothing like a DNS problem from inside the container:
+     * `resolvectl status` correctly reports 10.100.0.1 as the DNS server, the route to the bridge is
+     * fine, dnsmasq itself resolves everything correctly when queried directly from the host - only
+     * `getent hosts`/`ping`/an actual package manager fetch inside the container fails, with
+     * "Temporary failure in name resolution". No automatic fix (same posture as {@link #checkUfw}'s
+     * own per-container port coverage) - `sudo ufw allow in on nspawnbr0 to any port 53` is a
+     * one-line admin action once diagnosed, but this needs to run in an environment where I can't
+     * (or shouldn't) blindly execute privileged host firewall changes without confirmation first.
+     */
+    private DiagnosticCheck checkUfwDns() {
+        CommandResult result = executor.ufwStatus();
+        String stdout = result.stdout();
+        if (!stdout.contains("Status: active")) {
+            return new DiagnosticCheck("ufw-dns", messages.get("diag.ufwDns.label"), Status.OK,
+                    messages.get("diag.ufwDns.inactive"), false);
+        }
+        boolean covered = coversPort(stdout, 53, PortMappingProtocol.UDP) || coversPort(stdout, 53, PortMappingProtocol.TCP);
+        return new DiagnosticCheck("ufw-dns", messages.get("diag.ufwDns.label"),
+                covered ? Status.OK : Status.FAIL,
+                covered ? messages.get("diag.ufwDns.ok") : messages.get("diag.ufwDns.fail"),
+                false);
+    }
+
+    /**
+     * Distinct from {@link #checkUfw}'s own per-container port-mapping coverage: that check only
+     * ever covers a specific inbound-forwarded {@code host:port -> container:port} DNAT path.
+     * This checks the opposite direction - a container's own OUTBOUND connections out to the real
+     * internet (a container's own "Outbound internet access" toggle, see PackageCacheService's own
+     * javadoc on why containers need this for on-demand package installs during CI runs) - which
+     * routes through the exact same kernel FORWARD chain ufw's own default policy governs.
+     * Confirmed live (acer, 2026-09-08): a container with its own per-container outbound-access
+     * toggle already ON still had zero real TCP connectivity out - DNS (port 53, {@link
+     * #checkUfwDns}) and ICMP both worked, but a plain `curl https://github.com` timed out
+     * completely - traced to this host's own {@code /etc/default/ufw} having {@code
+     * DEFAULT_FORWARD_POLICY="DROP"} with no general {@code ufw route allow in on nspawnbr0} rule
+     * ever added to cover it (the postinst carve-out only ever opened narrow per-mapping/DNS holes,
+     * never blanket outbound). Same "nspawnmgr's own config is correct, a separate host firewall
+     * layer silently blocks it anyway" shape as {@link #checkUfwDns}'s own DNS finding - and same
+     * no-automatic-fix posture: this needs an admin's own considered decision (it opens outbound
+     * internet for every container on the bridge, not just one), not something to flip unattended.
+     * {@code ufw status verbose}'s own "Default:" line reports the routed policy directly (e.g.
+     * {@code Default: deny (incoming), allow (outgoing), disabled (routed)} on a host that's never
+     * added any route rule at all - "disabled" here, not "deny", still means no route traffic is
+     * permitted since ufw's own routed filtering never got a policy set) - checking for "allow
+     * (routed)" there is more direct than trying to pattern-match an arbitrary {@code ALLOW FWD}
+     * rule's own column layout, but a general (not per-destination-address) {@code nspawnbr0} rule
+     * is checked too, since an admin may have added one without changing the default policy itself.
+     */
+    private DiagnosticCheck checkUfwOutbound() {
+        CommandResult result = executor.ufwStatus();
+        String stdout = result.stdout();
+        if (!stdout.contains("Status: active")) {
+            return new DiagnosticCheck("ufw-outbound", messages.get("diag.ufwOutbound.label"), Status.OK,
+                    messages.get("diag.ufwOutbound.inactive"), false);
+        }
+        boolean defaultAllowsRouting = stdout.toLowerCase().contains("allow (routed)");
+        boolean hasGeneralBridgeForwardRule = false;
+        for (String line : stdout.split("\n")) {
+            if (line.contains("ALLOW FWD") && line.contains("nspawnbr0")) {
+                hasGeneralBridgeForwardRule = true;
+                break;
+            }
+        }
+        boolean covered = defaultAllowsRouting || hasGeneralBridgeForwardRule;
+        return new DiagnosticCheck("ufw-outbound", messages.get("diag.ufwOutbound.label"),
+                covered ? Status.OK : Status.FAIL,
+                covered ? messages.get("diag.ufwOutbound.ok") : messages.get("diag.ufwOutbound.fail"),
+                false);
     }
 
     // nspawnbr0's own fixed bridge address (see docs/administrator-guide.md's "Resolving

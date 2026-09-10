@@ -114,7 +114,8 @@ public class ProvisioningService {
 
     @Transactional
     public Container createPending(String name, Template template, User owner, boolean rdpEnabled, boolean vncEnabled,
-                                    DesktopManager desktopManager, String description, String podCommand, boolean podSystemdEnabled) {
+                                    DesktopManager desktopManager, String description, String podCommand, boolean podSystemdEnabled,
+                                    boolean vpnCapable) {
         // NONE_WAYLAND and SWAY both need a wlroots build new enough to advertise the
         // virtual-pointer protocol `wayvnc` needs for interactive input - confirmed live
         // (way1/debian-minimal, yoga, 2026-09-02) that Debian bookworm's `cage` (0.1.4, wlroots
@@ -172,6 +173,9 @@ public class ProvisioningService {
         // web form itself only ever offers this field on the New Pod page.
         container.setPodCommand(podCommand);
         container.setPodSystemdEnabled(podSystemdEnabled);
+        // Meaningless for PODMAN/QEMU - stored regardless, same "harmless when irrelevant"
+        // posture as podCommand/podSystemdEnabled above.
+        container.setVpnCapable(vpnCapable);
         return containerRepository.save(container);
     }
 

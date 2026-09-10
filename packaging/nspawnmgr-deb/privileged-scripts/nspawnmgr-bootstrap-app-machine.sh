@@ -115,12 +115,18 @@ pick_host_port() {
 # call has no reason to leave the container at all. Rewritten unconditionally to the container's
 # own loopback instead - routing it back out through the veth, the host's Port= forward, and back
 # in (hairpin NAT) is needlessly fragile and breaks outright whenever HOST_PORT != 8080.
+#
+# SELF_HOST_PORT (new key, not a rewrite of anything the host's own copy has) - read by
+# DatabaseSetupWizardServlet.tryRegisterAppMachinePortMapping() to insert this machine's own
+# host-port forward as a real, editable container_port_mappings row, same as any other port
+# mapping - see that method's own javadoc for why this shouldn't just be invisible/unmanageable.
 refresh_credential_file() {
     sed -e 's/^SSH_HOST=.*/SSH_HOST=10.100.0.1/' \
         -e 's/^HOST_PUBLIC_ADDRESS=.*/HOST_PUBLIC_ADDRESS=10.100.0.1/' \
         -e 's|^USER_ID_URL=.*|USER_ID_URL=http://localhost:8080/auth/userinfo|' \
         -e "s/^\(AUTH_LOGIN_URL=http:\/\/[^:]*\):8080/\1:${HOST_PORT}/" \
         /etc/nspawnmgr/nspawnmgr.env > "$ROOTFS/etc/nspawnmgr/nspawnmgr.env"
+    echo "SELF_HOST_PORT=${HOST_PORT}" >> "$ROOTFS/etc/nspawnmgr/nspawnmgr.env"
     cp /etc/nspawnmgr/ssh_id_ed25519 "$ROOTFS/etc/nspawnmgr/ssh_id_ed25519"
     chroot "$ROOTFS" chown root:tomcat /etc/nspawnmgr/nspawnmgr.env /etc/nspawnmgr/ssh_id_ed25519
     chmod 640 "$ROOTFS/etc/nspawnmgr/nspawnmgr.env" "$ROOTFS/etc/nspawnmgr/ssh_id_ed25519"

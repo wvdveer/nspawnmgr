@@ -1,3 +1,32 @@
+nspawnmgr (0.6.0) stable; urgency=medium
+
+  * nspawnmgr can now be reached correctly through more than one public
+    hostname at once - for example directly and through a reverse proxy in
+    front of it - via a new "Additional trusted origins" setting under
+    Auth on /admin/settings, without disturbing the existing Login URL.
+  * Shared users can now start, stop, restart, pause, resume, and
+    force-stop a container shared with them (previously limited to using
+    its Scripts/SSH) - Delete remains owner-only.
+  * A host reboot no longer strands managed containers on a self-assigned
+    link-local address: the nspawnbr0/dnsmasq boot race is now
+    self-healing, and container state left stale by a reboot (shown
+    RUNNING when it no longer is) is automatically reconciled on startup
+    and via a new "Reconcile machine states" button.
+  * New "Enable enhanced networking" container option (grants CAP_NET_ADMIN
+    and access to /dev/net/tun) lets a container run its own VPN/tunnel
+    client.
+  * Container package installs (DNF/APT/Pacman) now resolve dependencies
+    from the local cache first, so they keep working even without live
+    internet access once the needed packages are already cached.
+  * New network diagnostics: a missing ufw DNS (port 53) rule on
+    nspawnbr0, and outbound container traffic blocked by ufw.
+  * The self-hosted nspawnmgr machine's own port mapping is now a real,
+    editable entry in the normal Port mappings section instead of being
+    hidden.
+  * Fixed "Log in again" after logging out not returning to nspawnmgr.
+
+ -- nspawnmgr packaging <packaging@nspawnmgr.invalid>  Thu, 10 Sep 2026 00:00:00 +1000
+
 nspawnmgr (0.5.0) stable; urgency=medium
 
   * Wayland desktop support: new containers can run a Wayland session (None,

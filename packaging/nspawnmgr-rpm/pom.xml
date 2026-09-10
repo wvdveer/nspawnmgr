@@ -52,7 +52,7 @@
     -->
     <groupId>com.nspawnmgr</groupId>
     <artifactId>nspawnmgr-rpm</artifactId>
-    <version>0.5.0</version>
+    <version>0.6.0</version>
     <packaging>pom</packaging>
     <name>nspawnmgr-rpm</name>
     <description>RPM package for production nspawnmgr deployment (Fedora/RHEL)</description>
@@ -125,7 +125,7 @@
                          suffix during a dev cycle) - same "keep these two in sync by hand" trap
                          ../nspawnmgr-deb/pom.xml's own comment already warns about for the .deb's
                          control-file Version:. -->
-                    <version>0.5.0</version>
+                    <version>0.6.0</version>
                     <release>1</release>
                     <group>Applications/Internet</group>
                     <packager>nspawnmgr packaging &lt;packaging@nspawnmgr.invalid&gt;</packager>
@@ -192,6 +192,8 @@
                                 <source><location>${debdir}/guacd.service</location></source>
                                 <source><location>${debdir}/tomcat9.service</location></source>
                                 <source><location>${debdir}/dnsmasq-nspawnmgr.conf</location></source>
+                                <source><location>${debdir}/dnsmasq-wait-for-nspawnbr0.conf</location></source>
+                                <source><location>${debdir}/nspawn-wait-for-network.conf</location></source>
                                 <source><location>${debdir}/70-nspawnmgr-bridge.netdev</location></source>
                                 <source><location>${debdir}/70-nspawnmgr-bridge.network</location></source>
                                 <source><location>${debdir}/debian/nspawnmgr-ci.sudoers</location></source>

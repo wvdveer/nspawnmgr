@@ -575,6 +575,19 @@ registra (en INFO) en el momento en que alcanza EN EJECUCIÓN, y se resincroniza
 configuración de conexión de Guacamole en cada reinicio posterior en caso de que la dirección
 cambie.
 
+### Redes mejoradas (clientes VPN/túnel dentro de un contenedor)
+
+El formulario "New Nspawn" tiene una casilla **Habilitar red mejorada**, desactivada de forma
+predeterminada. Otorga al archivo `.nspawn` del contenedor dos cosas que systemd-nspawn no incluye
+por defecto: `Capability=CAP_NET_ADMIN` y un bind-mount del dispositivo `/dev/net/tun` del host.
+Juntas, son lo que necesita cualquier cliente VPN o de túnel basado en TUN/TAP (OpenVPN, WireGuard
+y similares) para crear su propia interfaz de red virtual dentro del contenedor.
+
+Solo se aplica en el momento de la creación — no hay forma de cambiarlo una vez que el contenedor
+ya existe. Déjala desmarcada a menos que un contenedor necesite específicamente ejecutar su propio
+cliente VPN/túnel; no está vinculada a ningún proveedor o software de VPN en particular, es
+simplemente una concesión de capacidad.
+
 ### Acceso gráfico: RDP, VNC y gestores de escritorio
 
 El formulario "Nuevo Nspawn" tiene dos casillas de verificación independientes, **Habilitar RDP**
@@ -1230,6 +1243,21 @@ dos:
   inmediatamente pero solo tiene efecto la próxima vez que el contenedor se (re)inicia — añadir
   uno a un contenedor en ejecución muestra un aviso de "se requiere reinicio" en lugar de
   reiniciarlo automáticamente.
+  - **Si `ufw` está activo en el host**, un simple `ufw allow <puerto>/<proto>` no basta por
+    sí solo. El propio reenvío `Port=` de `systemd-nspawn` hace DNAT del tráfico genuinamente
+    externo en la cadena `PREROUTING` del kernel, reescribiendo su destino a la dirección
+    interna del contenedor — una vez que eso ocurre, el paquete se *reenvía*, no se entrega
+    localmente, así que también debe pasar por la cadena `FORWARD` de `ufw`, a la que una
+    regla `allow` normal no afecta. También necesita una regla de ruta dirigida a la propia
+    dirección interna del contenedor y a su puerto del lado del contenedor (sin mapear):
+    `sudo ufw route allow proto tcp to <dirección interna del contenedor> port <puerto del
+    contenedor>`. El tráfico que usted envía desde la propia máquina host a su dirección real
+    no se ve afectado por esto — solo los clientes genuinamente externos llegan a la cadena
+    `FORWARD` — por lo que puede parecer que "ya funciona" al probarlo desde el host antes de
+    que un cliente remoto lo intente de verdad. La propia comprobación de ufw de la página de
+    Diagnóstico hoy solo verifica la regla `allow` simple, no esta regla de ruta, así que
+    puede reportar un mapeo de puertos como correcto cuando el acceso externo a él todavía no
+    funciona.
 - **Conmutador de acceso a internet saliente**: a diferencia de la configuración de enmascaramiento
   de todo el host, todo-o-nada, de arriba, cada contenedor puede tener individualmente su acceso
   saliente bloqueado. nspawnmgr gestiona esto por sí mismo con una cadena iptables dedicada
@@ -1593,7 +1621,7 @@ propio comentario de ese trabajo en el archivo de flujo de trabajo).
 **Instálelo:**
 
 ```bash
-sudo apt install ./nspawnmgr_0.5.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
+sudo apt install ./nspawnmgr_0.6.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
 ```
 
 Ni `tomcat9` ni `guacd`/`guacamole-tomcat` están en el `Depends:` de este paquete — la propia
@@ -1786,7 +1814,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_ARCH_PKG=1 tools/scripts/build-all.sh   # needs `makepkg` on PATH - a real Arch host, or the
                                                # archlinux/devtools container image
 
-sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.5.0-1-any.pkg.tar.zst
+sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.6.0-1-any.pkg.tar.zst
 ```
 
 ### Instalación en Fedora/RHEL (RPM)
@@ -1843,7 +1871,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_RPM=1 tools/scripts/build-all.sh   # needs a real `rpmbuild` binary (`rpm-build` package) -
                                           # a real Fedora/RHEL host, no cross-platform equivalent
 
-sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.5.0-1.noarch.rpm
+sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.6.0-1.noarch.rpm
 ```
 
 ### Opción B: compilar desde el código fuente, desplegar manualmente
@@ -2375,6 +2403,28 @@ en su lugar muestra su propia página estática de "inicio de sesión requerido"
 establezca `AUTH_LOGIN_URL` a la URL `/auth/login` de `auth` (p. ej.
 `http://<hostname>:8080/auth/login`) para el flujo automático completo.
 
+#### Acceder a nspawnmgr a través de más de un origen
+
+Por sí sola, `AUTH_LOGIN_URL` solo funciona correctamente para un origen — la cookie que emite
+`auth.war` no tiene atributo `Domain`, así que una redirección de inicio de sesión (y su
+`returnTo`) siempre tiene que terminar en el mismo host:puerto exacto que sirvió la página de
+inicio de sesión, o el navegador simplemente no devolverá la cookie. Una solicitud que llegue a
+nspawnmgr a través de un nombre de host distinto — un proxy inverso delante de él, por ejemplo —
+de lo contrario sería redirigida al origen fijo de `AUTH_LOGIN_URL` para el inicio de sesión en
+lugar de permanecer en el que realmente se está usando.
+
+**Additional trusted origins** (`nspawnmgr.auth.additional-trusted-origins`, editable en vivo en
+`/admin/settings` bajo Auth, justo debajo de Login URL) es una lista de permitidos separada por
+comas de orígenes adicionales `scheme://host[:port]` (sin ruta) a través de los cuales nspawnmgr
+también se puede alcanzar correctamente. Una solicitud cuyo encabezado `Host` coincida con uno de
+estos obtiene su redirección de inicio de sesión y su `returnTo` construidos contra el propio
+esquema y host de ese origen, en lugar del de `AUTH_LOGIN_URL` — cualquier otro host sigue usando
+`AUTH_LOGIN_URL` exactamente como antes, sin verse afectado. Si coloca un proxy inverso delante de
+nspawnmgr bajo un segundo nombre de host público, añada aquí el origen completo de ese nombre de
+host (p. ej. `https://nspawnmgr.example.com`) y asegúrese de que el proxy reenvíe el encabezado
+`Host` original sin cambios, para que nspawnmgr vea realmente el nombre de host que usó el
+navegador.
+
 ## 9. Configuración de nspawnmgr
 
 Todos los ajustes viven bajo `nspawnmgr.*` en `src/main/resources/application.yml`, cada uno
@@ -2396,7 +2446,10 @@ YAML. Los grupos importantes:
 - **`nspawnmgr.guacamole.*`** — `base-url`, `admin-username`/`admin-password`, `data-source`,
   `home` (`GUACAMOLE_HOME`, por defecto `/etc/guacamole`), de [§7](#7-guacamole).
 - **`nspawnmgr.auth.*`** — `user-id-url` (valida una cookie existente contra `auth`),
-  `cookie-name`, `login-url` (el destino de redirección de §8), ajuste de caché/tiempo de espera,
+  `cookie-name`, `login-url` (el destino de redirección de §8), `additional-trusted-origins`
+  (orígenes adicionales que obtienen su propia redirección de inicio de sesión en lugar de la fija
+  de `login-url` — vea ["Acceder a nspawnmgr a través de más de un
+  origen"](#acceder-a-nspawnmgr-a-través-de-más-de-un-origen)), ajuste de caché/tiempo de espera,
   `settings-file` (dónde se escribe el archivo de ajustes de autenticación compartido de abajo —
   debe coincidir con el propio `auth.settings-file`/`AUTH_SETTINGS_FILE` de auth.war, por defecto
   `/etc/nspawnmgr/auth-live/auth-settings.properties`).

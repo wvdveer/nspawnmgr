@@ -55,6 +55,16 @@ public final class NspawnSettingsRenderer {
             content.append("[Files]\nBindReadOnly=").append(isoHostMountPoint(container))
                     .append(':').append(ISO_MOUNT_POINT_CONTAINER_PATH).append('\n');
         }
+        if (container.isVpnCapable()) {
+            // CAP_NET_ADMIN + a real /dev/net/tun bind is what every TUN/TAP-based VPN/tunnel
+            // client needs (e.g. PureVPN's Linux CLI) and systemd-nspawn doesn't grant by
+            // default. systemd's unit-file parser tolerates repeated section headers, so this can
+            // just be appended independently of the conditional [Exec]/[Files] blocks above - no
+            // need to merge insertion points. Unverified live in this app until the first
+            // container with this flag actually boots and is checked.
+            content.append("[Exec]\nCapability=CAP_NET_ADMIN\n");
+            content.append("[Files]\nBind=/dev/net/tun\n");
+        }
         return content.toString();
     }
 

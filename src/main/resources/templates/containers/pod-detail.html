@@ -28,8 +28,10 @@
     </div>
 </div>
 
-<div th:if="${container.owner.id == currentUser.id}" class="panel">
+<div th:if="${canManage}" class="panel">
     <h2 th:text="${t.get('page.detail.manageHeading')}">Manage</h2>
+    <!-- Owner or shared - see requireOwnedOrShared's own javadoc. Delete deliberately stays
+         owner-only within this otherwise-shared section. -->
     <div class="panel-section">
         <button id="btn-start" class="btn-primary" th:disabled="${container.state.name() != 'STOPPED'}" th:text="${t.get('button.start')}">Start</button>
         <button id="btn-stop" class="btn-primary"
@@ -38,9 +40,11 @@
         <button id="btn-pause" class="btn-primary" th:disabled="${container.state.name() != 'RUNNING'}" th:text="${t.get('button.pause')}">Pause</button>
         <button id="btn-resume" class="btn-primary" th:disabled="${container.state.name() != 'PAUSED'}" th:text="${t.get('button.resume')}">Resume</button>
         <button id="btn-force-stop" class="btn-primary" th:disabled="${container.state.name() == 'STOPPED'}" th:text="${t.get('button.forceStop')}">Force stop</button>
-        <button id="btn-delete" class="btn-primary" th:text="${t.get('button.delete')}">Delete</button>
+        <button id="btn-delete" class="btn-primary" th:if="${container.owner.id == currentUser.id}" th:text="${t.get('button.delete')}">Delete</button>
     </div>
 
+    <!-- Everything below remains owner-only. -->
+    <div th:if="${container.owner.id == currentUser.id}">
     <div class="panel-section">
         <h3 th:text="${t.get('field.description')}">Description</h3>
         <div class="inline-controls">
@@ -150,9 +154,10 @@
         </div>
         <pre id="install-package-output" class="hint" style="white-space: pre-wrap;"></pre>
     </div>
+    </div>
 </div>
 
-<div th:if="${canManageScripts}" class="panel">
+<div th:if="${canManage}" class="panel">
     <div class="panel-section">
         <h3 th:text="${t.get('page.detail.scriptsHeading')}">Scripts</h3>
         <p class="hint" th:utext="${t.get('page.podDetail.scriptsHint')}">Named, reusable scripts run inside this pod (via <code>podman exec</code>) as

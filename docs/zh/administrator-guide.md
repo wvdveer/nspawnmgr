@@ -435,6 +435,16 @@ NOPASSWD——属于常规的、由所有者触发的操作,与 Start/Stop 属�
 内部地址会在其到达 RUNNING 状态的那一刻被记录下来(INFO 级别),并且在此后每次重启时都会重新同步到
 Guacamole 的连接配置中,以防地址发生变化。
 
+### 增强网络(容器内的 VPN/隧道客户端)
+
+"New Nspawn" 表单上有一个 **启用增强网络** 复选框,默认关闭。勾选后会为容器的 `.nspawn` 文件授予
+两项 systemd-nspawn 默认不包含的权限:`Capability=CAP_NET_ADMIN` 以及主机 `/dev/net/tun` 设备的
+绑定挂载(bind-mount)。这两者合起来正是任何基于 TUN/TAP 的 VPN 或隧道客户端(OpenVPN、WireGuard
+等)在容器内创建自己的虚拟网络接口所需要的。
+
+该设置仅在创建时生效——容器创建后无法再切换。除非某个容器确实需要运行自己的 VPN/隧道客户端,否则请
+保持不勾选;它不绑定任何特定的 VPN 提供商或软件,只是一项权限授予。
+
 ### 图形访问:RDP、VNC 与桌面管理器
 
 "新建 Nspawn"表单上有两个相互独立的复选框,**启用 RDP** 和 **启用 VNC**——可以两者都选、只选一个,
@@ -907,6 +917,15 @@ dnsmasq(容器名称加上公共上游解析器),对一个私有局域网自身�
   号。nspawnmgr 会在接受之前检查所请求的主机端口是否已经被另一个自定义映射占用。一条映射会被立即写入
   `.nspawn` 文件,但只有在容器下一次(重新)启动时才会生效——为一个正在运行的容器添加一条映射会显示
   一条"需要重启"的提示,而不是自动重启它。
+  - **如果主机上启用了 `ufw`**,单纯的 `ufw allow <端口>/<协议>` 并不够。`systemd-nspawn` 自身的
+    `Port=` 转发会在内核的 `PREROUTING` 链中对真正的外部流量做 DNAT,把目标地址重写为容器的内部
+    地址——一旦发生这种重写,该数据包就变成了"转发",而不是本地投递,因此它还必须通过 `ufw` 的
+    `FORWARD` 链,而普通的 `allow` 规则并不涉及这条链。你还需要一条路由规则,目标是容器自身的内部
+    地址及其(未映射的)容器端端口:`sudo ufw route allow proto tcp to <容器内部地址> port <容器
+    端口>`。从主机自身发往其真实地址的流量不受此影响——只有真正的外部客户端才会经过 `FORWARD`
+    链——这也是为什么在远程客户端真正尝试之前,从主机上测试时可能会显得"已经正常工作"。诊断页面
+    自身的 ufw 检查目前只验证了那条简单的 `allow` 规则,并未验证这条路由规则,因此即使外部访问仍然
+    不通,它也可能把该端口映射报告为正常。
 - **出站互联网访问开关**:与上文那种主机范围的、要么全开要么全关的伪装设置不同,每个容器可以单独将
   其出站访问阻断。nspawnmgr 通过一个专用的 `NSPAWNMGR-OUTBOUND` iptables 链自行管理这一点
   (首次需要时自动创建,从 `FORWARD` 的顶部跳转过来),其中每个被禁用出站访问的容器对应一条 `DROP`
@@ -1184,7 +1203,7 @@ mvn -f packaging/nspawnmgr-deb/pom.xml package   # -> packaging/nspawnmgr-deb/ta
 **安装它:**
 
 ```bash
-sudo apt install ./nspawnmgr_0.5.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
+sudo apt install ./nspawnmgr_0.6.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
 ```
 
 `tomcat9` 和 `guacd`/`guacamole-tomcat` 都不在这个软件包的 `Depends:` 中——apt 自身的 `tomcat9`
@@ -1337,7 +1356,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_ARCH_PKG=1 tools/scripts/build-all.sh   # needs `makepkg` on PATH - a real Arch host, or the
                                                # archlinux/devtools container image
 
-sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.5.0-1-any.pkg.tar.zst
+sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.6.0-1-any.pkg.tar.zst
 ```
 
 ### 在 Fedora/RHEL(RPM)上安装
@@ -1384,7 +1403,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_RPM=1 tools/scripts/build-all.sh   # needs a real `rpmbuild` binary (`rpm-build` package) -
                                           # a real Fedora/RHEL host, no cross-platform equivalent
 
-sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.5.0-1.noarch.rpm
+sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.6.0-1.noarch.rpm
 ```
 
 ### 选项 B:从源码构建,手动部署
@@ -1840,6 +1859,24 @@ cookie 没有 `Domain` 属性,所以它的作用域被限定在提供登录页�
 会转而显示它自己的静态"需要登录"页面,不进行重定向——把 `AUTH_LOGIN_URL` 设置为 `auth` 的
 `/auth/login` URL(例如 `http://<hostname>:8080/auth/login`),即可获得完整的自动化流程。
 
+#### 通过多个来源访问 nspawnmgr
+
+单靠 `AUTH_LOGIN_URL` 只能对一个来源正常工作——`auth.war` 签发的 cookie 没有 `Domain`
+属性,所以登录重定向(及其 `returnTo`)必须始终落在提供登录页面的那个完全相同的
+host:port 上,否则浏览器根本不会把 cookie 发回来。如果请求是通过另一个主机名到达
+nspawnmgr 的——比如前面架了一个反向代理——那么原本会被重定向到 `AUTH_LOGIN_URL` 那个
+固定来源去登录,而不是留在实际正在使用的那个来源上。
+
+"Additional trusted origins"(`nspawnmgr.auth.additional-trusted-origins`,可在
+`/admin/settings` 的 Auth 部分、Login URL 下方实时编辑)是一个以逗号分隔的白名单,
+列出了 nspawnmgr 也可以被正确访问到的额外 `scheme://host[:port]` 来源(不含路径)。
+如果某个请求的 `Host` 头匹配其中一项,它的登录重定向和 `returnTo` 就会基于那个来源
+自身的协议和主机来构建,而不是 `AUTH_LOGIN_URL` 的——其他所有主机继续照旧使用
+`AUTH_LOGIN_URL`,不受影响。如果你在 nspawnmgr 前面架设了一个使用第二个公开主机名
+的反向代理,就把那个主机名的完整来源(例如 `https://nspawnmgr.example.com`)加到这里,
+并确保代理原样转发原始的 `Host` 头,这样 nspawnmgr 才能真正看到浏览器实际使用的
+主机名。
+
 ## 9. 配置 nspawnmgr
 
 所有设置都位于 `src/main/resources/application.yml` 中的 `nspawnmgr.*` 之下,每一项都可以通过一个
@@ -1858,7 +1895,9 @@ cookie 没有 `Domain` 属性,所以它的作用域被限定在提供登录页�
   `admin-username`/`admin-password`、`data-source`、`home`(`GUACAMOLE_HOME`,默认
   `/etc/guacamole`)。
 - **`nspawnmgr.auth.*`**——`user-id-url`(针对一个已有的 cookie 向 `auth` 校验)、
-  `cookie-name`、`login-url`(第8节所述的重定向目标)、缓存/超时调优、`settings-file`(下面那个
+  `cookie-name`、`login-url`(第8节所述的重定向目标)、`additional-trusted-origins`(可以
+  获得自己独立登录重定向、而不是走 `login-url` 固定目标的额外来源——参见["通过多个来源
+  访问 nspawnmgr"](#通过多个来源访问-nspawnmgr))、缓存/超时调优、`settings-file`(下面那个
   共享的 auth 设置文件的写入位置——必须与 auth.war 自身的
   `auth.settings-file`/`AUTH_SETTINGS_FILE` 一致,默认为
   `/etc/nspawnmgr/auth-live/auth-settings.properties`)。

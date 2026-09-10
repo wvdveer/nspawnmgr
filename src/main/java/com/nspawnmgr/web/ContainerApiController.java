@@ -22,6 +22,7 @@ import com.nspawnmgr.service.AuditLogService;
 import com.nspawnmgr.service.ContainerAccessService;
 import com.nspawnmgr.service.ContainerDiscoveryService;
 import com.nspawnmgr.service.ContainerLifecycleService;
+import com.nspawnmgr.service.ContainerLivenessPollingService;
 import com.nspawnmgr.service.ContainerPortMappingService;
 import com.nspawnmgr.service.ContainerScriptService;
 import com.nspawnmgr.service.ContainerSessionService;
@@ -87,6 +88,7 @@ public class ContainerApiController {
     private final ContainerRepository containerRepository;
     private final ProvisioningService provisioningService;
     private final ContainerLifecycleService lifecycleService;
+    private final ContainerLivenessPollingService livenessPollingService;
     private final ContainerDiscoveryService discoveryService;
     private final ContainerAccessService accessService;
     private final PackageCacheService packageCacheService;
@@ -104,7 +106,8 @@ public class ContainerApiController {
     private final UserMessages messages;
 
     public ContainerApiController(ContainerRepository containerRepository, ProvisioningService provisioningService,
-                                   ContainerLifecycleService lifecycleService, ContainerDiscoveryService discoveryService,
+                                   ContainerLifecycleService lifecycleService, ContainerLivenessPollingService livenessPollingService,
+                                   ContainerDiscoveryService discoveryService,
                                    ContainerAccessService accessService, PackageCacheService packageCacheService,
                                    ShareService shareService,
                                    ContainerPortMappingService portMappingService,
@@ -117,6 +120,7 @@ public class ContainerApiController {
         this.containerRepository = containerRepository;
         this.provisioningService = provisioningService;
         this.lifecycleService = lifecycleService;
+        this.livenessPollingService = livenessPollingService;
         this.discoveryService = discoveryService;
         this.accessService = accessService;
         this.packageCacheService = packageCacheService;
@@ -140,7 +144,8 @@ public class ContainerApiController {
         Template template = templateService.getById(request.templateId());
         Container container = provisioningService.createPending(
                 request.name(), template, owner, request.rdpEnabled(), request.vncEnabled(),
-                parseDesktopManager(request.desktopManager()), request.description(), request.command(), request.systemdEnabled());
+                parseDesktopManager(request.desktopManager()), request.description(), request.command(), request.systemdEnabled(),
+                request.vpnCapable());
         accessService.setKeystrokeButtonPanelPlacement(container, request.keystrokeButtonPanelPlacement());
         if (provisioningService.requiresApproval()) {
             provisioningService.markPendingApproval(container.getId());
@@ -201,15 +206,37 @@ public class ContainerApiController {
                 .toList();
     }
 
+    /** Manually re-checks every MANAGED container's real state against machinectl/podman/systemctl,
+     *  correcting any stale RUNNING display - see ContainerLivenessPollingService#reconcile's own
+     *  javadoc for why this can go stale (most commonly a SYSTEMD_NSPAWN container without "start
+     *  automatically when host boots" enabled, after a host reboot). Available to any
+     *  authenticated user, not just admins - unlike {@link #discover()}, this never creates or
+     *  reassigns ownership of anything, purely corrects an existing container's own stored state,
+     *  so there's no privilege boundary to protect here. */
+    @PostMapping("/api/containers/reconcile")
+    public List<DiscoveredContainerResponse> reconcile() {
+        List<Container> corrected = livenessPollingService.reconcile();
+        User user = currentUserProvider.get();
+        corrected.forEach(c -> auditLogService.log(user, AuditAction.STOPPED, AuditTargetType.CONTAINER,
+                c.getId(), c.getName(), "reconciled stale RUNNING state to STOPPED"));
+        return corrected.stream()
+                .map(c -> new DiscoveredContainerResponse(c.getId(), c.getName(), c.getState().name()))
+                .toList();
+    }
+
     @GetMapping("/api/containers/{id}/status")
     public ContainerStatusResponse status(@PathVariable Long id) {
         Container container = requireVisible(id);
         return new ContainerStatusResponse(container.getState(), container.getErrorMessage());
     }
 
+    // start/stop/restart/pause/resume/force-stop: owner or shared (see requireOwnedOrShared's own
+    // javadoc) - "approved user" means whoever the owner already trusts with this container, same
+    // posture as Scripts. delete deliberately stays requireOwned below - a shared user managing a
+    // container's running state is a much smaller trust step than letting them destroy it.
     @PostMapping("/api/containers/{id}/start")
     public void start(@PathVariable Long id) {
-        Container container = requireOwned(id);
+        Container container = requireOwnedOrShared(id);
         lifecycleService.start(container);
         auditLogService.log(currentUserProvider.get(), AuditAction.STARTED, AuditTargetType.CONTAINER,
                 container.getId(), container.getName(), null);
@@ -217,7 +244,7 @@ public class ContainerApiController {
 
     @PostMapping("/api/containers/{id}/stop")
     public void stop(@PathVariable Long id) {
-        Container container = requireOwned(id);
+        Container container = requireOwnedOrShared(id);
         lifecycleService.stopGraceful(container);
         auditLogService.log(currentUserProvider.get(), AuditAction.STOPPED, AuditTargetType.CONTAINER,
                 container.getId(), container.getName(), null);
@@ -225,7 +252,7 @@ public class ContainerApiController {
 
     @PostMapping("/api/containers/{id}/restart")
     public void restart(@PathVariable Long id) {
-        Container container = requireOwned(id);
+        Container container = requireOwnedOrShared(id);
         lifecycleService.restart(container);
         auditLogService.log(currentUserProvider.get(), AuditAction.RESTARTED, AuditTargetType.CONTAINER,
                 container.getId(), container.getName(), null);
@@ -233,7 +260,7 @@ public class ContainerApiController {
 
     @PostMapping("/api/containers/{id}/force-stop")
     public void forceStop(@PathVariable Long id) {
-        Container container = requireOwned(id);
+        Container container = requireOwnedOrShared(id);
         lifecycleService.stopForce(container);
         auditLogService.log(currentUserProvider.get(), AuditAction.FORCE_STOPPED, AuditTargetType.CONTAINER,
                 container.getId(), container.getName(), null);
@@ -241,7 +268,7 @@ public class ContainerApiController {
 
     @PostMapping("/api/containers/{id}/pause")
     public void pause(@PathVariable Long id) {
-        Container container = requireOwned(id);
+        Container container = requireOwnedOrShared(id);
         lifecycleService.pause(container);
         auditLogService.log(currentUserProvider.get(), AuditAction.PAUSED, AuditTargetType.CONTAINER,
                 container.getId(), container.getName(), null);
@@ -249,7 +276,7 @@ public class ContainerApiController {
 
     @PostMapping("/api/containers/{id}/resume")
     public void resume(@PathVariable Long id) {
-        Container container = requireOwned(id);
+        Container container = requireOwnedOrShared(id);
         lifecycleService.resume(container);
         auditLogService.log(currentUserProvider.get(), AuditAction.RESUMED, AuditTargetType.CONTAINER,
                 container.getId(), container.getName(), null);

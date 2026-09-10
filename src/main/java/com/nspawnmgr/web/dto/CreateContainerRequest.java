@@ -12,6 +12,9 @@ public record CreateContainerRequest(
         @NotNull Long templateId,
         boolean rdpEnabled,
         boolean vncEnabled,
+        /** SYSTEMD_NSPAWN only (harmlessly ignored for PODMAN/QEMU) - see
+         *  Container#isVpnCapable's own javadoc. Creation-time only, no post-creation edit UI. */
+        boolean vpnCapable,
         String desktopManager,
         @Size(max = 500) String description,
         /** PODMAN only - like a Dockerfile CMD, see Container#getPodCommand's own javadoc. Ignored

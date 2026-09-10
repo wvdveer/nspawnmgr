@@ -42,7 +42,7 @@
 # motivated this variant; this package itself hasn't had its own real install/verify pass yet.
 
 pkgname=nspawnmgr-steamos
-pkgver=0.5.0
+pkgver=0.6.0
 pkgrel=1
 pkgdesc="Web manager for systemd-nspawn containers, podman pods, and QEMU/KVM virtual machines with Guacamole access (SteamOS variant - storage relocated under /home)"
 arch=('any')
@@ -96,6 +96,8 @@ package() {
     install -Dm644 "$debdir/70-nspawnmgr-bridge.netdev" "$pkgdir/usr/share/nspawnmgr/70-nspawnmgr-bridge.netdev"
     install -Dm644 "$debdir/70-nspawnmgr-bridge.network" "$pkgdir/usr/share/nspawnmgr/70-nspawnmgr-bridge.network"
     install -Dm644 "$debdir/dnsmasq-nspawnmgr.conf" "$pkgdir/usr/share/nspawnmgr/dnsmasq-nspawnmgr.conf"
+    install -Dm644 "$debdir/dnsmasq-wait-for-nspawnbr0.conf" "$pkgdir/usr/share/nspawnmgr/dnsmasq-wait-for-nspawnbr0.conf"
+    install -Dm644 "$debdir/nspawn-wait-for-network.conf" "$pkgdir/usr/share/nspawnmgr/nspawn-wait-for-network.conf"
     install -Dm644 "$debdir/guacd.service" "$pkgdir/usr/share/nspawnmgr/guacd.service"
     install -Dm644 "$debdir/tomcat9.service" "$pkgdir/usr/share/nspawnmgr/tomcat9.service"
 

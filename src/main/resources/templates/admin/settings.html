@@ -50,6 +50,11 @@
         <button type="button" id="authLoginUrl-refresh" class="btn-primary btn-refresh" th:text="${t.get('button.refreshHostnamePortProtocol')}">Refresh hostname/port/protocol</button>
     </div>
     <div class="field">
+        <label for="authAdditionalTrustedOrigins" th:text="${t.get('field.authAdditionalTrustedOrigins')}">Additional trusted origins</label>
+        <input type="text" id="authAdditionalTrustedOrigins" th:value="${settings.authAdditionalTrustedOrigins()}"/>
+        <p class="hint" th:utext="${t.get('hint.authAdditionalTrustedOrigins')}">Comma-separated list of extra origins (<code>scheme://host[:port]</code>, no path - e.g. <code>https://nspawnmgr.example.com</code>) this app can also be reached at, such as through a reverse proxy in front of it. Login URL above stays the only origin used for every other host; a request whose <code>Host</code> header matches one of these gets its own login redirect and <code>returnTo</code> built against that origin instead, so each origin's login flow stays on itself rather than bouncing back to Login URL's fixed address.</p>
+    </div>
+    <div class="field">
         <label for="authUserIdJson" th:text="${t.get('field.authUserIdJson')}">User-ID JsonPath</label>
         <input type="text" id="authUserIdJson" th:value="${settings.authUserIdJson()}"/>
     </div>

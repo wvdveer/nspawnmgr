@@ -24,9 +24,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
+import javax.servlet.http.HttpServletRequest;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -133,6 +135,69 @@ public class SettingsService {
 
     public String authLoginUrl() {
         return orDefault(snapshot.getAuthLoginUrl(), authProperties.loginUrl());
+    }
+
+    /** Comma-separated list of additional external origins (scheme://host[:port], no path) that
+     *  get their own login-redirect/returnTo target instead of authLoginUrl()'s fixed origin - see
+     *  {@link #authLoginUrlForRequest}. Null/blank means "no additional origins - authLoginUrl is
+     *  the only one that works", unchanged from before this feature existed. No static-properties
+     *  fallback, same as authBackend()/authSmbServer() etc - this is a nspawnmgr-only setting with
+     *  no prior config-file equivalent. */
+    public String authAdditionalTrustedOrigins() {
+        return snapshot.getAuthAdditionalTrustedOrigins();
+    }
+
+    /**
+     * {@link #authLoginUrl()}, but resolved against the current request: if the request's
+     * {@code Host} header matches one of {@link #authAdditionalTrustedOrigins()}'s configured
+     * origins, returns that origin (scheme+authority) combined with authLoginUrl's own path/query,
+     * instead of authLoginUrl's own fixed origin. Falls back to the unresolved authLoginUrl()
+     * unchanged when nothing matches - the existing single-origin behavior every install already
+     * relies on stays exactly as it was before this method existed.
+     *
+     * <p>Deliberately matches on the raw {@code Host} header, not {@code request.getScheme()}/
+     * {@code getServerName()} - a request proxied in from an admin-approved additional origin may
+     * well arrive at Tomcat over plain HTTP (the proxy terminates TLS itself), so trusting the
+     * scheme Tomcat itself observed would silently downgrade an HTTPS-fronted origin to an http://
+     * redirect. The configured origin's own scheme is used instead, since the admin already told
+     * us what it actually is.
+     */
+    public String authLoginUrlForRequest(HttpServletRequest request) {
+        String configured = authLoginUrl();
+        if (configured == null || configured.isBlank()) {
+            return configured;
+        }
+        String matchedOrigin = matchedTrustedOrigin(request);
+        if (matchedOrigin == null) {
+            return configured;
+        }
+        URI configuredUri = URI.create(configured);
+        String path = configuredUri.getRawPath();
+        String pathAndQuery = (path == null ? "" : path)
+                + (configuredUri.getRawQuery() != null ? "?" + configuredUri.getRawQuery() : "");
+        return matchedOrigin + pathAndQuery;
+    }
+
+    private String matchedTrustedOrigin(HttpServletRequest request) {
+        String origins = authAdditionalTrustedOrigins();
+        if (origins == null || origins.isBlank()) {
+            return null;
+        }
+        String hostHeader = request.getHeader("Host");
+        if (hostHeader == null || hostHeader.isBlank()) {
+            return null;
+        }
+        for (String entry : origins.split(",")) {
+            String origin = entry.strip();
+            if (origin.isEmpty()) {
+                continue;
+            }
+            String originAuthority = URI.create(origin).getAuthority();
+            if (originAuthority != null && originAuthority.equalsIgnoreCase(hostHeader)) {
+                return origin;
+            }
+        }
+        return null;
     }
 
     public String authUserIdJson() {
@@ -309,7 +374,8 @@ public class SettingsService {
                 "hostExternalHostname", str(hostExternalHostname()));
         appendSection(report, "Auth",
                 "authCookieName", str(authCookieName()), "authUserIdUrl", str(authUserIdUrl()),
-                "authLoginUrl", str(authLoginUrl()), "authUserIdJson", str(authUserIdJson()),
+                "authLoginUrl", str(authLoginUrl()), "authAdditionalTrustedOrigins", str(authAdditionalTrustedOrigins()),
+                "authUserIdJson", str(authUserIdJson()),
                 "authUserUsernameJson", str(authUserUsernameJson()), "authUserEmailJson", str(authUserEmailJson()),
                 "authUserFullnameJson", str(authUserFullnameJson()), "authUserIsAdminJson", str(authUserIsAdminJson()),
                 "authCacheTtlSeconds", String.valueOf(authCacheTtlSeconds()), "authHttpTimeoutMs", String.valueOf(authHttpTimeoutMs()));
@@ -516,6 +582,7 @@ public class SettingsService {
         validateUrlIfPresent(messages.get("error.settings.label.guacamoleBaseUrl"), update.guacamoleBaseUrl(), errors, true);
         validateUrlIfPresent(messages.get("error.settings.label.authUserIdUrl"), update.authUserIdUrl(), errors, true);
         validateUrlIfPresent(messages.get("error.settings.label.authLoginUrl"), update.authLoginUrl(), errors, false);
+        validateAdditionalTrustedOriginsIfPresent(update.authAdditionalTrustedOrigins(), errors);
         validateJsonPathIfPresent(messages.get("error.settings.label.userIdJsonPath"), update.authUserIdJson(), errors);
         validateJsonPathIfPresent(messages.get("error.settings.label.usernameJsonPath"), update.authUserUsernameJson(), errors);
         validateJsonPathIfPresent(messages.get("error.settings.label.emailJsonPath"), update.authUserEmailJson(), errors);
@@ -586,6 +653,7 @@ public class SettingsService {
         entity.setAuthCookieName(update.authCookieName());
         entity.setAuthUserIdUrl(update.authUserIdUrl());
         entity.setAuthLoginUrl(update.authLoginUrl());
+        entity.setAuthAdditionalTrustedOrigins(update.authAdditionalTrustedOrigins());
         entity.setAuthUserIdJson(update.authUserIdJson());
         entity.setAuthUserUsernameJson(update.authUserUsernameJson());
         entity.setAuthUserEmailJson(update.authUserEmailJson());
@@ -755,6 +823,38 @@ public class SettingsService {
     }
 
     /**
+     * Each entry must be a well-formed {@code http(s)://host[:port]} origin with no path - kept
+     * strict so {@link #authLoginUrlForRequest}'s runtime matching (plain {@code Host}-header
+     * string comparison, no re-parsing/normalization) can trust every stored entry is already in
+     * exactly the form it expects, and so an admin can't accidentally configure a URL fragment
+     * that would silently never match anything.
+     */
+    private void validateAdditionalTrustedOriginsIfPresent(String value, List<String> errors) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        for (String entry : value.split(",", -1)) {
+            String origin = entry.strip();
+            if (origin.isEmpty()) {
+                errors.add(messages.get("error.settings.additionalTrustedOriginsInvalid", entry));
+                continue;
+            }
+            boolean valid;
+            try {
+                URI uri = URI.create(origin);
+                valid = ("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
+                        && uri.getHost() != null
+                        && (uri.getRawPath() == null || uri.getRawPath().isEmpty());
+            } catch (IllegalArgumentException e) {
+                valid = false;
+            }
+            if (!valid) {
+                errors.add(messages.get("error.settings.additionalTrustedOriginsInvalid", entry));
+            }
+        }
+    }
+
+    /**
      * dnsmasq's {@code server=} directive needs each entry to be an IP literal, not a hostname —
      * it's what dnsmasq itself uses to resolve everything else, so a hostname there could never be
      * resolved in the first place. Rejects blank entries in the list (e.g. a trailing comma) too,
@@ -803,6 +903,7 @@ public class SettingsService {
     public record SettingsUpdate(
             String guacamoleBaseUrl, String guacamoleDataSource, String hostPublicAddress,
             String authCookieName, String authUserIdUrl, String authLoginUrl,
+            String authAdditionalTrustedOrigins,
             String authUserIdJson, String authUserUsernameJson, String authUserEmailJson,
             String authUserFullnameJson, String authUserIsAdminJson, Long authCacheTtlSeconds,
             String provisioningAdminAccountName, Integer provisioningRdpPasswordLength,

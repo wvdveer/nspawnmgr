@@ -40,6 +40,11 @@ cp /usr/share/nspawnmgr/70-nspawnmgr-bridge.network /etc/systemd/network/70-nspa
 # should never have been necessary for a fresh, un-tampered-with install in the first place.
 systemctl enable --now systemd-networkd \
     || echo "nspawnmgr: systemd-networkd enable/start failed — check 'systemctl status systemd-networkd'." >&2
+# nspawnbr0 is RequiredForOnline=yes (see 70-nspawnmgr-bridge.network), so network-online.target
+# only completes once it's really configured - but that alone doesn't help dnsmasq below unless
+# something is actually enabled to evaluate it. Harmless/idempotent if already enabled.
+systemctl enable systemd-networkd-wait-online.service \
+    || echo "nspawnmgr: systemd-networkd-wait-online enable failed — dnsmasq's own boot-race protection (see dnsmasq.service.d/nspawnmgr-wait-for-bridge.conf below) won't be effective; check 'systemctl status systemd-networkd-wait-online'." >&2
 # `enable --now` on a systemd-networkd that's already running (e.g. any reinstall) is a no-op for
 # the "now" part — it does NOT notice the 70-nspawnmgr-bridge.netdev/.network files just copied
 # above, so nspawnbr0 silently never gets created. `networkctl reload` forces networkd to re-read
@@ -96,15 +101,45 @@ cp /usr/share/nspawnmgr/dnsmasq-nspawnmgr.conf /etc/dnsmasq.d/nspawnmgr.conf
 mkdir -p /etc/nspawnmgr
 [ -f /etc/nspawnmgr/dns-hosts ] || touch /etc/nspawnmgr/dns-hosts
 [ -f /etc/dnsmasq.d/nspawnmgr-upstream.conf ] || printf 'server=1.1.1.1\nserver=9.9.9.9\n' > /etc/dnsmasq.d/nspawnmgr-upstream.conf
+# Boot-race protection (see dnsmasq-wait-for-nspawnbr0.conf's own comment): the poll above only
+# guards THIS postinst run, not a later, unrelated host reboot - a systemd drop-in makes dnsmasq
+# itself wait for nspawnbr0 on every future boot too, not just right now.
+mkdir -p /etc/systemd/system/dnsmasq.service.d
+cp /usr/share/nspawnmgr/dnsmasq-wait-for-nspawnbr0.conf /etc/systemd/system/dnsmasq.service.d/nspawnmgr-wait-for-bridge.conf
+# Same boot-race protection, one layer up (see nspawn-wait-for-network.conf's own comment):
+# nspawnbr0/dnsmasq coming up reliably still isn't enough on its own if an autostart container
+# (machines.target.wants/) starts before either is ready - confirmed live (acer, 2026-09-09):
+# nspawnmgr's own self-hosted machine and its DB machine both self-assigned a 169.254.x.x address
+# on a reboot this way. Template drop-in, so it protects every container, not just these two.
+mkdir -p /etc/systemd/system/systemd-nspawn@.service.d
+cp /usr/share/nspawnmgr/nspawn-wait-for-network.conf /etc/systemd/system/systemd-nspawn@.service.d/nspawnmgr-wait-for-network.conf
+systemctl daemon-reload \
+    || echo "nspawnmgr: systemctl daemon-reload failed — dnsmasq's boot-race protection may not be active; check 'systemctl status dnsmasq'." >&2
 systemctl restart dnsmasq \
     || echo "nspawnmgr: dnsmasq restart failed — check 'systemctl status dnsmasq'." >&2
 
-# 9. nspawnmgr runs from one of its own machines: bakes debian-minimal if it doesn't exist yet,
-#    clones it, and installs a JRE/Tomcat/the four bundled WARs/guacd into it directly (this host
-#    never runs any of that itself) — see that script's own header comment for the full sequence,
-#    including the free-host-port search for the inbound :8080 forward and the SSH-back credential
-#    setup that lets the app reach back out to this host's own nspawnmgr_exec account once it
-#    boots.
+# 9. Package cache tree (PackageCacheService.CACHE_ROOT) — the download-packages-*.sh scripts
+#    already `mkdir -p` these lazily the first time a package/transitive-dependency actually gets
+#    fetched, at whatever mode `umask` leaves them (root-only by default). Pre-create the whole
+#    tree here instead, world-writable, so an admin (or an out-of-band process acting on their
+#    behalf) can drop pre-fetched packages straight into a package manager's own `auto/` cache
+#    directory without needing root - confirmed a real, live need: a container with no outbound
+#    internet access (e.g. a host firewall blocking forwarded traffic) can still get packages
+#    installed this way, entirely offline from the container's own point of view. World-writable
+#    is a deliberate, broad choice (not scoped to a specific group) - this directory only ever
+#    holds package files, nothing sensitive, and nspawnmgr's own install path already treats
+#    everything under `auto/` as untrusted-until-installed regardless of who wrote it.
+for pkg_mgr in apt dnf apk pacman; do
+    mkdir -p "/var/cache/nspawnmgr/packages/$pkg_mgr/auto" "/var/cache/nspawnmgr/packages/$pkg_mgr/uploaded"
+done
+chmod -R 777 /var/cache/nspawnmgr/packages
+
+# 10. nspawnmgr runs from one of its own machines: bakes debian-minimal if it doesn't exist yet,
+#     clones it, and installs a JRE/Tomcat/the four bundled WARs/guacd into it directly (this host
+#     never runs any of that itself) — see that script's own header comment for the full sequence,
+#     including the free-host-port search for the inbound :8080 forward and the SSH-back credential
+#     setup that lets the app reach back out to this host's own nspawnmgr_exec account once it
+#     boots.
 /usr/lib/nspawnmgr/privileged/nspawnmgr-bootstrap-app-machine.sh
 
 exit 0

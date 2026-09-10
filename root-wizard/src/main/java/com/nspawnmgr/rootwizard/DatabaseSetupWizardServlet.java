@@ -237,9 +237,13 @@ public class DatabaseSetupWizardServlet extends HttpServlet {
                 String appMachineAddress = tryResolveInternalAddress(scriptsDir, APP_MACHINE_NAME);
 
                 appendLog("Registering nspawnmgr and '" + connection.machineName() + "' as managed containers...");
-                registerContainer(dbConnection, APP_MACHINE_NAME, APP_MACHINE_DESCRIPTION, adminUserId, debianMinimalTemplateId, appMachineAddress);
+                long appContainerId = registerContainer(dbConnection, APP_MACHINE_NAME, APP_MACHINE_DESCRIPTION, adminUserId, debianMinimalTemplateId, appMachineAddress);
                 registerContainer(dbConnection, connection.machineName(), DB_MACHINE_DESCRIPTION, adminUserId, debianMinimalTemplateId, dbHost);
                 appendLog("Containers registered (owned by '" + connection.nspawnmgrUsername() + "').");
+
+                if (tryRegisterAppMachinePortMapping(dbConnection, appContainerId)) {
+                    appendLog("Registered nspawnmgr's own host port forward as an editable port mapping.");
+                }
             }
         } catch (SQLException e) {
             fail("nspawnmgr's own database migrated, but registering the first admin account and self-hosted "
@@ -419,13 +423,13 @@ public class DatabaseSetupWizardServlet extends HttpServlet {
      * both columns are nullable, and {@code ContainerDiscoveryService}'s own recurring
      * reconciliation pass already knows how to backfill a missing template link once it runs.
      */
-    private static void registerContainer(Connection dbConnection, String name, String description, long ownerId,
+    private static long registerContainer(Connection dbConnection, String name, String description, long ownerId,
                                             Long templateId, String internalAddress) throws SQLException {
         Timestamp now = Timestamp.from(Instant.now());
         String sql = "INSERT INTO containers (name, description, owner_id, template_id, kind, internal_address, "
                 + "state, rdp_enabled, vnc_enabled, desktop_manager, outbound_enabled, created_at, updated_at) "
                 + "VALUES (?, ?, ?, ?, 'MANAGED', ?, 'RUNNING', FALSE, FALSE, 'NONE_X11', TRUE, ?, ?)";
-        try (PreparedStatement statement = dbConnection.prepareStatement(sql)) {
+        try (PreparedStatement statement = dbConnection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             statement.setString(1, name);
             statement.setString(2, description);
             statement.setLong(3, ownerId);
@@ -438,6 +442,44 @@ public class DatabaseSetupWizardServlet extends HttpServlet {
             statement.setTimestamp(6, now);
             statement.setTimestamp(7, now);
             statement.executeUpdate();
+            try (ResultSet keys = statement.getGeneratedKeys()) {
+                keys.next();
+                return keys.getLong(1);
+            }
+        }
+    }
+
+    /**
+     * Best-effort: mirrors {@code nspawnmgr-bootstrap-app-machine.sh}'s own {@code Port=} line in
+     * the app machine's {@code .nspawn} settings (host {@code SELF_HOST_PORT} -> container 8080,
+     * TCP) into a real, editable {@code container_port_mappings} row - without this, that forward
+     * is invisible to and unmanageable from nspawnmgr's own "Port mappings" UI, even though it's
+     * exactly as real and exactly as capable of locking an admin out as any other port mapping (or
+     * as stopping this machine entirely). {@code SELF_HOST_PORT} is written into this container's
+     * own copy of {@code nspawnmgr.env} by that same script's {@code refresh_credential_file()} -
+     * absent (older installs that predate this) or unparseable is not a hard failure, just no row.
+     */
+    private static boolean tryRegisterAppMachinePortMapping(Connection dbConnection, long appContainerId) {
+        String selfHostPort = System.getenv("SELF_HOST_PORT");
+        if (selfHostPort == null || selfHostPort.isBlank()) {
+            return false;
+        }
+        int hostPort;
+        try {
+            hostPort = Integer.parseInt(selfHostPort.strip());
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        String sql = "INSERT INTO container_port_mappings (container_id, host_port, container_port, protocol, created_at) "
+                + "VALUES (?, ?, 8080, 'TCP', ?)";
+        try (PreparedStatement statement = dbConnection.prepareStatement(sql)) {
+            statement.setLong(1, appContainerId);
+            statement.setInt(2, hostPort);
+            statement.setTimestamp(3, Timestamp.from(Instant.now()));
+            statement.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            return false;
         }
     }
 

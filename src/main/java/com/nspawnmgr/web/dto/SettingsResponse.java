@@ -5,6 +5,7 @@ import java.time.Instant;
 public record SettingsResponse(
         String guacamoleBaseUrl, String guacamoleDataSource, String hostPublicAddress,
         String authCookieName, String authUserIdUrl, String authLoginUrl,
+        String authAdditionalTrustedOrigins,
         String authUserIdJson, String authUserUsernameJson, String authUserEmailJson,
         String authUserFullnameJson, String authUserIsAdminJson, long authCacheTtlSeconds,
         String provisioningAdminAccountName, int provisioningRdpPasswordLength,

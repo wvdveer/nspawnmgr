@@ -62,7 +62,10 @@ if command -v apt-get >/dev/null 2>&1; then
     mkdir -p "$ROOTFS/var/cache/apt/archives"
     apt-get $APT_OPTS install -s -y "$@" 2>/dev/null | awk '/^Inst / {print $2}' | while IFS= read -r pkgname; do
         for f in "$CACHE_DIR/$pkgname"_*.deb; do
-            [ -e "$f" ] && cp -n "$f" "$ROOTFS/var/cache/apt/archives/"
+            # `|| continue`, not `&&` - confirmed live elsewhere (acer, 2026-09-08): under `set -e`,
+            # a bare `[ -e "$f" ] && cmd` loop-body statement dies the instant the glob has no match.
+            [ -e "$f" ] || continue
+            cp -n "$f" "$ROOTFS/var/cache/apt/archives/" 2>/dev/null || true
         done
     done
 
@@ -85,7 +88,7 @@ if command -v apt-get >/dev/null 2>&1; then
     for f in "$SCRATCH"/*.deb; do
         [ -e "$f" ] || continue
         dest="$UPLOAD_DIR/auto-$(basename "$f")"
-        cp -n "$f" "$dest"
+        cp -n "$f" "$dest" 2>/dev/null || true
         echo "$(basename "$f") $(wc -c < "$f")"
     done
 else
@@ -136,14 +139,16 @@ else
     mkdir -p "$ROOTFS/var/cache/apt/archives"
     for pkgname in $NEEDED_NAMES; do
         for f in "$CACHE_DIR/$pkgname"_*.deb; do
-            [ -e "$f" ] && cp -n "$f" "$ROOTFS/var/cache/apt/archives/"
+            # `|| continue`, not `&&` - see the chroot branch's own copy of this same fix above.
+            [ -e "$f" ] || continue
+            cp -n "$f" "$ROOTFS/var/cache/apt/archives/" 2>/dev/null || true
         done
     done
     for pkg in "$@"; do
         for f in "$CACHE_DIR/$pkg"_*.deb; do
             [ -e "$f" ] || continue
             dest="$UPLOAD_DIR/auto-$(basename "$f")"
-            cp -n "$f" "$dest"
+            cp -n "$f" "$dest" 2>/dev/null || true
             echo "$(basename "$f") $(wc -c < "$f")"
         done
     done

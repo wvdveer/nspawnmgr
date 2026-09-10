@@ -137,7 +137,16 @@ public class ContainerLifecycleService {
     @Transactional
     public void stopForce(Container container) {
         requireManaged(container);
-        cliExecutor.stopForce(container.getName(), container.getBackend());
+        // Force Stop's whole point is "make sure this container isn't running" - if the backend
+        // already agrees it isn't (including a machine that no longer exists at all, e.g. after a
+        // host reboot silently dropped a container with no "start automatically when host boots"
+        // - see ContainerLivenessPollingService's own startup reconciliation for the same root
+        // cause), that goal is already met. Skipping the actual terminate call in that case avoids
+        // surfacing a confusing raw "No such machine"/"not running" error for something that was
+        // never really a failure from the admin's point of view.
+        if (cliExecutor.status(container.getName(), container.getBackend()) == MachineStatus.RUNNING) {
+            cliExecutor.stopForce(container.getName(), container.getBackend());
+        }
         container.setState(ContainerState.STOPPED);
         container.touch();
         containerRepository.save(container);

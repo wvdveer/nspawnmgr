@@ -61,6 +61,7 @@ public class AdminSettingsApiController {
         settingsService.update(new SettingsService.SettingsUpdate(
                 request.guacamoleBaseUrl(), request.guacamoleDataSource(), request.hostPublicAddress(),
                 request.authCookieName(), request.authUserIdUrl(), request.authLoginUrl(),
+                request.authAdditionalTrustedOrigins(),
                 request.authUserIdJson(), request.authUserUsernameJson(), request.authUserEmailJson(),
                 request.authUserFullnameJson(), request.authUserIsAdminJson(), request.authCacheTtlSeconds(),
                 request.provisioningAdminAccountName(), request.provisioningRdpPasswordLength(),
@@ -135,6 +136,7 @@ public class AdminSettingsApiController {
         return new SettingsResponse(
                 settingsService.guacamoleBaseUrl(), settingsService.guacamoleDataSource(), settingsService.hostPublicAddress(),
                 settingsService.authCookieName(), settingsService.authUserIdUrl(), settingsService.authLoginUrl(),
+                settingsService.authAdditionalTrustedOrigins(),
                 settingsService.authUserIdJson(), settingsService.authUserUsernameJson(), settingsService.authUserEmailJson(),
                 settingsService.authUserFullnameJson(), settingsService.authUserIsAdminJson(), settingsService.authCacheTtlSeconds(),
                 settingsService.provisioningAdminAccountName(), settingsService.provisioningRdpPasswordLength(),

@@ -506,6 +506,18 @@ fine. The container's assigned internal address is logged (at INFO) the moment i
 and re-synced to Guacamole's connection config on every subsequent restart in case the address
 changes.
 
+### Enhanced networking (VPN/tunnel clients inside a container)
+
+The "New Nspawn" form has an **Enable enhanced networking** checkbox, off by default. It grants
+the container's `.nspawn` file two things systemd-nspawn doesn't include by default:
+`Capability=CAP_NET_ADMIN` and a bind-mount of the host's `/dev/net/tun` device. Together, these
+are what any TUN/TAP-based VPN or tunnel client (OpenVPN, WireGuard, and similar) needs to create
+its own virtual network interface inside the container.
+
+It's creation-time only — there's no toggle to change it after the container already exists.
+Leave it unchecked unless a container specifically needs to run its own VPN/tunnel client; it's
+not tied to any particular VPN provider or software, just a capability grant.
+
 ### Graphical access: RDP, VNC, and desktop managers
 
 The "New Nspawn" form has two independent checkboxes, **Enable RDP** and **Enable VNC** — either,
@@ -758,39 +770,54 @@ only) accepts a `.deb`/`.rpm`/whatever-your-package-manager-uses file plus an op
 Every container owner then sees a matching **Install package** section on their own container's
 detail page (only packages for that container's own package manager are offered) — picking one and
 clicking Install copies it onto the container, then, for **APT, DNF, and PACMAN** packages, first
-*simulates* the install (`apt-get install -s` / `dnf install --assumeno` / `pacman -U --print`, no
-changes made) against the container's own state to find any dependency it doesn't already have.
-Anything missing is fetched the same way SSH/RDP/VNC/desktop-manager provisioning already does (see
-above — host-side for APT, inside the container itself via `systemd-run --machine=` for DNF/PACMAN,
-since neither is ever on this host's own `PATH`) and registered here in the package cache too, then
-the real install runs via the package manager's own local-file install command
-(`apt-get install <path>` / `dnf install <path>` / `pacman -U --noconfirm <path>`) — its own
-dependency resolution picks up both the uploaded file and whatever was just pre-fetched in one
-coherent pass. DNF/PACMAN's own local install would normally resolve dependencies straight from the
-container's own network access, same as either does for any named package - the pre-fetch step runs
-anyway, deliberately, for consistency with APT's own "never let a container reach the network
-directly for a live package-manager mirror lookup" posture (DNF/PACMAN's own pre-fetch does still
-need the container's network for the in-container download itself — it just keeps that need
-contained to a single, download-only, non-interactive step instead of the real install command).
-This sub-step
-needs the same sudo-password tier as container creation, so it fails outright (no silent partial
-install) if no stored sudo secret is configured and the request didn't supply one. **DNF and PACMAN
-support for installing an uploaded package *into a Fedora/Arch container* is unverified** —
-distinct from installing *nspawnmgr itself* on a real RPM/Arch host, which is verified (see the RPM
-and Arch package installation sections above); this specific in-container package-upload flow has
-never been exercised against a real Fedora/Arch container, only built to each tool's documented
-CLI contract as carefully as possible — flag any live discrepancy found. **PACMAN is the more
-speculative of the two**: unlike
-`apt-get install -s`/`dnf install --assumeno`, which are apt/dnf's own well-documented dry-run modes,
-`pacman -U --print`'s behavior for a full local-file dependency-closure simulation has never been
-exercised anywhere in this project, not even manually. **APK** packages skip all of this and just
-run a single local install (`apk add <path>`) with no dependency resolution — a missing dependency
-there is still a visible error in the output, not fixed automatically (APK's own local install
-actually would resolve dependencies from configured repos, but Alpine-based containers don't fully
-work in this app today regardless - see below). Packages nspawnmgr auto-downloaded (either for its
-own SSH/RDP/VNC/desktop-manager provisioning, or as a dependency fetched by this flow) show up here
-too, attributed to whichever container's creation or install first fetched them, alongside anything
-an admin uploaded by hand.
+tries to resolve every dependency *offline* — purely from files already sitting in the admin
+package cache (this upload, any other admin upload, and anything nspawnmgr has auto-fetched
+before), no network access from the container itself at all. This is what actually lets a container
+whose own outbound internet is off or blocked (see "Custom port mappings and outbound access" below,
+and the Diagnostics page's own ufw outbound-routing check) still install real packages, as long as
+an admin has curated enough of the dependency chain into the cache ahead of time.
+
+Resolution is iterative and need-driven, not "throw every cached file at the package manager as an
+install target" — that naive approach was tried and failed live, twice, for two different reasons:
+colliding same-name-different-version files fighting each other as separate explicit install
+targets, and one unrelated stale cached file poisoning the whole transaction because *its own*
+dependencies happened to be unsatisfiable, even though nothing actually needed it. Instead, each
+round asks the package manager's own dry-run mode which capability names are still missing
+(`apt-get install -s` host-side; `dnf install --assumeno --disablerepo='*'` inside a host-side
+chroot; for PACMAN, `pacman -Qip`'s own documented "Depends On" field walked recursively plus
+`pacman -T` deptest to skip anything already satisfied, since `pacman -U`'s own dry-run error text
+has never been reliable enough to parse), looks each missing name up by filename in the cache
+(falling back to a real `rpm --provides` scan for DNF when a capability is a raw SONAME string like
+`libc.so.6` rather than an ordinary package name — provided by a completely differently-named
+package, so no filename match could ever find it), adds only the matching files, and retries,
+capped at 15 rounds. If everything resolves this way, the resolved files are copied straight into
+the container's own package-manager cache (`/var/cache/dnf`, `/var/cache/pacman/pkg`) and the real
+install runs entirely from local files, network untouched: `apt-get install <path>`; `dnf install -y
+--disablerepo='*' --setopt=install_weak_deps=False <path> $(ls /var/cache/dnf/*.rpm)`; or, for
+PACMAN, `pacman -U --config <generated-config> --noconfirm <path>
+$(ls /var/cache/pacman/pkg/*.pkg.tar.*)` against a one-line config generated fresh each install
+(`[options]` / `LocalFileSigLevel = Optional`) — a bare `pacman -U` enforces its compiled-in
+`Required` signature policy even for
+local-file installs, and neither this flow nor its own pre-fetch step ever fetch a matching `.sig`
+file alongside a package, so every local install failed with "package missing required signature"
+without this. Only if offline resolution can't fully converge does this fall back to the original
+network-based path — fetching whatever's still missing over the container's own real internet
+access, the same way SSH/RDP/VNC/desktop-manager provisioning already does (host-side for APT,
+inside the container itself via `systemd-run --machine=` for DNF/PACMAN, since neither is ever on
+this host's own `PATH`).
+
+This sub-step needs the same sudo-password tier as container creation, so it fails outright (no
+silent partial install) if no stored sudo secret is configured and the request didn't supply one.
+**DNF and PACMAN support for installing an uploaded package into a real Fedora/Arch container is
+live-verified** — confirmed against real, self-hosted Fedora and Arch CI-runner containers,
+including recovering from a from-scratch container with no prior package state at all. **APK**
+packages skip all of this and just run a single local install (`apk add <path>`) with no dependency
+resolution — a missing dependency there is still a visible error in the output, not fixed
+automatically (APK's own local install actually would resolve dependencies from configured repos,
+but Alpine-based containers don't fully work in this app today regardless - see below). Packages
+nspawnmgr auto-downloaded (either for its own SSH/RDP/VNC/desktop-manager provisioning, or as a
+dependency fetched by this flow) show up here too, attributed to whichever container's creation or
+install first fetched them, alongside anything an admin uploaded by hand.
 
 The Packages page's **"Show transitive dependencies"** button fills the gap this deliberately
 leaves: pick a package manager (APT/DNF/PACMAN, the same three with a pre-fetch cache dir at all)
@@ -1069,6 +1096,18 @@ page — no admin action needed for either:
   `.nspawn` file immediately but only takes effect the next time the container is (re)started —
   adding one to a running container shows a "restart required" notice rather than restarting it
   automatically.
+  - **If `ufw` is active on the host**, a plain `ufw allow <port>/<proto>` is not enough on its
+    own. `systemd-nspawn`'s own `Port=` forwarding DNATs genuinely external traffic in the kernel's
+    `PREROUTING` chain, rewriting its destination to the container's internal address — once that
+    happens the packet is *forwarded*, not delivered locally, so it must also pass `ufw`'s
+    `FORWARD` chain, which a normal `allow` rule doesn't touch. You also need a route rule
+    targeting the container's own internal address and its (unmapped) container-side port:
+    `sudo ufw route allow proto tcp to <container internal address> port <container port>`.
+    Traffic you send from the host machine itself to its own real address is unaffected by this —
+    only genuinely external clients hit the `FORWARD` chain — which is why this can look like it's
+    "already working" when tested from the host before a remote client actually tries it. The
+    Diagnostics page's own ufw check verifies both the plain `allow` rule and this route rule for
+    every configured port mapping.
 - **Outbound internet access toggle**: unlike the host-wide, all-or-nothing masquerade setup
   above, each container can individually have its outbound access blocked. nspawnmgr manages this
   itself with a dedicated `NSPAWNMGR-OUTBOUND` iptables chain (created automatically the first
@@ -1077,6 +1116,16 @@ page — no admin action needed for either:
   nspawnmgr looks up dynamically each time (via the veth's peer ifindex), since, as above, the
   veth name isn't a predictable string derived from the container's name. Toggling this takes
   effect immediately, with no restart needed, for a running container.
+  - **If `ufw` is active on the host**, enabling this toggle isn't enough on its own either — same
+    root cause as the inbound port-mapping gotcha above, opposite direction. A container's own
+    outbound connection is *routed* (leaves via a different interface than it arrived on), so it
+    passes through `ufw`'s `FORWARD` chain regardless of `NSPAWNMGR-OUTBOUND` already permitting
+    it there — a host with `ufw`'s routed policy left at its default (`deny`/`reject`, or simply
+    never set) silently drops every outbound connection from every container, real DNS/ping
+    notwithstanding (`ufw` never filters those). Fix: `sudo ufw route allow in on nspawnbr0` —
+    this opens outbound internet for every container on the bridge at once, not per-container (the
+    per-container ACCEPT/DROP granularity above still applies on top of it via
+    `NSPAWNMGR-OUTBOUND`). The Diagnostics page's own ufw check covers this.
 - **Outbound allowlist**: while outbound access is disabled, the owner can still punch through
   specific destinations — a literal IPv4 address, port, and protocol (TCP/UDP) — e.g. `127.0.0.1`
   so the container can reach another co-located container/service without granting it general
@@ -1211,9 +1260,12 @@ is authored by an admin, not the container's own owner.
 
 **"Shared with" grants more than session access.** Sharing a container grants the other user a
 Guacamole SSH/RDP session *and* the ability to create, edit, delete, and run that container's
-scripts (full root access, effectively — see above); there's no separate toggle to grant one
-without the other. If you've shared containers with people purely for remote-desktop convenience,
-they have script rights too.
+scripts (full root access, effectively — see above), *and* lifecycle control: Start, Stop,
+Restart, Pause, Resume, and Force stop. There's no separate toggle to grant any of these without
+the others. **Delete is the one exception** — deliberately stays owner-only regardless of sharing,
+since destroying a container is a much bigger step than starting/stopping it or running a script
+inside it. If you've shared containers with people purely for remote-desktop convenience, they
+have script and lifecycle-control rights too.
 
 ### Other setup notes
 
@@ -1389,7 +1441,7 @@ a Gitea access token with package-write scope — see that job's own comment in 
 **Install it:**
 
 ```bash
-sudo apt install ./nspawnmgr_0.5.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
+sudo apt install ./nspawnmgr_0.6.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
 ```
 
 Neither `tomcat9` nor `guacd`/`guacamole-tomcat` are in this package's `Depends:` — apt's own
@@ -1563,7 +1615,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_ARCH_PKG=1 tools/scripts/build-all.sh   # needs `makepkg` on PATH - a real Arch host, or the
                                                # archlinux/devtools container image
 
-sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.5.0-1-any.pkg.tar.zst
+sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.6.0-1-any.pkg.tar.zst
 ```
 
 ### Installing on Fedora/RHEL (RPM)
@@ -1615,7 +1667,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_RPM=1 tools/scripts/build-all.sh   # needs a real `rpmbuild` binary (`rpm-build` package) -
                                           # a real Fedora/RHEL host, no cross-platform equivalent
 
-sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.5.0-1.noarch.rpm
+sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.6.0-1.noarch.rpm
 ```
 
 ### Option B: build from source, deploy manually
@@ -2105,6 +2157,25 @@ a successful login. If `login-url` is left blank, nspawnmgr instead shows its ow
 "login required" page with no redirect — set `AUTH_LOGIN_URL` to `auth`'s `/auth/login` URL
 (e.g. `http://<hostname>:8080/auth/login`) for the full automatic flow.
 
+#### Reaching nspawnmgr through more than one origin
+
+By itself, `AUTH_LOGIN_URL` only works correctly for one origin — the cookie `auth.war` issues
+has no `Domain` attribute, so a login redirect (and its `returnTo`) always has to land back on the
+exact host:port that served the login page, or the browser simply won't send the cookie back. A
+request that reaches nspawnmgr through a different hostname — a reverse proxy sitting in front of
+it, for example — would otherwise get bounced to `AUTH_LOGIN_URL`'s fixed origin for login instead
+of staying on the one actually being used.
+
+**Additional trusted origins** (`nspawnmgr.auth.additional-trusted-origins`, live-editable on
+`/admin/settings` under Auth, right below Login URL) is a comma-separated allow-list of extra
+`scheme://host[:port]` origins (no path) nspawnmgr can also correctly be reached at. A request
+whose `Host` header matches one of these gets its login redirect and `returnTo` built against that
+origin's own scheme and host instead of `AUTH_LOGIN_URL`'s — every other host keeps using
+`AUTH_LOGIN_URL` exactly as before, unaffected. If you put a reverse proxy in front of nspawnmgr
+under a second public hostname, add that hostname's full origin here (e.g.
+`https://nspawnmgr.example.com`) and make sure the proxy forwards the original `Host` header
+through unchanged, so nspawnmgr actually sees the hostname the browser used.
+
 ## 9. Configuring nspawnmgr
 
 All settings live under `nspawnmgr.*` in `src/main/resources/application.yml`, each overridable
@@ -2123,9 +2194,12 @@ by an environment variable — see `site/env/.env.example` for the full list as 
 - **`nspawnmgr.guacamole.*`** — `base-url`, `admin-username`/`admin-password`, `data-source`,
   `home` (`GUACAMOLE_HOME`, default `/etc/guacamole`), from [§7](#7-guacamole).
 - **`nspawnmgr.auth.*`** — `user-id-url` (validates an existing cookie against `auth`),
-  `cookie-name`, `login-url` (the redirect target from §8), cache/timeout tuning, `settings-file`
-  (where the shared auth-settings file below is written — must match auth.war's own
-  `auth.settings-file`/`AUTH_SETTINGS_FILE`, default `/etc/nspawnmgr/auth-live/auth-settings.properties`).
+  `cookie-name`, `login-url` (the redirect target from §8), `additional-trusted-origins` (extra
+  origins that get their own login redirect instead of `login-url`'s fixed one — see ["Reaching
+  nspawnmgr through more than one origin"](#reaching-nspawnmgr-through-more-than-one-origin)),
+  cache/timeout tuning, `settings-file` (where the shared auth-settings file below is written —
+  must match auth.war's own `auth.settings-file`/`AUTH_SETTINGS_FILE`, default
+  `/etc/nspawnmgr/auth-live/auth-settings.properties`).
 - **`nspawnmgr.nspawn.*`** — `templates-dir`, `machines-dir`, `settings-dir`,
   `privileged-scripts-dir` from [§2](#2-host-prerequisites).
 - **`nspawnmgr.dns.upstream-servers`** — comma-separated IP literals dnsmasq forwards non-`.internal`

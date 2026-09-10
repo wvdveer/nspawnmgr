@@ -153,6 +153,7 @@ class SettingsServiceTest {
         return new SettingsService.SettingsUpdate(
                 null, null, null,
                 null, null, null,
+                null,
                 null, null, null,
                 null, null, null,
                 null, null,
@@ -169,6 +170,7 @@ class SettingsServiceTest {
         return new SettingsService.SettingsUpdate(
                 null, null, null,
                 null, null, null,
+                null,
                 null, null, null,
                 null, null, null,
                 null, null,

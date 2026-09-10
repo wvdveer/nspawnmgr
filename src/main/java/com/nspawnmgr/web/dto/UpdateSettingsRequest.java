@@ -3,6 +3,7 @@ package com.nspawnmgr.web.dto;
 public record UpdateSettingsRequest(
         String guacamoleBaseUrl, String guacamoleDataSource, String hostPublicAddress,
         String authCookieName, String authUserIdUrl, String authLoginUrl,
+        String authAdditionalTrustedOrigins,
         String authUserIdJson, String authUserUsernameJson, String authUserEmailJson,
         String authUserFullnameJson, String authUserIsAdminJson, Long authCacheTtlSeconds,
         String provisioningAdminAccountName, Integer provisioningRdpPasswordLength,

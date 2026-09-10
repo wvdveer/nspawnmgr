@@ -95,4 +95,12 @@ public interface ContainerRepository extends JpaRepository<Container, Long> {
     /** Feeds ProvisioningService#allocateQemuVncPort — every existing QEMU VM's own qemuVncPort,
      *  to find the lowest free port in the admin-configured range. */
     List<Container> findByBackend(ContainerBackend backend);
+
+    /** Feeds ContainerLivenessPollingService's one-time startup reconciliation — every MANAGED
+     *  container (any backend) nspawnmgr currently believes is RUNNING, to check against what
+     *  machinectl/podman/systemctl itself actually reports right after an app restart. Scoped to
+     *  MANAGED: an EXTERNAL host's persisted RUNNING is just its unchanging creation-time default
+     *  (see Container#external) — HostLivenessService already re-derives its real reachability on
+     *  every read, so it isn't the same kind of stale-state bug this reconciliation is for. */
+    List<Container> findByKindAndState(ContainerKind kind, ContainerState state);
 }

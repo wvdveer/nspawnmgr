@@ -35,4 +35,22 @@ class NspawnSettingsRendererTest {
 
         assertThat(content).startsWith("[Exec]\nPrivateUsers=identity\n[Network]\nBridge=nspawnbr0\n");
     }
+
+    @Test
+    void rendersCapNetAdminAndTunBindWhenVpnCapable() {
+        Container container = containerWithTemplate(null);
+        container.setVpnCapable(true);
+
+        String content = NspawnSettingsRenderer.render(container, List.of());
+
+        assertThat(content).contains("[Exec]\nCapability=CAP_NET_ADMIN\n");
+        assertThat(content).contains("[Files]\nBind=/dev/net/tun\n");
+    }
+
+    @Test
+    void omitsCapNetAdminAndTunBindWhenNotVpnCapable() {
+        String content = NspawnSettingsRenderer.render(containerWithTemplate(null), List.of());
+
+        assertThat(content).doesNotContain("CAP_NET_ADMIN").doesNotContain("/dev/net/tun");
+    }
 }

@@ -27,6 +27,7 @@ document.getElementById('settings-form').addEventListener('submit', async (event
         authCookieName: textOrNull('authCookieName'),
         authUserIdUrl: textOrNull('authUserIdUrl'),
         authLoginUrl: textOrNull('authLoginUrl'),
+        authAdditionalTrustedOrigins: textOrNull('authAdditionalTrustedOrigins'),
         authUserIdJson: textOrNull('authUserIdJson'),
         authUserUsernameJson: textOrNull('authUserUsernameJson'),
         authUserEmailJson: textOrNull('authUserEmailJson'),

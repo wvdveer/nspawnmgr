@@ -66,10 +66,58 @@ public class PackageCacheService {
     // exist rather than needing an ls-guarded either/or fallback - an empty `$(...)` command
     // substitution just contributes no extra words when nothing was pre-fetched.
     private static final Map<PackageManager, String> LOCAL_INSTALL_COMMAND = Map.of(
-            PackageManager.APT, "DEBIAN_FRONTEND=noninteractive apt-get install -y %s",
-            PackageManager.DNF, "dnf install -y %s $(ls /var/cache/dnf/*.rpm 2>/dev/null)",
+            // --no-install-recommends mirrors DNF's own install_weak_deps=False (see that entry's
+            // own comment) for the identical reason: nspawnmgr-simulate-install.sh's offline-first
+            // pass resolves and pre-fetches only hard Depends, so without this flag a container with
+            // no outbound internet of its own could still fail here on a Recommends this command
+            // tries to additionally pull in from its own (unreachable) repos.
+            PackageManager.APT, "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends %s",
+            // install_weak_deps=False matches nspawnmgr-simulate-install-dnf.sh's own offline-first
+            // pass (see that script's own comment) - without it, a container with no outbound
+            // internet of its own could still fail here even after every hard dependency installs
+            // cleanly from the container's own /var/cache/dnf/, because dnf's default behavior tries
+            // to also resolve any weak/Recommends dependency (confirmed live: git-core recommends
+            // `bat`) against this container's own (unreachable) repos.
+            //
+            // --disablerepo='*' confirmed live necessary too (acer, fedora-runner, 2026-09-08): by
+            // the time this command runs, the host-side pre-fetch step (simulate+download, both
+            // chroot-based, see nspawnmgr-simulate-install-dnf.sh) has already guaranteed every
+            // needed .rpm is sitting right here in /var/cache/dnf/ - but THIS command runs for real
+            // *inside* the container's own network namespace (systemd-run --machine=, not chroot),
+            // and a plain `dnf install` still tries to refresh/consult its configured repos
+            // regardless of whether local files could already satisfy everything. On a host where
+            // ufw allows DNS (port 53) to the bridge but still blocks general forwarded traffic
+            // (its own separate, pre-existing FORWARD-chain default-deny policy - see the "ufw DNS
+            // coverage" vs. the older per-container port-mapping diagnostic cards), that repo
+            // contact doesn't fail fast - it hangs until this call's own INSTALL_TIMEOUT, since the
+            // hostname now resolves fine but the actual connection never completes. Disabling repos
+            // here removes the only thing that command was ever doing over the network.
+            PackageManager.DNF, "dnf install -y --disablerepo='*' --setopt=install_weak_deps=False %s $(ls /var/cache/dnf/*.rpm 2>/dev/null)",
             PackageManager.APK, "apk add --allow-untrusted %s",
-            PackageManager.PACMAN, "pacman -U --noconfirm %s"
+            // Unlike apt-get, `pacman -U <file>` does not automatically treat its own --cachedir
+            // contents as install candidates for an unresolved dependency - resolution for anything
+            // not already installed or explicitly given as another -U argument still goes through
+            // pacman's configured sync repos. Mirrors DNF's own equivalent fix for the identical
+            // reason: the glob hands every already-cached package in as an explicit local install
+            // target (same convention nspawnmgr-download-packages-pacman.sh's own --cachedir= already
+            // populates).
+            //
+            // LocalFileSigLevel = Optional confirmed live necessary too (acer, arch-runner,
+            // 2026-09-08): a bare `pacman -U` failed every single package - the uploaded one and every
+            // pre-fetched dependency alike - with "package missing required signature", because
+            // pacman's compiled-in default SigLevel requires a package signature even for `-U`
+            // local-file installs. This container's rootfs has no populated pacman keyring
+            // (`pacman-key --init`/`--populate` never run - no need to add that just for this), and
+            // neither this command's own cache glob nor nspawnmgr-download-packages-pacman.sh fetch a
+            // matching .sig alongside each .pkg.tar.* - so every local file here has no signature to
+            // even check. LocalFileSigLevel is pacman.conf's own directive specifically scoped to -U's
+            // local-file case (unlike the broader SigLevel, which also governs sync-repo/database
+            // trust): Optional verifies a signature when one is actually present but doesn't fail the
+            // ones that simply don't have one, which is every file this command ever sees. An inline
+            // one-line config (rather than --config /dev/null, which turned out to still enforce the
+            // compiled-in Required default) is generated fresh on each install rather than shipping a
+            // static file, since this whole command is already just one shell string.
+            PackageManager.PACMAN, "printf '[options]\\nLocalFileSigLevel = Optional\\n' > /tmp/nspawnmgr-pacman.conf && pacman -U --config /tmp/nspawnmgr-pacman.conf --noconfirm %s $(ls /var/cache/pacman/pkg/*.pkg.tar.* 2>/dev/null)"
     );
 
     private static final Duration INSTALL_TIMEOUT = Duration.ofMinutes(10);
