@@ -1,3 +1,15 @@
+nspawnmgr (0.7.0) stable; urgency=medium
+
+  * Changing a container user's password now also updates that user's
+    stored RDP credential, so RDP sessions no longer fail with a stale
+    password afterwards.
+  * Remote-desktop (Guacamole) sessions now load correctly when nspawnmgr
+    is reached through a reverse proxy: the session URL honors the
+    forwarded protocol and host instead of producing a mixed-content
+    (blank) frame.
+
+ -- nspawnmgr packaging <packaging@nspawnmgr.invalid>  Fri, 25 Sep 2026 00:00:00 +1000
+
 nspawnmgr (0.6.0) stable; urgency=medium
 
   * nspawnmgr can now be reached correctly through more than one public

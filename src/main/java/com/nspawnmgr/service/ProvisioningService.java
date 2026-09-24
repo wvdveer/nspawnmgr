@@ -1131,6 +1131,33 @@ public class ProvisioningService {
         containerRepository.save(attached);
     }
 
+    /**
+     * Keeps the stored RDP credential (and Guacamole's own fixed-credential RDP connection, which
+     * auto-submits it) in step when {@code username}'s Linux password is changed by hand via
+     * "Container users" - otherwise Connect > RDP keeps submitting the old password. A no-op unless
+     * {@code username} is the account the RDP credential targets (GNOME's RDP identity is a fixed
+     * synthetic credential, unrelated to any Linux password). If the container has no resolvable
+     * address yet, the next readiness poll's reconcile pushes the (already saved) credential.
+     */
+    @Transactional
+    public void syncRdpCredentialAfterPasswordChange(Container container, String username, String newPassword) {
+        if (!container.isRdpEnabled() || container.getGuacRdpConnectionId() == null
+                || container.getDesktopManager() == DesktopManager.GNOME) {
+            return;
+        }
+        boolean targetsThisAccount = containerCredentialRepository.findByContainerAndType(container, CredentialType.RDP_PASSWORD)
+                .filter(cred -> username.equals(cred.getAccountName()))
+                .isPresent();
+        if (!targetsThisAccount) {
+            return;
+        }
+        saveCredential(container, CredentialType.RDP_PASSWORD, username, newPassword, null);
+        String internalAddress = resolveInternalAddress(container);
+        if (!internalAddress.isEmpty()) {
+            pamCredentialAuthService.reconcileRdpConnectionCredentials(container, internalAddress);
+        }
+    }
+
     /** The credential-granting tail of {@link #provisionSsh}, minus the account-creation/package-install
      *  steps already done — those apply once per container, not per account switch. */
     private void rewireSsh(Container container, String accountName, char[] sudoPasswordOverride) {

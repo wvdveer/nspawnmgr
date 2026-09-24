@@ -233,6 +233,7 @@ public class ContainerUserService {
 
     private void executeChangePassword(Container container, String username, String password, char[] sudoPasswordOverride) {
         setPassword(container, username, password, sudoPasswordOverride);
+        provisioningService.syncRdpCredentialAfterPasswordChange(container, username, password);
         refreshAndListLive(container);
     }
 

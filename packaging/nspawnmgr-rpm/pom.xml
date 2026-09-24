@@ -52,7 +52,7 @@
     -->
     <groupId>com.nspawnmgr</groupId>
     <artifactId>nspawnmgr-rpm</artifactId>
-    <version>0.6.0</version>
+    <version>0.7.0</version>
     <packaging>pom</packaging>
     <name>nspawnmgr-rpm</name>
     <description>RPM package for production nspawnmgr deployment (Fedora/RHEL)</description>
@@ -125,7 +125,7 @@
                          suffix during a dev cycle) - same "keep these two in sync by hand" trap
                          ../nspawnmgr-deb/pom.xml's own comment already warns about for the .deb's
                          control-file Version:. -->
-                    <version>0.6.0</version>
+                    <version>0.7.0</version>
                     <release>1</release>
                     <group>Applications/Internet</group>
                     <packager>nspawnmgr packaging &lt;packaging@nspawnmgr.invalid&gt;</packager>

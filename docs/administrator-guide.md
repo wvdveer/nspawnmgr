@@ -1441,7 +1441,7 @@ a Gitea access token with package-write scope — see that job's own comment in 
 **Install it:**
 
 ```bash
-sudo apt install ./nspawnmgr_0.6.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
+sudo apt install ./nspawnmgr_0.7.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
 ```
 
 Neither `tomcat9` nor `guacd`/`guacamole-tomcat` are in this package's `Depends:` — apt's own
@@ -1615,7 +1615,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_ARCH_PKG=1 tools/scripts/build-all.sh   # needs `makepkg` on PATH - a real Arch host, or the
                                                # archlinux/devtools container image
 
-sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.6.0-1-any.pkg.tar.zst
+sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.7.0-1-any.pkg.tar.zst
 ```
 
 ### Installing on Fedora/RHEL (RPM)
@@ -1667,7 +1667,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_RPM=1 tools/scripts/build-all.sh   # needs a real `rpmbuild` binary (`rpm-build` package) -
                                           # a real Fedora/RHEL host, no cross-platform equivalent
 
-sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.6.0-1.noarch.rpm
+sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.7.0-1.noarch.rpm
 ```
 
 ### Option B: build from source, deploy manually

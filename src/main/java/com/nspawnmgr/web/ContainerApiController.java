@@ -772,8 +772,20 @@ public class ContainerApiController {
      * comment for why the browser-facing session URL is built from this instead of the configured
      * guacamoleBaseUrl setting.
      */
-    private static String browserOrigin(HttpServletRequest request) {
-        return request.getScheme() + "://" + request.getServerName() + ":" + request.getServerPort();
+    static String browserOrigin(HttpServletRequest request) {
+        String forwardedProto = request.getHeader("X-Forwarded-Proto");
+        if (forwardedProto == null || forwardedProto.isBlank()) {
+            return request.getScheme() + "://" + request.getServerName() + ":" + request.getServerPort();
+        }
+        // Behind a TLS-terminating reverse proxy the request reaches Tomcat over plain HTTP, so
+        // getScheme()/getServerPort() describe that internal hop, not what the browser used - an
+        // http:// iframe URL inside an https:// page is blocked as mixed content (blank frame).
+        // The raw Host header (like SettingsService.authLoginUrlForRequest) carries the public
+        // authority, including a port only when the browser actually used a non-default one.
+        String scheme = forwardedProto.split(",")[0].trim();
+        String host = request.getHeader("Host");
+        String authority = host != null && !host.isBlank() ? host.trim() : request.getServerName();
+        return scheme + "://" + authority;
     }
 
     /**
