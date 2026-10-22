@@ -158,6 +158,16 @@ public class ContainerAccessService {
         containerRepository.save(container);
     }
 
+    /** Same "owner of the container specifies the setting" model as {@link
+     *  #setKeystrokeButtonPanelPlacement} - see Container.clipboardCopyLoggingEnabled's own javadoc
+     *  for why this defaults off. */
+    @Transactional
+    public void setClipboardCopyLoggingEnabled(Container container, boolean enabled) {
+        container.setClipboardCopyLoggingEnabled(enabled);
+        container.touch();
+        containerRepository.save(container);
+    }
+
     @Transactional
     public void enableVnc(Container container) {
         requireNoCredential(container, CredentialType.VNC_PASSWORD);

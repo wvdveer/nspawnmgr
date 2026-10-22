@@ -870,5 +870,10 @@
   "page.adminKeySequences.confirmDelete": "¿Eliminar esta secuencia de teclas?",
   "page.detail.keystrokeButtonPanelPlacementLabel": "Panel de teclas",
   "page.detail.keystrokeButtonPanelPlacementHint": "Dónde muestra la página de sesión los botones de las secuencias de teclas configuradas por el administrador (ver /admin/key-sequences) — combinaciones que un navegador nunca puede entregar como una pulsación real, siendo Ctrl+Alt+Delete el ejemplo clásico. NONE lo oculta.",
-  "page.session.keystrokePanelNotConnectedYet": "Aún no conectado — inténtalo de nuevo cuando la sesión termine de conectar."
+  "page.detail.clipboardCopyLoggingLabel": "Registro de copias del portapapeles",
+  "page.detail.clipboardCopyLoggingCheckboxLabel": "Registrar cada valor copiado desde esta sesión",
+  "page.detail.clipboardCopyLoggingHint": "Si está activado, cada \"Copiar al host\" desde la página de sesión de este contenedor/host escribe el texto copiado (hasta 250 caracteres) en el registro de auditoría compartido (ver /nspawnmgr/logs) — visible para cualquier usuario autenticado de nspawnmgr, no solo el propietario de este contenedor. Desactivado por defecto, ya que el texto copiado suele incluir contraseñas.",
+  "page.session.keystrokePanelNotConnectedYet": "Aún no conectado — inténtalo de nuevo cuando la sesión termine de conectar.",
+  "page.session.pasteFromBrowser": "Pegar desde el navegador",
+  "page.session.pasteFromBrowserInvalid": "El texto del portapapeles está vacío o tiene más de {0} caracteres — no se pegó."
 }

@@ -43,6 +43,7 @@ document.getElementById('host-form').addEventListener('submit', async (event) =>
         description: document.getElementById('description').value,
         rdpSecurity: document.getElementById('rdp-security-select').value,
         keystrokeButtonPanelPlacement: document.getElementById('keystroke-panel-placement-select').value,
+        clipboardCopyLoggingEnabled: document.getElementById('clipboard-copy-logging-enabled').checked,
     };
     const url = hostId ? `${basePath}/api/admin/hosts/${hostId}` : `${basePath}/api/admin/hosts`;
     const method = hostId ? 'PUT' : 'POST';

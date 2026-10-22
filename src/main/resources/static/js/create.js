@@ -76,6 +76,7 @@ document.getElementById('create-form').addEventListener('submit', async (event) 
         desktopManager: desktopManagerSelect.value,
         description: document.getElementById('description').value,
         keystrokeButtonPanelPlacement: document.getElementById('keystrokeButtonPanelPlacement').value,
+        clipboardCopyLoggingEnabled: document.getElementById('clipboardCopyLoggingEnabled').checked,
     };
     const response = await fetch(`${basePath}/api/containers`, {
         method: 'POST',

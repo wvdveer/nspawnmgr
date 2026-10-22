@@ -10,14 +10,17 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Resolves an EXTERNAL host's RUNNING/STOPPED display state with a single TCP reachability check
+ * Resolves an EXTERNAL host's RUNNING/STOPPED display state with a TCP reachability check
  * (reusing {@link ContainerPortProbe}, the same plain-connect check ContainerAccessService already
- * uses for managed containers) against whichever of its configured SSH/RDP/VNC ports is enabled,
- * plus (same cache cycle) a resolved display address via {@link ContainerCliExecutor#resolveHostname}
+ * uses for managed containers) against the RESOLVED address of the host, on whichever of its
+ * configured SSH/RDP/VNC ports are enabled (reachable if any one accepts a connection), plus (same
+ * cache cycle) that resolved display address via {@link ContainerCliExecutor#resolveHostname}
  * - both cached for one minute per host so the Machines grid and a host's own detail page don't each
  * trigger a fresh probe/resolve on every request. A host with no port enabled at all has nothing to
  * probe - reported as reachable rather than guessed at, matching the pre-existing default before this
@@ -69,17 +72,28 @@ public class HostLivenessService {
         if (cached != null && cached.expiresAt.isAfter(now)) {
             return cached;
         }
-        CachedResult result = new CachedResult(probe(host), resolve(host), now.plus(CACHE_TTL));
+        String address = resolve(host);
+        CachedResult result = new CachedResult(probe(address, host), address, now.plus(CACHE_TTL));
         cache.put(host.getId(), result);
         return result;
     }
 
-    private boolean probe(Container host) {
-        Integer port = firstConfiguredPort(host);
-        if (port == null) {
+    /** Probes the RESOLVED address, not the raw configured hostname: this JVM typically runs inside
+     *  nspawnmgr's own network-isolated container, where a plain client-side lookup of a LAN-local
+     *  name fails and would report a live host as STOPPED (see the class javadoc). Reachable if ANY
+     *  enabled SSH/RDP/VNC port accepts a connection - a host with sshd firewalled but RDP up is
+     *  still up. */
+    private boolean probe(String address, Container host) {
+        List<Integer> ports = configuredPorts(host);
+        if (ports.isEmpty()) {
             return true;
         }
-        return portProbe.isOpen(host.getHostname(), port);
+        for (int port : ports) {
+            if (portProbe.isOpen(address, port)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String resolve(Container host) {
@@ -92,14 +106,14 @@ public class HostLivenessService {
         }
     }
 
-    private Integer firstConfiguredPort(Container host) {
-        if (host.getExternalSshPort() != null) {
-            return host.getExternalSshPort();
+    private List<Integer> configuredPorts(Container host) {
+        List<Integer> ports = new ArrayList<>(3);
+        for (Integer port : new Integer[] {host.getExternalSshPort(), host.getExternalRdpPort(), host.getExternalVncPort()}) {
+            if (port != null) {
+                ports.add(port);
+            }
         }
-        if (host.getExternalRdpPort() != null) {
-            return host.getExternalRdpPort();
-        }
-        return host.getExternalVncPort();
+        return ports;
     }
 
     private record CachedResult(boolean reachable, String resolvedAddress, Instant expiresAt) {

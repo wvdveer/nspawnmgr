@@ -43,7 +43,7 @@ public class AdminHostApiController {
         Container host = hostService.create(request.name(), request.hostname(), request.ownerUsername(),
                 request.sshEnabled(), request.sshPort(), request.rdpEnabled(), request.rdpPort(),
                 request.vncEnabled(), request.vncPort(), request.description(), request.rdpSecurity(),
-                request.keystrokeButtonPanelPlacement());
+                request.keystrokeButtonPanelPlacement(), request.clipboardCopyLoggingEnabled());
         auditLogService.log(currentUserProvider.get(), AuditAction.CREATED, AuditTargetType.CONTAINER,
                 host.getId(), host.getName(), "host");
         return toResponse(host);
@@ -54,7 +54,7 @@ public class AdminHostApiController {
         Container host = hostService.update(id, request.name(), request.hostname(), request.ownerUsername(),
                 request.sshEnabled(), request.sshPort(), request.rdpEnabled(), request.rdpPort(),
                 request.vncEnabled(), request.vncPort(), request.description(), request.rdpSecurity(),
-                request.keystrokeButtonPanelPlacement());
+                request.keystrokeButtonPanelPlacement(), request.clipboardCopyLoggingEnabled());
         auditLogService.log(currentUserProvider.get(), AuditAction.UPDATED, AuditTargetType.CONTAINER,
                 host.getId(), host.getName(), "host");
         return toResponse(host);

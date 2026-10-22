@@ -154,6 +154,13 @@ public class Container {
     @Column(name = "keystroke_button_panel_placement", nullable = false)
     private KeystrokeButtonPanelPlacement keystrokeButtonPanelPlacement = KeystrokeButtonPanelPlacement.NONE;
 
+    /** Whether a "copy to host" from this container/host's own session page writes the copied text
+     *  (see ContainerApiController.logClipboardCopy) into the shared AUDIT log - off by default,
+     *  since that log is readable by every logged-in nspawnmgr user (see LogsApiController's own
+     *  javadoc), not just this container's owner, and copied text routinely includes passwords. */
+    @Column(name = "clipboard_copy_logging_enabled", nullable = false)
+    private boolean clipboardCopyLoggingEnabled;
+
     /**
      * What {@code pam_nspawnmgr} (see PamCredentialAuthService) checks a submitted password
      * against for whichever PAM services are enabled on this container (see {@link

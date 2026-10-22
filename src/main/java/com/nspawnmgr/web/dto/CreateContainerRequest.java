@@ -26,6 +26,13 @@ public record CreateContainerRequest(
         /** Settable at create time the same way CreateOrUpdateHostRequest already lets an admin set
          *  it while creating a Host - previously a nspawn container could only get this from its own
          *  owner editing it after creation, on containers/detail.html. */
-        @NotNull KeystrokeButtonPanelPlacement keystrokeButtonPanelPlacement
+        @NotNull KeystrokeButtonPanelPlacement keystrokeButtonPanelPlacement,
+        /** Deliberately a plain primitive with no validation annotation, unlike
+         *  keystrokeButtonPanelPlacement above - see
+         *  feedback_dto_notnull_field_breaks_hardcoded_json_scripts: a @NotNull field here breaks
+         *  every hardcoded JSON fixture that predates it. Omitted entirely just means "off", which
+         *  is also this field's own secure-by-default value - see
+         *  Container.clipboardCopyLoggingEnabled's own javadoc. */
+        boolean clipboardCopyLoggingEnabled
 ) {
 }

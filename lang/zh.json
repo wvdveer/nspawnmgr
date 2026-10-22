@@ -870,5 +870,10 @@
   "page.adminKeySequences.confirmDelete": "移除此按键序列？",
   "page.detail.keystrokeButtonPanelPlacementLabel": "按键面板",
   "page.detail.keystrokeButtonPanelPlacementHint": "会话页面在哪里显示管理员配置的按键序列按钮（参见 /admin/key-sequences）—— 用于浏览器永远无法作为真实按键传递的组合，Ctrl+Alt+Delete 是典型示例。选择“无”则隐藏它。",
-  "page.session.keystrokePanelNotConnectedYet": "尚未连接 —— 请等会话连接完成后再试。"
+  "page.detail.clipboardCopyLoggingLabel": "剪贴板复制日志",
+  "page.detail.clipboardCopyLoggingCheckboxLabel": "记录此会话中复制的每个值",
+  "page.detail.clipboardCopyLoggingHint": "启用后，此容器/主机会话页面的每次“复制到主机”操作都会将复制的文本（最多250个字符）写入共享审计日志（参见 /nspawnmgr/logs）—— 对所有已登录的 nspawnmgr 用户可见，而不仅仅是此容器的所有者。默认关闭，因为复制的文本通常包含密码。",
+  "page.session.keystrokePanelNotConnectedYet": "尚未连接 —— 请等会话连接完成后再试。",
+  "page.session.pasteFromBrowser": "从浏览器粘贴",
+  "page.session.pasteFromBrowserInvalid": "剪贴板文本为空或超过 {0} 个字符 —— 未粘贴。"
 }

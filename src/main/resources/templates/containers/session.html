@@ -30,12 +30,22 @@
     </style>
 </head>
 <body th:data-container-id="${container.id}" th:data-protocol="${protocol}"
-      th:attr="data-base-path=@{/},data-keystroke-panel-placement=${container.keystrokeButtonPanelPlacement}">
+      th:attr="data-base-path=@{/},data-keystroke-panel-placement=${container.keystrokeButtonPanelPlacement},data-clipboard-copy-logging-enabled=${container.clipboardCopyLoggingEnabled}">
 <div id="session-layout">
     <div id="keystroke-button-panel">
         <span id="keystroke-button-panel-status"></span>
     </div>
-    <iframe id="guac-frame" th:title="${t.get('page.session.iframeTitle')}"></iframe>
+    <!-- Same-origin by default already permits clipboard/unload for the top-level page (see
+         GuacamoleSessionService.buildSessionUrl's own javadoc on guacamole.war's co-location), but a
+         nested browsing context doesn't inherit that automatically - it needs an explicit `allow` to
+         delegate it in. Without this, the embedded (stock, vendored) Guacamole webapp's own internal
+         clipboard-sync code hit a Permissions Policy violation on both clipboard-write and unload
+         (console: "guacamole.<hash>.js" reporting "unload is not allowed in this document") -
+         theorized, not yet live-confirmed, that the resulting uncaught exception is what wedged the
+         whole session rather than just failing clipboard sync; this delegates both features into the
+         iframe either way, which the stock webapp needs regardless. -->
+    <iframe id="guac-frame" allow="clipboard-read; clipboard-write; unload"
+            th:title="${t.get('page.session.iframeTitle')}"></iframe>
 </div>
 <script th:inline="javascript">
     /*<![CDATA[*/
@@ -43,6 +53,7 @@
     /*]]>*/
 </script>
 <script th:src="@{/js/i18n.js}"></script>
+<script th:src="@{/js/clipboard.js}"></script>
 <script th:src="@{/js/session.js}"></script>
 </body>
 </html>

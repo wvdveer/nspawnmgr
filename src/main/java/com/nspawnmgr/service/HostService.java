@@ -76,13 +76,14 @@ public class HostService {
     public Container create(String name, String hostname, String ownerUsername,
                              boolean sshEnabled, int sshPort, boolean rdpEnabled, int rdpPort,
                              boolean vncEnabled, int vncPort, String description, RdpSecurityMode rdpSecurity,
-                             KeystrokeButtonPanelPlacement keystrokeButtonPanelPlacement) {
+                             KeystrokeButtonPanelPlacement keystrokeButtonPanelPlacement, boolean clipboardCopyLoggingEnabled) {
         requireNameAvailable(name, null);
         User owner = requireUser(ownerUsername);
         Container container = Container.external(name, owner, hostname);
         container.setDescription(description);
         container.setRdpSecurity(rdpSecurity != null ? rdpSecurity : RdpSecurityMode.ANY);
         container.setKeystrokeButtonPanelPlacement(keystrokeButtonPanelPlacement != null ? keystrokeButtonPanelPlacement : KeystrokeButtonPanelPlacement.NONE);
+        container.setClipboardCopyLoggingEnabled(clipboardCopyLoggingEnabled);
         applyPortsAndSync(container, sshEnabled, sshPort, rdpEnabled, rdpPort, vncEnabled, vncPort);
         Container saved = containerRepository.save(container);
         shareService.grantAccess(saved, owner);
@@ -93,7 +94,7 @@ public class HostService {
     public Container update(Long id, String name, String hostname, String ownerUsername,
                              boolean sshEnabled, int sshPort, boolean rdpEnabled, int rdpPort,
                              boolean vncEnabled, int vncPort, String description, RdpSecurityMode rdpSecurity,
-                             KeystrokeButtonPanelPlacement keystrokeButtonPanelPlacement) {
+                             KeystrokeButtonPanelPlacement keystrokeButtonPanelPlacement, boolean clipboardCopyLoggingEnabled) {
         Container container = getById(id);
         requireNameAvailable(name, id);
         User owner = requireUser(ownerUsername);
@@ -103,6 +104,7 @@ public class HostService {
         container.setDescription(description);
         container.setRdpSecurity(rdpSecurity != null ? rdpSecurity : RdpSecurityMode.ANY);
         container.setKeystrokeButtonPanelPlacement(keystrokeButtonPanelPlacement != null ? keystrokeButtonPanelPlacement : KeystrokeButtonPanelPlacement.NONE);
+        container.setClipboardCopyLoggingEnabled(clipboardCopyLoggingEnabled);
         applyPortsAndSync(container, sshEnabled, sshPort, rdpEnabled, rdpPort, vncEnabled, vncPort);
         container.touch();
         Container saved = containerRepository.save(container);

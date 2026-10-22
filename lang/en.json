@@ -873,5 +873,10 @@
   "page.adminKeySequences.confirmDelete": "Remove this key sequence?",
   "page.detail.keystrokeButtonPanelPlacementLabel": "Keystroke Button Panel",
   "page.detail.keystrokeButtonPanelPlacementHint": "Where the session page shows buttons for admin-configured key sequences (see /admin/key-sequences) — key combinations a browser can never deliver as a real keypress, Ctrl+Alt+Delete being the classic example. NONE hides it.",
-  "page.session.keystrokePanelNotConnectedYet": "Not connected yet — try again once the session has finished connecting."
+  "page.detail.clipboardCopyLoggingLabel": "Clipboard copy logging",
+  "page.detail.clipboardCopyLoggingCheckboxLabel": "Log every value copied out of this session",
+  "page.detail.clipboardCopyLoggingHint": "When enabled, every \"Copy to host\" from this container/host's own session page writes the copied text (up to 250 characters) into the shared audit log (see /nspawnmgr/logs) — visible to every logged-in nspawnmgr user, not just this container's owner. Off by default since copied text routinely includes passwords.",
+  "page.session.keystrokePanelNotConnectedYet": "Not connected yet — try again once the session has finished connecting.",
+  "page.session.pasteFromBrowser": "Paste from browser",
+  "page.session.pasteFromBrowserInvalid": "Clipboard text is empty or longer than {0} characters — not pasted."
 }

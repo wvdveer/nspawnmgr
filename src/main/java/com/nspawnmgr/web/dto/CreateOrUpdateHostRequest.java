@@ -20,6 +20,9 @@ public record CreateOrUpdateHostRequest(
         @Min(1) @Max(65535) int vncPort,
         String description,
         @NotNull RdpSecurityMode rdpSecurity,
-        @NotNull KeystrokeButtonPanelPlacement keystrokeButtonPanelPlacement
+        @NotNull KeystrokeButtonPanelPlacement keystrokeButtonPanelPlacement,
+        /** See CreateContainerRequest's own field of the same name for why this is a plain
+         *  primitive with no validation annotation. */
+        boolean clipboardCopyLoggingEnabled
 ) {
 }

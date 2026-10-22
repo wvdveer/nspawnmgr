@@ -870,5 +870,10 @@
   "page.adminKeySequences.confirmDelete": "Remover esta sequência de teclas?",
   "page.detail.keystrokeButtonPanelPlacementLabel": "Painel de Teclas de Atalho",
   "page.detail.keystrokeButtonPanelPlacementHint": "Onde a página de sessão exibe botões para sequências de teclas configuradas pelo administrador (veja /admin/key-sequences) — combinações que um navegador nunca consegue entregar como uma tecla pressionada real, sendo Ctrl+Alt+Delete o exemplo clássico. NONE oculta o painel.",
-  "page.session.keystrokePanelNotConnectedYet": "Ainda não conectado — tente novamente quando a sessão terminar de conectar."
+  "page.detail.clipboardCopyLoggingLabel": "Registro de cópias da área de transferência",
+  "page.detail.clipboardCopyLoggingCheckboxLabel": "Registrar cada valor copiado desta sessão",
+  "page.detail.clipboardCopyLoggingHint": "Quando ativado, cada \"Copiar para o host\" a partir da página de sessão deste contêiner/host grava o texto copiado (até 250 caracteres) no log de auditoria compartilhado (veja /nspawnmgr/logs) — visível para qualquer usuário autenticado do nspawnmgr, não apenas o proprietário deste contêiner. Desativado por padrão, já que o texto copiado costuma incluir senhas.",
+  "page.session.keystrokePanelNotConnectedYet": "Ainda não conectado — tente novamente quando a sessão terminar de conectar.",
+  "page.session.pasteFromBrowser": "Colar do navegador",
+  "page.session.pasteFromBrowserInvalid": "O texto da área de transferência está vazio ou tem mais de {0} caracteres — não colado."
 }

@@ -49,6 +49,8 @@ import com.nspawnmgr.web.dto.CreateTemplateFromMachineRequest;
 import com.nspawnmgr.web.dto.UpdatePodCommandRequest;
 import com.nspawnmgr.web.dto.CreatedContainerResponse;
 import com.nspawnmgr.web.dto.DiscoveredContainerResponse;
+import com.nspawnmgr.web.dto.LogClipboardCopyRequest;
+import com.nspawnmgr.web.dto.UpdateClipboardCopyLoggingRequest;
 import com.nspawnmgr.web.dto.OutboundAccessRequest;
 import com.nspawnmgr.web.dto.OutputLineResponse;
 import com.nspawnmgr.web.dto.PackageInstallResponse;
@@ -147,6 +149,7 @@ public class ContainerApiController {
                 parseDesktopManager(request.desktopManager()), request.description(), request.command(), request.systemdEnabled(),
                 request.vpnCapable());
         accessService.setKeystrokeButtonPanelPlacement(container, request.keystrokeButtonPanelPlacement());
+        accessService.setClipboardCopyLoggingEnabled(container, request.clipboardCopyLoggingEnabled());
         if (provisioningService.requiresApproval()) {
             provisioningService.markPendingApproval(container.getId());
         } else {
@@ -606,6 +609,14 @@ public class ContainerApiController {
                 container.getId(), container.getName(), "keystroke button panel placement set to " + request.placement());
     }
 
+    @PutMapping("/api/containers/{id}/clipboard-copy-logging")
+    public void setClipboardCopyLogging(@PathVariable Long id, @RequestBody UpdateClipboardCopyLoggingRequest request) {
+        Container container = requireOwned(id);
+        accessService.setClipboardCopyLoggingEnabled(container, request.enabled());
+        auditLogService.log(currentUserProvider.get(), AuditAction.UPDATED, AuditTargetType.CONTAINER,
+                container.getId(), container.getName(), "clipboard copy logging set to " + request.enabled());
+    }
+
     /** Owner-only: configures pam_nspawnmgr, the replacement local-login check that bypasses this
      *  container's own /etc/shadow — see PamCredentialAuthService's own javadoc. */
     @PutMapping("/api/containers/{id}/pam-auth")
@@ -699,6 +710,32 @@ public class ContainerApiController {
         auditLogService.log(user, AuditAction.SESSION_STARTED, AuditTargetType.CONTAINER,
                 container.getId(), container.getName(), "protocol=vnc");
         return new SessionUrlResponse(url);
+    }
+
+    // The "Copy to host" button's trigger is the REMOTE side announcing new clipboard content (see
+    // session.js's client.onclipboard / setUpClipboardSync), not a user action against this server -
+    // so unlike every other audit line in this class, this one is reported by the browser after the
+    // fact rather than generated as a side effect of the request that performed the action. Same
+    // access check session-start itself uses, since this only ever fires from inside an already-open
+    // session this user is allowed to be in.
+    private static final int CLIPBOARD_LOG_MAX_LENGTH = 250;
+
+    @PostMapping("/api/containers/{id}/session/clipboard-copy")
+    public void logClipboardCopy(@PathVariable Long id, @RequestBody LogClipboardCopyRequest request) {
+        Container container = requireOwnedOrSharedForConnect(id);
+        // Authoritative, not just a mirror of session.js's own client-side gate (which exists
+        // mainly to avoid sending the text over the wire at all when this is off) - a stale page
+        // load or a direct call against this endpoint must not bypass the owner's own choice here.
+        if (!container.isClipboardCopyLoggingEnabled()) {
+            return;
+        }
+        User user = currentUserProvider.get();
+        String text = request.text() == null ? "" : request.text();
+        if (text.length() > CLIPBOARD_LOG_MAX_LENGTH) {
+            text = text.substring(0, CLIPBOARD_LOG_MAX_LENGTH);
+        }
+        auditLogService.log(user, AuditAction.CLIPBOARD_COPIED, AuditTargetType.CONTAINER,
+                container.getId(), container.getName(), "text=" + text);
     }
 
     @GetMapping("/api/containers/{id}/users")

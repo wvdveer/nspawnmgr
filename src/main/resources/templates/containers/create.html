@@ -60,6 +60,10 @@
                     th:selected="${p.name() == 'NONE'}">placement</option>
         </select>
     </div>
+    <div class="field field-inline">
+        <input type="checkbox" id="clipboardCopyLoggingEnabled" name="clipboardCopyLoggingEnabled"/>
+        <label for="clipboardCopyLoggingEnabled" th:text="${t.get('page.detail.clipboardCopyLoggingCheckboxLabel')}">Log every value copied out of this session</label>
+    </div>
     <button type="submit" class="btn-primary" th:text="${t.get('button.create')}">Create</button>
 </form>
 <p id="status" class="status-message"></p>

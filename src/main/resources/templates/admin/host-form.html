@@ -82,6 +82,18 @@
     </div>
 
     <div class="field">
+        <div class="field-inline">
+            <input type="checkbox" id="clipboard-copy-logging-enabled" name="clipboardCopyLoggingEnabled"
+                   th:checked="${host != null and host.clipboardCopyLoggingEnabled}"/>
+            <label for="clipboard-copy-logging-enabled" th:text="${t.get('page.detail.clipboardCopyLoggingCheckboxLabel')}">Log every value copied out of this session</label>
+        </div>
+        <p class="hint" th:text="${t.get('page.detail.clipboardCopyLoggingHint')}">When enabled, every "Copy to host" from this container/host's own session page writes the
+            copied text (up to 250 characters) into the shared audit log (see /nspawnmgr/logs) - visible to
+            every logged-in nspawnmgr user, not just this container's owner. Off by default since copied
+            text routinely includes passwords.</p>
+    </div>
+
+    <div class="field">
         <label for="description" th:text="${t.get('field.description')}">Description</label>
         <input type="text" id="description" th:placeholder="${t.get('field.descriptionPlaceholder')}"
                th:value="${host != null ? host.description : ''}"/>

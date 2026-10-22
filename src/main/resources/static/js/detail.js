@@ -253,6 +253,20 @@ document.getElementById('btn-save-keystroke-panel-placement')?.addEventListener(
     window.location.reload();
 });
 
+document.getElementById('btn-save-clipboard-copy-logging')?.addEventListener('click', async () => {
+    const enabled = document.getElementById('clipboard-copy-logging-enabled').checked;
+    const response = await fetch(`${basePath}/api/containers/${containerId}/clipboard-copy-logging`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+    });
+    if (!response.ok) {
+        await window.appDialog.alert(t('general.failedPrefix', await response.text()));
+        return;
+    }
+    window.location.reload();
+});
+
 document.getElementById('btn-save-pam-auth')?.addEventListener('click', async () => {
     const source = document.getElementById('pam-auth-source-select').value;
     const services = [...document.querySelectorAll('.pam-auth-service-checkbox:checked')].map(cb => cb.value);

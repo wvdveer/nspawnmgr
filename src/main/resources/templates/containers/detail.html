@@ -122,6 +122,21 @@
     </div>
 
     <div th:if="${container.kind.name() != 'EXTERNAL'}" class="panel-section">
+        <h3 th:text="${t.get('page.detail.clipboardCopyLoggingLabel')}">Clipboard copy logging</h3>
+        <div class="inline-controls">
+            <label>
+                <input type="checkbox" id="clipboard-copy-logging-enabled" th:checked="${container.clipboardCopyLoggingEnabled}"/>
+                <span th:text="${t.get('page.detail.clipboardCopyLoggingCheckboxLabel')}">Log every value copied out of this session</span>
+            </label>
+            <button id="btn-save-clipboard-copy-logging" class="btn-primary" th:text="${t.get('button.save')}">Save</button>
+        </div>
+        <p class="hint" th:text="${t.get('page.detail.clipboardCopyLoggingHint')}">When enabled, every "Copy to host" from this container/host's own session page writes the
+            copied text (up to 250 characters) into the shared audit log (see /nspawnmgr/logs) - visible to
+            every logged-in nspawnmgr user, not just this container's owner. Off by default since copied
+            text routinely includes passwords.</p>
+    </div>
+
+    <div th:if="${container.kind.name() != 'EXTERNAL'}" class="panel-section">
         <h3 th:text="${t.get('page.detail.outboundHeading')}">Outbound internet access</h3>
         <div class="inline-controls">
             <label>

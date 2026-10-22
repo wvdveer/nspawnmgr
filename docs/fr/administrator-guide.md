@@ -1627,7 +1627,7 @@ workflow).
 **Installez-le :**
 
 ```bash
-sudo apt install ./nspawnmgr_0.7.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
+sudo apt install ./nspawnmgr_0.8.0_all.deb   # pulls in openssh-server, openssl, dnsmasq, systemd-container - not a JRE, not tomcat9
 ```
 
 Ni `tomcat9` ni `guacd`/`guacamole-tomcat` ne sont dans les `Depends:` de ce paquet — la propre
@@ -1825,7 +1825,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_ARCH_PKG=1 tools/scripts/build-all.sh   # needs `makepkg` on PATH - a real Arch host, or the
                                                # archlinux/devtools container image
 
-sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.7.0-1-any.pkg.tar.zst
+sudo pacman -U packaging/nspawnmgr-arch/nspawnmgr-0.8.0-1-any.pkg.tar.zst
 ```
 
 ### Installation sur Fedora/RHEL (RPM)
@@ -1880,7 +1880,7 @@ mvn -f root-wizard/pom.xml -DskipTests package
 BUILD_RPM=1 tools/scripts/build-all.sh   # needs a real `rpmbuild` binary (`rpm-build` package) -
                                           # a real Fedora/RHEL host, no cross-platform equivalent
 
-sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.7.0-1.noarch.rpm
+sudo dnf install ./packaging/nspawnmgr-rpm/target/rpm/noarch/nspawnmgr-0.8.0-1.noarch.rpm
 ```
 
 ### Option B : compiler depuis les sources, déployer manuellement

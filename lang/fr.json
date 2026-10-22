@@ -867,5 +867,10 @@
   "page.adminKeySequences.confirmDelete": "Supprimer cette séquence de touches ?",
   "page.detail.keystrokeButtonPanelPlacementLabel": "Panneau de touches",
   "page.detail.keystrokeButtonPanelPlacementHint": "Où la page de session affiche les boutons des séquences de touches configurées par l'administrateur (voir /admin/key-sequences) — des combinaisons qu'un navigateur ne peut jamais transmettre comme une vraie frappe, Ctrl+Alt+Delete étant l'exemple classique. NONE le masque.",
-  "page.session.keystrokePanelNotConnectedYet": "Pas encore connecté — réessayez une fois la session connectée."
+  "page.detail.clipboardCopyLoggingLabel": "Journalisation des copies du presse-papiers",
+  "page.detail.clipboardCopyLoggingCheckboxLabel": "Journaliser chaque valeur copiée depuis cette session",
+  "page.detail.clipboardCopyLoggingHint": "Lorsque c'est activé, chaque « Copier vers l'hôte » depuis la page de session de ce conteneur/hôte écrit le texte copié (jusqu'à 250 caractères) dans le journal d'audit partagé (voir /nspawnmgr/logs) — visible par tout utilisateur connecté à nspawnmgr, pas seulement le propriétaire de ce conteneur. Désactivé par défaut car le texte copié inclut souvent des mots de passe.",
+  "page.session.keystrokePanelNotConnectedYet": "Pas encore connecté — réessayez une fois la session connectée.",
+  "page.session.pasteFromBrowser": "Coller depuis le navigateur",
+  "page.session.pasteFromBrowserInvalid": "Le texte du presse-papiers est vide ou dépasse {0} caractères — non collé."
 }

@@ -870,5 +870,10 @@
   "page.adminKeySequences.confirmDelete": "このキーシーケンスを削除しますか？",
   "page.detail.keystrokeButtonPanelPlacementLabel": "キーストロークボタンパネル",
   "page.detail.keystrokeButtonPanelPlacementHint": "セッションページで管理者が設定したキーシーケンスのボタンをどこに表示するか（/admin/key-sequences を参照）— ブラウザが実際のキー入力として送信できない組み合わせ（Ctrl+Alt+Delete が典型例）のためのものです。NONE を選択すると非表示になります。",
-  "page.session.keystrokePanelNotConnectedYet": "まだ接続されていません — セッションの接続が完了してから再度お試しください。"
+  "page.detail.clipboardCopyLoggingLabel": "クリップボードコピーのログ記録",
+  "page.detail.clipboardCopyLoggingCheckboxLabel": "このセッションからコピーされた値をすべて記録する",
+  "page.detail.clipboardCopyLoggingHint": "有効にすると、このコンテナ/ホストのセッションページからの「ホストへコピー」のたびに、コピーされたテキスト（最大250文字）が共有監査ログ（/nspawnmgr/logs を参照）に書き込まれます — このコンテナの所有者だけでなく、ログイン中のすべての nspawnmgr ユーザーに表示されます。コピーされたテキストにはパスワードが含まれることが多いため、デフォルトでは無効です。",
+  "page.session.keystrokePanelNotConnectedYet": "まだ接続されていません — セッションの接続が完了してから再度お試しください。",
+  "page.session.pasteFromBrowser": "ブラウザから貼り付け",
+  "page.session.pasteFromBrowserInvalid": "クリップボードのテキストが空、または{0}文字を超えています — 貼り付けられませんでした。"
 }

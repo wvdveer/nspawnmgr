@@ -55,17 +55,23 @@
     <button id="runAdmin">Run admin suite</button>
     <button id="runHosts">Run hosts suite</button>
     <button id="runScripts">Run scripts suite</button>
+    <button id="runClipboard">Run clipboard suite</button>
     <button id="runAll">Run all</button>
 </div>
 
 <pre id="log"></pre>
 
 <script src="harness.js"></script>
+<!-- Plain static resource of the nspawnmgr webapp (not this test-harness webapp's own), reachable
+     by absolute path since both are deployed into the same Tomcat instance - see tests-clipboard.js
+     and clipboard.js's own header comments. -->
+<script src="/nspawnmgr/js/clipboard.js"></script>
 <script src="tests-auth.js"></script>
 <script src="tests-containers.js"></script>
 <script src="tests-admin.js"></script>
 <script src="tests-hosts.js"></script>
 <script src="tests-scripts.js"></script>
+<script src="tests-clipboard.js"></script>
 <script>
     window.harness.attachLog(document.getElementById('log'));
 
@@ -91,12 +97,14 @@
     document.getElementById('runAdmin').addEventListener('click', guarded(runAdminTests));
     document.getElementById('runHosts').addEventListener('click', guarded(() => runHostTests(osUsername())));
     document.getElementById('runScripts').addEventListener('click', guarded(runScriptTests));
+    document.getElementById('runClipboard').addEventListener('click', guarded(runClipboardTests));
     document.getElementById('runAll').addEventListener('click', guarded(async () => {
         await runAuthTests(osUsername(), osPassword());
         await runContainerTests(shareTargetUsername());
         await runAdminTests();
         await runHostTests(osUsername());
         await runScriptTests();
+        await runClipboardTests();
     }));
 </script>
 
